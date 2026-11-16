@@ -87,3 +87,26 @@ def test_builtin_chain(builtin):
                         None)
     actions = [s["action"] for s in plan]
     assert actions[0] == "launch" and "type" in actions and "key" in actions
+
+
+def test_validate_click_at():
+    ok = [{"action": "click_at", "x": 640, "y": 450},
+          {"action": "done", "answer": "x"}]
+    assert validate_plan(ok) is ok
+    for bad in ({"action": "click_at", "x": -1, "y": 5},
+                {"action": "click_at", "x": 5},
+                {"action": "click_at", "x": "5", "y": 5}):
+        with pytest.raises(PlanError):
+            validate_plan([bad])
+
+
+def test_parse_table_single_space_pdf_copy():
+    from deskdora.agent import parse_table
+    raw = ("DeskDora Test Invoice\nItem Qty Price\nApples 12 30\n"
+           "Bread 5 25\nMilk 8 42\nEggs 30 6\nRice 10 55")
+    rows = parse_table(raw)
+    assert ["Item", "Qty", "Price"] in rows
+    assert ["Apples", "12", "30"] in rows
+    assert ["Rice", "10", "55"] in rows
+    assert parse_table("") == []
+    assert parse_table("singleword") == []

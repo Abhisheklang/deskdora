@@ -19,6 +19,22 @@ class StepFailure(Exception):
     pass
 
 
+def parse_table(raw):
+    """Parse clipboard text into rows of cells.  Structured separators
+    (tab, 2+ spaces, pipe) win; a line that yields a single cell falls
+    back to plain whitespace splitting (browser PDF copies collapse
+    columns to single spaces)."""
+    rows = []
+    for line in raw.splitlines():
+        cells = [c.strip() for c in re.split(r"\t| {2,}|\|", line)]
+        cells = [c for c in cells if c != ""]
+        if len(cells) < 2:
+            cells = line.split()
+        if len(cells) >= 2:
+            rows.append(cells)
+    return rows
+
+
 class Agent:
     def __init__(self, planner, planner_mode, gate, kill_switch, allow_list,
                  run_log, max_steps=400, on_event=None, settle=0.45):
@@ -89,6 +105,13 @@ class Agent:
             else:
                 actions.double_click(cx, cy)
             return f"clicked {el.role} '{el.name}' at {cx},{cy}"
+        if action == "click_at":
+            x, y = int(step["x"]), int(step["y"])
+            self.last_target = {"role": "point", "name": f"{x},{y}",
+                                "bounds": [x - 12, y - 12, 24, 24]}
+            self._emit("target", element=self.last_target)
+            actions.click(x, y)
+            return f"clicked point {x},{y} (coordinate grounding)"
         if action == "type":
             if step.get("target"):
                 el = self._resolve(step)
@@ -137,12 +160,7 @@ class Agent:
         """Macro: enter the clipboard table into a spreadsheet, cell by
         cell, with primitive logged sub-steps, then save via the GUI."""
         raw = self.answers.get("table") or self.answers.get("clipboard") or ""
-        rows = []
-        for line in raw.splitlines():
-            cells = [c for c in re.split(r"\t| {2,}|\|", line) ]
-            cells = [c.strip() for c in cells if c.strip() != ""]
-            if len(cells) >= 2:
-                rows.append(cells)
+        rows = parse_table(raw)
         if not rows:
             raise StepFailure("no table rows found in clipboard text")
         width = max(len(r) for r in rows)
@@ -171,10 +189,16 @@ class Agent:
         save_buttons = obs.find(role="push button", exact_name="Save")
         if save_buttons:
             # A save dialog is open: focus its location/name entry,
-            # type the filename, confirm.
+            # type the filename, confirm.  GTK save dialogs append the
+            # format extension themselves, so type the bare stem —
+            # typing "name.gnumeric" produces "name.gnumeric.gnumeric"
+            # (observed with Gnumeric in the rig).
+            stem = save_as
+            if stem.lower().endswith(".gnumeric"):
+                stem = stem[: -len(".gnumeric")]
             actions.key("ctrl+l")
             time.sleep(0.3)
-            actions.type_text(save_as)
+            actions.type_text(stem)
             time.sleep(0.3)
             actions.key("Return")
             time.sleep(1.0)

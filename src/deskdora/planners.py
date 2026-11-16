@@ -40,8 +40,8 @@ import urllib.request
 import urllib.error
 
 ALLOWED_ACTIONS = {
-    "launch", "click", "double_click", "type", "key", "scroll", "wait",
-    "extract", "read_clipboard", "build_sheet", "done", "fail",
+    "launch", "click", "double_click", "click_at", "type", "key", "scroll",
+    "wait", "extract", "read_clipboard", "build_sheet", "done", "fail",
 }
 TARGET_KEYS = {"role", "name_contains", "exact_name", "label_contains",
                "app_contains", "nth"}
@@ -89,6 +89,11 @@ def validate_plan(plan, element_count=None):
                 _check_target(step["target"], where)
             else:
                 raise PlanError(f"{where}: click needs element or target")
+        elif action == "click_at":
+            for axis in ("x", "y"):
+                v = step.get(axis)
+                if not isinstance(v, int) or not (0 <= v <= 10000):
+                    raise PlanError(f"{where}: click_at needs int {axis} in 0..10000")
         elif action == "type":
             if not isinstance(step.get("text"), str):
                 raise PlanError(f"{where}: type needs text (string)")
@@ -132,6 +137,7 @@ def validate_plan(plan, element_count=None):
 SYSTEM_PROMPT = """You are the planner of DeskDora, a desktop agent.
 Given a goal and a numbered list of on-screen elements, reply with ONLY a
 JSON array of steps. Allowed actions: launch{command}, click{element},
+click_at{x, y} (raw screen coordinates — use only when no element fits),
 type{text}, key{key}, scroll{direction}, wait{seconds}, extract{pattern,
 name}, done{answer}, fail{reason}. Click elements by their [number].
 Keep plans short. End with done or fail."""
@@ -358,7 +364,9 @@ class BuiltinPlanner:
         return [
             {"action": "launch",
              "command": f"{self.apps['browser']} file://{pdf_path}"},
-            {"action": "wait", "seconds": 3},
+            {"action": "wait", "seconds": 9},
+            {"action": "click_at", "x": 640, "y": 450},
+            {"action": "wait", "seconds": 1},
             {"action": "key", "key": "ctrl+a"},
             {"action": "key", "key": "ctrl+c"},
             {"action": "read_clipboard", "name": "table"},
