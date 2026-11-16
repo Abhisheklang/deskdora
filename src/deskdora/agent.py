@@ -168,19 +168,29 @@ class Agent:
         actions.key("ctrl+s")
         time.sleep(1.2)
         obs = perception.observe()
-        replaces = obs.find(role="push button", name_contains="Replace")
-        if not replaces:
-            # Fresh save dialog: the Name field is focused by default.
+        save_buttons = obs.find(role="push button", exact_name="Save")
+        if save_buttons:
+            # A save dialog is open: focus its location/name entry,
+            # type the filename, confirm.
+            actions.key("ctrl+l")
+            time.sleep(0.3)
             actions.type_text(save_as)
             time.sleep(0.3)
             actions.key("Return")
             time.sleep(1.0)
             obs = perception.observe()
             replaces = obs.find(role="push button", name_contains="Replace")
+            if replaces:
+                actions.click(*replaces[0].center)
+                time.sleep(0.8)
+            return f"entered {len(rows)}x{width} table and saved as {save_as}"
+        replaces = obs.find(role="push button", name_contains="Replace")
         if replaces:
             actions.click(*replaces[0].center)
             time.sleep(0.8)
-        return f"entered {len(rows)}x{width} table and saved as {save_as}"
+            return f"entered {len(rows)}x{width} table and re-saved ({save_as})"
+        return (f"entered {len(rows)}x{width} table; no save dialog "
+                f"appeared (direct save assumed)")
 
     # -- main loop -----------------------------------------------------------
     def run(self, goal):

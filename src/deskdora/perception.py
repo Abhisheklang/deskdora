@@ -10,7 +10,18 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field, asdict
 
-import pyatspi
+try:
+    import pyatspi
+except ImportError:  # AT-SPI bindings not installed (e.g. CI, docs builds)
+    pyatspi = None  # type: ignore[assignment]
+
+
+def _require_pyatspi() -> None:
+    if pyatspi is None:
+        raise RuntimeError(
+            "pyatspi is not available: install python3-pyatspi and run inside "
+            "a desktop session with AT-SPI enabled (see README requirements)."
+        )
 
 # Roles worth handing to a planner: things you can click, type into, read,
 # or select.  Pure layout containers are walked but not listed.
@@ -138,6 +149,7 @@ def _own_text(node, cap=300):
 
 
 def observe(max_depth=14):
+    _require_pyatspi()
     """Walk the whole desktop and return an Observation."""
     desktop = pyatspi.Registry.getDesktop(0)
     elements = []
@@ -232,6 +244,7 @@ def observe(max_depth=14):
 
 
 def refind(element):
+    _require_pyatspi()
     """Re-locate an element from a previous observation.
 
     Follows the stored child-index path first and verifies the signature;
