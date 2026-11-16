@@ -97,6 +97,10 @@ class Agent:
             return f"launched {step['command']}"
         if action in ("click", "double_click"):
             el = self._resolve(step)
+            if el is not None and not getattr(el, "sensitive", True):
+                raise StepFailure(
+                    f"element '{el.name}' ({el.role}) is disabled "
+                    "(greyed out) and cannot be clicked")
             self.last_target = el.to_dict()
             self._emit("target", element=el.to_dict())
             actions.activate_window(getattr(el, "window", ""))

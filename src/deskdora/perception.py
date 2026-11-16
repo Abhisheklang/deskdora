@@ -55,6 +55,7 @@ class Element:
     actions: list = field(default_factory=list)
     editable: bool = False
     focused: bool = False
+    sensitive: bool = True     # False = greyed-out control (cannot be used)
     text: str = ""             # own text content (truncated)
     path: tuple = ()           # child-index path from the application node
 
@@ -189,8 +190,10 @@ def observe(max_depth=14):
                 states = node.getState()
                 editable = states.contains(pyatspi.STATE_EDITABLE)
                 focused = states.contains(pyatspi.STATE_FOCUSED)
+                sensitive = states.contains(pyatspi.STATE_SENSITIVE)
             except Exception:
                 editable = focused = False
+                sensitive = True
             acts = []
             try:
                 qa = node.queryAction()
@@ -201,7 +204,7 @@ def observe(max_depth=14):
                 idx=len(elements), app=app_name, window=window_title,
                 role=role, name=name, label=_label_of(node),
                 x=x, y=y, w=w, h=h, actions=acts, editable=editable,
-                focused=focused,
+                focused=focused, sensitive=sensitive,
                 text=_own_text(node) if role in ("text", "password text") else "",
                 path=tuple(path),
             ))
@@ -269,9 +272,15 @@ def refind(element):
             if role == element.role and name == element.name:
                 x, y, w, h = _extents(node)
                 if _valid(x, y, w, h):
+                    try:
+                        sens = node.getState().contains(
+                            pyatspi.STATE_SENSITIVE)
+                    except Exception:
+                        sens = True
                     fresh = Element(idx=element.idx, app=element.app,
                                     window=element.window, role=role, name=name,
                                     label=element.label, x=x, y=y, w=w, h=h,
+                                    sensitive=sens,
                                     path=element.path)
                     return fresh
     except Exception:

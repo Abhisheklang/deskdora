@@ -403,9 +403,7 @@ def run_benchmark(planner_mode="builtin", model="qwen2.5:1.5b", limit=None,
         _clean_desktop()
     passed = sum(1 for r in results if r["verdict"] == "PASS")
     print(f"\nBENCHMARK: {passed}/{len(results)} passed -> {results_path}")
-    write_benchmark_md(results, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "BENCHMARK.md"))
+    write_benchmark_md(results, os.path.join(out_dir, "BENCHMARK.md"))
     return 0 if passed else 1
 
 
