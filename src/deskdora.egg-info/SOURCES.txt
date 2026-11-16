@@ -1,0 +1,17 @@
+LICENSE
+pyproject.toml
+src/deskdora/__init__.py
+src/deskdora/actions.py
+src/deskdora/agent.py
+src/deskdora/audit.py
+src/deskdora/cli.py
+src/deskdora/perception.py
+src/deskdora/planners.py
+src/deskdora/safety.py
+src/deskdora/tasks.py
+src/deskdora.egg-info/PKG-INFO
+src/deskdora.egg-info/SOURCES.txt
+src/deskdora.egg-info/dependency_links.txt
+src/deskdora.egg-info/entry_points.txt
+src/deskdora.egg-info/requires.txt
+src/deskdora.egg-info/top_level.txt

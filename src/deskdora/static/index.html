@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeskDora — your desktop, on autopilot</title>
+<style>
+  :root{
+    --bg:#0b0e1a; --panel:#131830; --panel2:#171c3a; --line:#262c52;
+    --text:#e8eaf6; --muted:#9aa3c7; --accent:#7c5cff; --accent2:#4f8cff;
+    --ok:#2fbf71; --bad:#ff5470; --warn:#ffb020; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       min-height:100vh}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;
+         background:linear-gradient(90deg,#141a38,#10142a);
+         border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40}
+  .logo{width:38px;height:38px;border-radius:10px;flex:none;
+        background:linear-gradient(135deg,var(--accent),var(--accent2));
+        display:flex;align-items:center;justify-content:center;
+        font-weight:800;font-size:20px;color:#fff}
+  .brand{line-height:1.1}
+  .brand b{font-size:19px;letter-spacing:.2px}
+  .brand span{display:block;color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .pill{font-size:12px;padding:5px 10px;border-radius:999px;
+        border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .pill.on{color:#0b0e1a;background:var(--ok);border-color:var(--ok);font-weight:700}
+  .pill.run{color:#0b0e1a;background:var(--warn);border-color:var(--warn);font-weight:700}
+  #killBtn{background:var(--bad);color:#fff;border:none;font-weight:800;
+           padding:11px 18px;border-radius:10px;cursor:pointer;
+           letter-spacing:.4px;box-shadow:0 0 0 3px rgba(255,84,112,.25)}
+  #killBtn:active{transform:scale(.97)}
+  nav.tabs{display:flex;gap:8px;padding:12px 18px 0;flex-wrap:wrap}
+  nav.tabs button{background:var(--panel);color:var(--muted);
+    border:1px solid var(--line);padding:9px 16px;border-radius:999px;
+    cursor:pointer;font-size:14px}
+  nav.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  main{padding:16px 18px 40px;max-width:1180px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);
+        border-radius:var(--radius);padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 10px;font-size:16px}
+  .card h3{margin:14px 0 8px;font-size:14px;color:var(--muted)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .grow{flex:1;min-width:200px}
+  input[type=text],select,textarea{background:var(--panel2);color:var(--text);
+    border:1px solid var(--line);border-radius:10px;padding:11px 12px;
+    font-size:15px;width:100%}
+  textarea{min-height:74px;resize:vertical}
+  button.primary{background:var(--accent);color:#fff;border:none;
+    padding:11px 20px;border-radius:10px;font-size:15px;font-weight:700;
+    cursor:pointer}
+  button.primary:disabled{opacity:.45;cursor:default}
+  button.ghost{background:transparent;color:var(--text);
+    border:1px solid var(--line);padding:8px 14px;border-radius:9px;cursor:pointer}
+  button.danger{background:transparent;color:var(--bad);
+    border:1px solid var(--bad);padding:8px 14px;border-radius:9px;cursor:pointer}
+  .liveWrap{position:relative;border-radius:10px;overflow:hidden;
+            background:#000;border:1px solid var(--line)}
+  .liveWrap img{width:100%;display:block}
+  #hl{position:absolute;border:3px solid var(--warn);border-radius:6px;
+      box-shadow:0 0 0 3px rgba(255,176,32,.35);display:none;pointer-events:none;
+      transition:all .25s}
+  #hlTag{position:absolute;background:var(--warn);color:#111;font-size:11px;
+         font-weight:700;padding:2px 6px;border-radius:4px;display:none}
+  .feed{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;
+        max-height:260px;overflow:auto;line-height:1.55}
+  .feed .ok{color:var(--ok)} .feed .err{color:var(--bad)}
+  .feed .dim{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 9px;border-bottom:1px solid var(--line);
+        vertical-align:top}
+  th{color:var(--muted);font-weight:600}
+  .chip{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .chip.success{background:rgba(47,191,113,.16);color:var(--ok)}
+  .chip.failed,.chip.blocked,.chip.killed{background:rgba(255,84,112,.14);color:var(--bad)}
+  .chip.running{background:rgba(255,176,32,.16);color:var(--warn)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  .routine{background:var(--panel2);border:1px solid var(--line);
+           border-radius:12px;padding:14px}
+  .routine b{font-size:15px}
+  .routine p{color:var(--muted);font-size:13px;margin:6px 0 10px;
+             word-break:break-word}
+  .modal{position:fixed;inset:0;background:rgba(4,6,16,.72);display:none;
+         align-items:center;justify-content:center;z-index:80;padding:16px}
+  .modal.open{display:flex}
+  .modalBox{background:var(--panel);border:1px solid var(--warn);
+    border-radius:16px;padding:22px;max-width:480px;width:100%}
+  .modalBox h2{margin-top:0;color:var(--warn)}
+  .shotNav{display:flex;gap:8px;align-items:center;margin-top:10px}
+  .muted{color:var(--muted)} .small{font-size:12.5px}
+  .viewShot{width:100%;border-radius:10px;border:1px solid var(--line)}
+  @media (max-width:640px){
+    .brand span{display:none}
+    header{padding:10px 12px} main{padding:12px}
+    #killBtn{padding:10px 12px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">D</div>
+  <div class="brand"><b>DeskDora</b><span>your desktop, on autopilot — local &amp; private</span></div>
+  <div class="spacer"></div>
+  <span class="pill" id="plannerPill">planner: …</span>
+  <span class="pill" id="statusPill">idle</span>
+  <button id="killBtn" title="Stop the agent immediately">■ KILL SWITCH</button>
+</header>
+
+<nav class="tabs">
+  <button data-view="run" class="active">Run</button>
+  <button data-view="runs">Action log</button>
+  <button data-view="routines">Routines</button>
+  <button data-view="benchmark">Benchmark</button>
+  <button data-view="settings">Settings</button>
+</nav>
+
+<main>
+  <!-- RUN VIEW -->
+  <section id="view-run">
+    <div class="card">
+      <h2>Give DeskDora a task</h2>
+      <div class="row">
+        <div class="grow"><input type="text" id="goalInput"
+          placeholder="e.g. Organise folder /home/you/Downloads by type"></div>
+        <select id="plannerSelect" style="width:auto">
+          <option value="">Planner: auto</option>
+          <option value="builtin">Planner: built-in</option>
+          <option value="ollama">Planner: Ollama (local LLM)</option>
+        </select>
+        <button class="primary" id="runBtn">Run task</button>
+      </div>
+      <p class="muted small" id="runHint">The agent reads your screen through the
+        accessibility tree, plans, and acts — asking before anything risky.
+        Every step is logged with a screenshot.</p>
+    </div>
+    <div class="card">
+      <h2>Live view <span class="muted small" id="liveGoal"></span></h2>
+      <div class="liveWrap" id="liveWrap">
+        <img id="liveImg" alt="Live desktop view">
+        <div id="hl"></div><div id="hlTag"></div>
+      </div>
+      <h3>Activity</h3>
+      <div class="feed" id="feed"><span class="dim">No run yet.</span></div>
+    </div>
+  </section>
+
+  <!-- RUNS VIEW -->
+  <section id="view-runs" hidden>
+    <div class="card">
+      <h2>Action log — every run, every step</h2>
+      <div id="runsList" class="muted">Loading…</div>
+    </div>
+    <div class="card" id="replayCard" hidden>
+      <h2 id="replayTitle">Replay</h2>
+      <img class="viewShot" id="replayImg" alt="Run screenshot">
+      <div class="shotNav">
+        <button class="ghost" id="shotPrev">← Prev step</button>
+        <span id="shotLabel" class="muted small"></span>
+        <button class="ghost" id="shotNext">Next step →</button>
+      </div>
+      <h3>Events</h3>
+      <div class="feed" id="replayFeed"></div>
+    </div>
+  </section>
+
+  <!-- ROUTINES VIEW -->
+  <section id="view-routines" hidden>
+    <div class="card">
+      <h2>Routines — your saved tasks, one click to re-run</h2>
+      <div class="grid" id="routineGrid"></div>
+      <h3>Create a routine</h3>
+      <div class="row">
+        <input type="text" id="routineName" placeholder="Name, e.g. Morning tidy" style="max-width:240px">
+        <div class="grow"><input type="text" id="routineGoal" placeholder="The task, in plain words"></div>
+        <input type="text" id="routineSchedule" placeholder="Schedule (cron, optional)" style="max-width:200px">
+        <button class="primary" id="routineSave">Save routine</button>
+      </div>
+      <p class="muted small">Routines live only on this machine. A schedule uses
+        five-field cron (e.g. <code>0 9 * * 1</code> = Mondays 09:00).</p>
+    </div>
+  </section>
+
+  <!-- BENCHMARK VIEW -->
+  <section id="view-benchmark" hidden>
+    <div class="card">
+      <h2>Benchmark — measured, not promised</h2>
+      <p class="muted" id="benchSummary">Loading…</p>
+      <div style="overflow:auto"><table id="benchTable">
+        <thead><tr><th>#</th><th>Task</th><th>Verdict</th><th>Steps</th>
+        <th>Time</th><th>Evidence</th></tr></thead><tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS VIEW -->
+  <section id="view-settings" hidden>
+    <div class="card">
+      <h2>Settings</h2>
+      <h3>Planner</h3>
+      <div class="row">
+        <select id="cfgPlanner" style="max-width:260px">
+          <option value="auto">Auto (Ollama if available, else built-in)</option>
+          <option value="builtin">Built-in deterministic planner</option>
+          <option value="ollama">Ollama (local LLM)</option>
+        </select>
+        <input type="text" id="cfgModel" placeholder="Ollama model" style="max-width:240px">
+      </div>
+      <h3>App allow-list (one app per line — empty means allow all)</h3>
+      <textarea id="cfgAllow" placeholder="thunar&#10;gnumeric&#10;xfce4-terminal"></textarea>
+      <h3>Safety</h3>
+      <label class="small"><input type="checkbox" id="cfgSandbox"> Sandbox / VM mode
+        (recommended while you evaluate DeskDora)</label>
+      <p class="muted small">Confirmations before delete / send / submit / install
+        are always on and cannot be disabled.</p>
+      <div class="row"><button class="primary" id="cfgSave">Save settings</button>
+      <span class="muted small" id="cfgMsg"></span></div>
+    </div>
+  </section>
+</main>
+
+<!-- CONFIRMATION MODAL -->
+<div class="modal" id="confirmModal">
+  <div class="modalBox">
+    <h2>⚠ Confirmation needed</h2>
+    <p>The agent wants to perform an action that needs your approval:</p>
+    <p><b id="confirmDesc"></b></p>
+    <p class="muted small" id="confirmStep"></p>
+    <div class="row">
+      <button class="primary" id="confirmYes">Allow once</button>
+      <button class="danger" id="confirmNo">Deny &amp; stop</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// ---------- navigation ----------
+document.querySelectorAll("nav.tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav.tabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    ["run","runs","routines","benchmark","settings"].forEach(v => {
+      $("#view-" + v).hidden = v !== btn.dataset.view;
+    });
+    if (btn.dataset.view === "runs") loadRuns();
+    if (btn.dataset.view === "routines") loadRoutines();
+    if (btn.dataset.view === "benchmark") loadBenchmark();
+    if (btn.dataset.view === "settings") loadConfig();
+  });
+});
+
+// ---------- live view + status ----------
+let liveTimer = null;
+function refreshLive() {
+  const img = $("#liveImg");
+  img.src = "/api/live/screenshot?t=" + Date.now();
+}
+async function pollStatus() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    const pill = $("#statusPill");
+    if (st.state.running) {
+      pill.textContent = "running"; pill.className = "pill run";
+      $("#liveGoal").textContent = "— " + (st.state.goal || "");
+    } else if (st.state.result) {
+      pill.textContent = st.state.result.status;
+      pill.className = "pill " + (st.state.result.status === "success" ? "on" : "");
+    } else { pill.textContent = "idle"; pill.className = "pill"; }
+    $("#plannerPill").textContent =
+      "planner: " + (st.state.planner_mode || st.config.planner) +
+      (st.config.planner !== "builtin" ? (st.ollama_available ? " · ollama up" : " · ollama down") : "");
+    // highlight box
+    const t = st.state.last_target, img = $("#liveImg"), hl = $("#hl"), tag = $("#hlTag");
+    if (t && img.naturalWidth) {
+      const sx = img.clientWidth / img.naturalWidth, sy = img.clientHeight / img.naturalHeight;
+      hl.style.display = "block";
+      hl.style.left = (t.x * sx) + "px"; hl.style.top = (t.y * sy) + "px";
+      hl.style.width = (t.w * sx) + "px"; hl.style.height = (t.h * sy) + "px";
+      tag.style.display = "block";
+      tag.style.left = (t.x * sx) + "px"; tag.style.top = Math.max(0, t.y * sy - 20) + "px";
+      tag.textContent = (t.role || "") + " " + (t.name || "");
+    } else { hl.style.display = "none"; tag.style.display = "none"; }
+    // feed
+    const ev = st.last_event;
+    if (ev) {
+      const feed = $("#feed");
+      const line = document.createElement("div");
+      line.innerHTML = feedLine(ev);
+      if (feed.dataset.lastTs !== String(ev.ts || "") + ev.kind) {
+        feed.dataset.lastTs = String(ev.ts || "") + ev.kind;
+        if (feed.querySelector(".dim")) feed.innerHTML = "";
+        feed.appendChild(line); feed.scrollTop = feed.scrollHeight;
+      }
+    }
+    // confirmation modal
+    const modal = $("#confirmModal");
+    if (st.pending_confirmation) {
+      modal.classList.add("open");
+      modal.dataset.cid = st.pending_confirmation.id;
+      $("#confirmDesc").textContent = st.pending_confirmation.description || "Destructive action";
+      $("#confirmStep").textContent = JSON.stringify(st.pending_confirmation.step);
+    } else modal.classList.remove("open");
+    if (st.state.running) refreshLive();
+  } catch (e) { /* server busy; next poll retries */ }
+}
+function feedLine(ev) {
+  const t = new Date((ev.ts || 0) * 1000).toLocaleTimeString();
+  if (ev.kind === "step_result")
+    return `<span class="dim">${t}</span> step ${ev.index}: ` +
+      (ev.ok ? `<span class="ok">✓</span> ${esc(ev.detail || "")}`
+             : `<span class="err">✗ ${esc(ev.error || "")}</span>`);
+  if (ev.kind === "plan") return `<span class="dim">${t}</span> plan ready (${(ev.steps || []).length} steps, ${esc(ev.planner_mode || "")})`;
+  if (ev.kind === "confirmation") return `<span class="dim">${t}</span> confirmation ${ev.approved ? "approved" : "DENIED"}`;
+  if (ev.kind === "run_end") return `<span class="dim">${t}</span> <b>run finished: ${esc(ev.status)}</b> ${esc(ev.answer || ev.reason || "")}`;
+  return `<span class="dim">${t}</span> ${esc(ev.kind)}`;
+}
+setInterval(pollStatus, 1200); pollStatus(); refreshLive();
+
+// ---------- run controls ----------
+$("#runBtn").addEventListener("click", async () => {
+  const goal = $("#goalInput").value.trim();
+  if (!goal) return;
+  $("#feed").innerHTML = ""; delete $("#feed").dataset.lastTs;
+  const body = { goal };
+  const p = $("#plannerSelect").value; if (p) body.planner = p;
+  const res = await fetch("/api/run", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  if (!res.ok) alert("Could not start: " + (await res.text()));
+  pollStatus();
+});
+$("#killBtn").addEventListener("click", async () => {
+  await fetch("/api/kill", { method: "POST" });
+  pollStatus();
+});
+$("#confirmYes").addEventListener("click", () => answerConfirm(true));
+$("#confirmNo").addEventListener("click", () => answerConfirm(false));
+async function answerConfirm(approved) {
+  const cid = $("#confirmModal").dataset.cid;
+  await fetch("/api/confirmations/" + cid, { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ approved }) });
+  $("#confirmModal").classList.remove("open");
+}
+
+// ---------- runs / replay ----------
+let replayShots = [], replayIdx = 0, replayRunId = "";
+async function loadRuns() {
+  const runs = await (await fetch("/api/runs")).json();
+  const el = $("#runsList");
+  if (!runs.length) { el.textContent = "No runs yet."; return; }
+  el.innerHTML = "<table><thead><tr><th>Goal</th><th>Status</th><th>Planner</th><th></th></tr></thead><tbody>" +
+    runs.map(r => `<tr><td>${esc(r.goal)}</td>
+      <td><span class="chip ${esc(r.status)}">${esc(r.status)}</span></td>
+      <td class="muted">${esc(r.planner_mode)}</td>
+      <td><button class="ghost" onclick="openReplay('${esc(r.id)}')">Replay</button></td></tr>`).join("") +
+    "</tbody></table>";
+}
+async function openReplay(id) {
+  replayRunId = id;
+  const data = await (await fetch("/api/runs/" + id)).json();
+  replayShots = data.screenshots; replayIdx = 0;
+  $("#replayCard").hidden = false;
+  $("#replayTitle").textContent = "Replay — " + id;
+  $("#replayFeed").innerHTML = data.events.map(feedLine).join("");
+  showShot();
+  $("#replayCard").scrollIntoView({ behavior: "smooth" });
+}
+function showShot() {
+  if (!replayShots.length) return;
+  replayIdx = Math.max(0, Math.min(replayIdx, replayShots.length - 1));
+  $("#replayImg").src = `/api/runs/${replayRunId}/screenshots/${replayShots[replayIdx]}`;
+  $("#shotLabel").textContent = `${replayIdx + 1} / ${replayShots.length} — ${replayShots[replayIdx]}`;
+}
+$("#shotPrev").addEventListener("click", () => { replayIdx--; showShot(); });
+$("#shotNext").addEventListener("click", () => { replayIdx++; showShot(); });
+
+// ---------- routines ----------
+async function loadRoutines() {
+  const list = await (await fetch("/api/routines")).json();
+  const grid = $("#routineGrid");
+  grid.innerHTML = list.length ? list.map(r => `
+    <div class="routine"><b>${esc(r.name)}</b>
+      <p>${esc(r.goal)}</p>
+      <p class="small">${r.schedule ? "🕐 " + esc(r.schedule) + " · " : ""}ran ${r.run_count || 0}×</p>
+      <button class="primary" onclick="runRoutine('${esc(r.name)}')">Run now</button>
+      <button class="danger" onclick="deleteRoutine('${esc(r.name)}')">Delete</button>
+    </div>`).join("") : "<p class='muted'>No routines yet — run a task, then save it from the Action log, or create one below.</p>";
+}
+async function runRoutine(name) {
+  const res = await fetch(`/api/routines/${name}/run`, { method: "POST" });
+  if (!res.ok) alert("Could not start routine: " + (await res.text()));
+  document.querySelector('[data-view="run"]').click();
+}
+async function deleteRoutine(name) {
+  await fetch(`/api/routines/${name}`, { method: "DELETE" }); loadRoutines();
+}
+$("#routineSave").addEventListener("click", async () => {
+  const body = { name: $("#routineName").value.trim(),
+                 goal: $("#routineGoal").value.trim(),
+                 schedule: $("#routineSchedule").value.trim() || null };
+  if (!body.name || !body.goal) return alert("Name and goal are required.");
+  await fetch("/api/routines", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  loadRoutines();
+});
+
+// ---------- benchmark ----------
+async function loadBenchmark() {
+  const data = await (await fetch("/api/benchmark")).json();
+  const tbody = document.querySelector("#benchTable tbody");
+  if (!data.length) { $("#benchSummary").textContent = "No benchmark run recorded yet."; return; }
+  const passed = data.filter(r => r.verdict === "PASS").length;
+  $("#benchSummary").innerHTML = `<b>${passed}/${data.length}</b> tasks passed in the reference rig. ` +
+    "Every verdict comes from an external end-state assertion.";
+  tbody.innerHTML = data.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.title)}</td>
+    <td><span class="chip ${r.verdict === "PASS" ? "success" : "failed"}">${esc(r.verdict)}</span></td>
+    <td>${r.steps ?? "—"}</td><td>${r.seconds ?? "—"}s</td>
+    <td class="muted">${esc(r.assertion_detail || "")}</td></tr>`).join("");
+}
+
+// ---------- settings ----------
+async function loadConfig() {
+  const cfg = await (await fetch("/api/config")).json();
+  $("#cfgPlanner").value = cfg.planner;
+  $("#cfgModel").value = cfg.model;
+  $("#cfgAllow").value = (cfg.allow_apps || []).join("\n");
+  $("#cfgSandbox").checked = !!cfg.sandbox_mode;
+}
+$("#cfgSave").addEventListener("click", async () => {
+  const body = { planner: $("#cfgPlanner").value, model: $("#cfgModel").value,
+    allow_apps: $("#cfgAllow").value.split("\n").map(s => s.trim()).filter(Boolean),
+    sandbox_mode: $("#cfgSandbox").checked };
+  await fetch("/api/config", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  $("#cfgMsg").textContent = "Saved.";
+  pollStatus();
+});
+</script>
+</body>
+</html>
