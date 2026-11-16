@@ -99,6 +99,7 @@ class Agent:
             el = self._resolve(step)
             self.last_target = el.to_dict()
             self._emit("target", element=el.to_dict())
+            actions.activate_window(getattr(el, "window", ""))
             cx, cy = el.center
             if action == "click":
                 actions.click(cx, cy)
@@ -116,6 +117,7 @@ class Agent:
             if step.get("target"):
                 el = self._resolve(step)
                 self.last_target = el.to_dict()
+                actions.activate_window(getattr(el, "window", ""))
                 actions.click(*el.center)
                 time.sleep(0.25)
             actions.type_text(step["text"])

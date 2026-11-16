@@ -65,6 +65,24 @@ def active_window_title():
         return ""
 
 
+def activate_window(title):
+    """Best-effort raise of the window with this title, so a click lands
+    on the app it was aimed at even if another window (e.g. DeskDora's
+    own confirmation UI) was raised in between.  Never raises."""
+    if not title:
+        return False
+    try:
+        res = subprocess.run(
+            ["xdotool", "search", "--name", f"^{title}$", "windowactivate"],
+            capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            time.sleep(0.35)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def screenshot(path):
     """Capture the full display to a PNG file. Returns the path."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
