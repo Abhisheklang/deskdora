@@ -389,13 +389,13 @@ def run_benchmark(planner_mode="builtin", model="qwen2.5:1.5b", limit=None,
         except Exception as exc:
             ok, detail = False, f"assertion error: {exc}"
         verdict = "PASS" if (ok and run["status"] == "success") else "FAIL"
-        print(f"{verdict} status={run['status']} steps={run['steps_executed']} "
+        print(f"{verdict} status={run['status']} steps={run.get('steps_executed', 0)} "
               f"({elapsed}s): {detail}", flush=True)
         results.append({
             "id": task.id, "title": task.title, "goal": goal,
             "verdict": verdict, "run_status": run["status"],
             "run_reason": run.get("reason", ""), "answers": run.get("answers"),
-            "steps": run["steps_executed"], "seconds": elapsed,
+            "steps": run.get("steps_executed", 0), "seconds": elapsed,
             "assertion_detail": detail, "log_dir": agent.log.dir,
             "planner_mode": agent.planner_mode,
         })

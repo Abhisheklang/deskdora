@@ -233,7 +233,7 @@ class Agent:
                 self._emit("plan_failed", error=str(exc))
                 self.log.finish("failed", reason=f"planning failed: {exc}")
                 return {"status": "failed", "reason": f"planning failed: {exc}",
-                        "answers": {}}
+                        "answers": {}, "steps_executed": 0}
             self._emit("plan", steps=plan, planner_mode=self.planner_mode)
             replans = 1 if hasattr(self.planner, "model") else 0
             i = 0
