@@ -58,3 +58,18 @@ def test_ui_served():
     assert res.status_code == 200
     assert "DeskDora" in res.text
     assert "KILL SWITCH" in res.text
+
+
+def test_live_view_removed():
+    # The live view was removed at the user's order: the endpoint is
+    # gone, the status state carries no live-view fields, and the UI
+    # ships no live-view markup or polling code.
+    res = client.get("/api/live/screenshot")
+    assert res.status_code == 404
+    state = client.get("/api/status").json()["state"]
+    assert "last_target" not in state
+    assert "last_screenshot" not in state
+    ui = client.get("/").text
+    assert "Live view" not in ui
+    assert "liveImg" not in ui
+    assert "/api/live/screenshot" not in ui

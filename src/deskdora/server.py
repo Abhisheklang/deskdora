@@ -66,8 +66,7 @@ class RunManager:
         self.agent = None
         self.state = {
             "running": False, "goal": "", "planner_mode": "",
-            "last_event": None, "last_screenshot": None,
-            "last_target": None, "run_dir": None, "result": None,
+            "last_event": None, "run_dir": None, "result": None,
         }
         self.kill = KillSwitch()
         self.pending = None          # dict with an Event + verdict
@@ -103,8 +102,7 @@ class RunManager:
             if self.state["running"]:
                 raise HTTPException(409, "a run is already in progress")
             self.state.update({"running": True, "goal": goal,
-                               "result": None, "last_target": None,
-                               "last_screenshot": None})
+                               "result": None})
         cfg = load_config()
         mode = planner_mode or cfg["planner"]
         self.kill.reset()
@@ -112,11 +110,6 @@ class RunManager:
         def _on_event(kind, **fields):
             with self.lock:
                 self.state["last_event"] = {"kind": kind, **fields}
-                if kind == "target":
-                    self.state["last_target"] = fields.get("element")
-                if kind in ("step_result", "run_end") and \
-                        fields.get("screenshot"):
-                    self.state["last_screenshot"] = fields["screenshot"]
 
         def _work():
             planner, mode_label = get_planner(
@@ -137,8 +130,6 @@ class RunManager:
             with self.lock:
                 self.state["running"] = False
                 self.state["result"] = result
-                if agent.last_screenshot:
-                    self.state["last_screenshot"] = agent.last_screenshot
 
         self.thread = threading.Thread(target=_work, daemon=True)
         self.thread.start()
@@ -234,24 +225,6 @@ def run_screenshot(run_id: str, name: str):
     if not os.path.isfile(path):
         raise HTTPException(404, "screenshot not found")
     return FileResponse(path, media_type="image/png")
-
-
-@app.get("/api/live/screenshot")
-def live_screenshot():
-    """Most recent screenshot of the active (or last) run; falls back to
-    a fresh capture so the live view is never blank."""
-    run_dir = MANAGER.state.get("run_dir")
-    name = MANAGER.state.get("last_screenshot")
-    if run_dir and name:
-        path = os.path.join(run_dir, name)
-        if os.path.isfile(path):
-            return FileResponse(path, media_type="image/png",
-                                headers={"Cache-Control": "no-store"})
-    from . import actions
-    tmp = os.path.join(DATA_DIR, "live.png")
-    actions.screenshot(tmp)
-    return FileResponse(tmp, media_type="image/png",
-                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/routines")

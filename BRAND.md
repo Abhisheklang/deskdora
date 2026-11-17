@@ -10,9 +10,8 @@ machine, often unattended, always under your control. The interface is
 a calm, deep, indigo-tinted dark — the desk at night. Against that
 calm, one warm colour — amber — always means the same thing:
 **DeskDora is about to act, or needs you.** Amber is the colour of the
-target ring in the logo and of the highlight box in the live view: the
-exact spot the agent is about to touch. No other element may use
-amber decoratively.
+target ring in the logo — the mark of the exact spot the agent is
+about to touch. No other element may use amber decoratively.
 
 ## Colour palette
 
@@ -59,15 +58,14 @@ from Spotify to Figma) says an accent only works if it is rare.
 Amber is reserved, without exception, for **action and attention**:
 
 - the primary call-to-action ("Run task", "Run now", "Save"),
-- the live-view target highlight and its label,
-- the LIVE / running indicators and the run-progress bar,
+- the running indicators and the run-progress bar,
 - the confirmation state ("DeskDora needs you"),
 - the target ring in the logo.
 
 | Token | Hex | Use |
 |---|---|---|
 | `amber-300` | `#FFCF6B` | Gradient start, light accents |
-| `amber-400` | `#FFB020` | The accent itself; highlight; ring |
+| `amber-400` | `#FFB020` | The accent itself; logo ring |
 | `amber-500` | `#FF9416` | Gradient mid |
 | gradient | `135deg, #FFB020 → #FF7A29` | Primary buttons |
 | on-amber text | `#221503` | Text on amber surfaces |
@@ -80,7 +78,7 @@ one meaning everywhere in the product:
 | State | Colour | Hex | Meaning |
 |---|---|---|---|
 | Idle | Ink / muted text | `#8F8FAE` | Nothing is happening |
-| Running | **Amber** | `#FFB020` | The agent is acting — watch the highlight |
+| Running | **Amber** | `#FFB020` | The agent is acting — follow the activity feed |
 | Needs confirmation | **Amber**, stronger | `#FFB020` | The agent is paused and needs *you* |
 | Success | Emerald | `#2FD48C` | Verified done |
 | Danger / kill | Rose | `#FF5C6C` | Destructive or stopped — kill switch, deny, failures |
@@ -142,5 +140,5 @@ Source: `src/deskdora/static/logo.svg`; PNG renders for packaging in
 4. Neutrals are always the indigo-tinted Ink scale — no pure greys,
    no second neutral family.
 5. Animation is purposeful: things that move are alive (running,
-   progress, the highlight). Nothing moves to decorate.
+   progress). Nothing moves to decorate.
 6. `prefers-reduced-motion` disables the animation layer entirely.

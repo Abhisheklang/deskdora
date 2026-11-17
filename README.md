@@ -97,8 +97,8 @@ are refused honestly rather than improvised.
 
 ## Features (v1.0)
 
-- Chat-style web UI with **live view**: watch the desktop, with the
-  target element highlighted before each click
+- Chat-style web UI: give the agent a task and follow every step in
+  the activity feed while it works
 - Whole-desktop control: file manager, settings, browser, office apps,
   terminal — anything exposing an accessibility tree
 - Hybrid grounding: accessibility tree first, vision fallback
