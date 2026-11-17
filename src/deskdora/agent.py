@@ -218,12 +218,23 @@ class Agent:
                 if title:
                     self._pin_focus(window=title)
             return
-        # Verify.
+        # Verify.  The window manager's active window is where X11
+        # keystrokes actually land; an AT-SPI "focused" element can
+        # be stale — WebKitGTK keeps reporting its web view as
+        # focused long after the window loses activation (measured
+        # in the rig with DeskDora's own window: the WM active
+        # window was Thunar while AT-SPI still claimed DeskDora).
+        # So when the active window belongs to the intended app,
+        # focus is right, whatever a stale element says.
         try:
             obs = self.d.observe()
             focused = self._focused_element(obs)
         except Exception:
             obs, focused = None, None
+        active = self.d.active_window_title()
+        if active and obs is not None and self.focus_app:
+            if self._window_owner(obs, active) == self.focus_app:
+                return
         if focused is not None and self.focus_app:
             if focused.app == self.focus_app:
                 self._pin_focus(window=focused.window)

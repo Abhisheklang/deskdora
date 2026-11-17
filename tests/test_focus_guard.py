@@ -215,3 +215,19 @@ def test_guard_refuses_when_launched_app_never_appears(rig):
     with pytest.raises(StepFailure, match="did not present a window"):
         agent._exec_primitive({"action": "key", "key": "ctrl+s"})
     assert driver.keys == []
+
+
+def test_guard_stale_webkit_focus_does_not_block(rig):
+    # Regression (installed-app recording run): WebKitGTK keeps
+    # reporting its web view as the AT-SPI focused element after the
+    # DeskDora window loses activation.  The WM active window —
+    # where keystrokes actually land — belongs to the target app,
+    # so the guard must pass.
+    agent, driver, _events = rig
+    agent.focus_app, agent.focus_window = "thunar", "messy - Thunar"
+    driver.elements = [el("window.py", "DeskDora", focused=True),
+                       el("thunar", "messy - Thunar", focused=False)]
+    driver.active_title = "messy - Thunar"
+    driver.activate_ok = False
+    agent._exec_primitive({"action": "key", "key": "ctrl+shift+n"})
+    assert driver.keys == ["ctrl+shift+n"]
