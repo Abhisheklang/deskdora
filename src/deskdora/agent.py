@@ -146,6 +146,23 @@ class Agent:
                 return el
         return None
 
+    # DeskDora's own desktop furniture (v3.2): the floating control
+    # window and the edge light belong to the agent, not to the
+    # user's work.  The overlay maps when a run starts — after a
+    # launch step's snapshot — so its elements otherwise look like
+    # "the new window the launch raised", and adoption would pin
+    # the run to the overlay and then refuse to type into the real
+    # app (measured live on the organise task).  Furniture is
+    # transparent to adoption and pinning: never pinned, never
+    # adopted, never the reason a step fails.
+    FURNITURE_WINDOWS = frozenset({"DeskDora Control",
+                                   "DeskDora Edge"})
+
+    @classmethod
+    def _is_furniture(cls, element):
+        return (getattr(element, "window", None)
+                in cls.FURNITURE_WINDOWS)
+
     def _adopt_launched_window(self):
         """Try once to pin the window a pending launch meant to
         raise.  Signals, in order: the focused element if it is new
@@ -158,10 +175,14 @@ class Agent:
             return False
         hint = (self._launch_hint or "").lower()
         new = [e for e in obs.elements
-               if e.window and e.window not in self._launch_snapshot]
+               if e.window and e.window not in self._launch_snapshot
+               and not self._is_furniture(e)]
         hinted = [e for e in obs.elements
-                  if hint and e.app and hint in e.app.lower()]
+                  if hint and e.app and hint in e.app.lower()
+                  and not self._is_furniture(e)]
         focused = self._focused_element(obs)
+        if focused is not None and self._is_furniture(focused):
+            focused = None
         adopted = None
         if focused is not None and (
                 focused.window not in self._launch_snapshot
@@ -214,11 +235,13 @@ class Agent:
                 focused = self._focused_element(obs)
             except Exception:
                 focused = None
+            if focused is not None and self._is_furniture(focused):
+                focused = None
             if focused is not None:
                 self._pin_focus(focused.app, focused.window)
             else:
                 title = self.d.active_window_title()
-                if title:
+                if title and title not in self.FURNITURE_WINDOWS:
                     self._pin_focus(window=title)
             return
         # Verify.  The window manager's active window is where X11

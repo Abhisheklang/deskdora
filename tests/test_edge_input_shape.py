@@ -49,4 +49,6 @@ def test_shape_call_uses_instance_xid_methods():
     assert "GdkX11.Window.get_xid" not in body
     assert "GdkX11.Display.get_xdisplay" not in body
     assert "gdk_win.get_xid()" in body
-    assert ".get_xdisplay()" in body
+    # the display pointer comes from a raw cached X connection —
+    # GDK's get_xdisplay() returns an unconvertible wrapper
+    assert "_x_display()" in body

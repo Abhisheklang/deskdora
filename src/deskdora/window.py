@@ -496,6 +496,17 @@ class EdgeLight(Gtk.Window):
         self.strips[edge] = (core, glow, core2)
         return box
 
+    def _x_display(self):
+        """A cached raw X display pointer (ctypes), opened once.
+        Used only for the Shape call below."""
+        if getattr(self, "_x_dpy", None):
+            return self._x_dpy
+        import ctypes
+        x11 = ctypes.CDLL("libX11.so.6")
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        self._x_dpy = x11.XOpenDisplay(None)  # $DISPLAY
+        return self._x_dpy
+
     def _apply_click_through(self, *_args):
         # Empty X11 input shape (ShapeInput, 0 rectangles): every
         # click and key passes straight through to the window
@@ -513,14 +524,17 @@ class EdgeLight(Gtk.Window):
             gdk_win = self.get_window()
             if gdk_win is None:
                 return False
-            # Instance methods on the X11 subclasses — the
-            # GdkX11.Window / GdkX11.Display class attributes do
-            # not exist in this GDK build (they are X11Window /
-            # X11Display), and the AttributeError was silently
-            # swallowed here for several releases: the shape was
-            # never applied at all until this was measured live.
+            # Instance method on the X11 subclass — the
+            # GdkX11.Window class attribute does not exist in
+            # this GDK build (it is X11Window), and the
+            # AttributeError was silently swallowed here for
+            # several releases: the shape was never applied at
+            # all until this was measured live.  The display
+            # pointer comes from our own cached X connection:
+            # GDK's get_xdisplay() returns a GObject wrapper
+            # that ctypes cannot convert to a pointer.
             xid = gdk_win.get_xid()
-            display = self.get_display().get_xdisplay()
+            display = self._x_display()
             xext = ctypes.CDLL("libXext.so.6")
             xext.XShapeCombineRectangles(
                 ctypes.c_void_p(display), ctypes.c_ulong(xid),

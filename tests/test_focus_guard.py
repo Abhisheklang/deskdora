@@ -231,3 +231,34 @@ def test_guard_stale_webkit_focus_does_not_block(rig):
     driver.activate_ok = False
     agent._exec_primitive({"action": "key", "key": "ctrl+shift+n"})
     assert driver.keys == ["ctrl+shift+n"]
+
+
+def test_guard_adoption_ignores_deskdora_furniture(rig):
+    # v3.2 regression (measured live): the floating control window
+    # maps when a run starts — after the launch snapshot — so its
+    # elements look like "the new window".  Adoption must skip
+    # DeskDora's own furniture and pin the launched app instead.
+    agent, driver, _events = rig
+    driver.elements = [el("deskdora", "DeskDora", focused=True)]
+    agent._exec_primitive({"action": "launch", "command": "thunar /tmp/x"})
+    # overlay appears (first in enumeration), Thunar appears with
+    # no AT-SPI focused element yet
+    driver.elements = [
+        el("window.py", "DeskDora Control", role="push button",
+           name="Stop"),
+        el("Thunar", "messy - Thunar", role="text", name="notes.txt"),
+    ]
+    driver.active_title = "messy - Thunar"
+    agent._exec_primitive({"action": "type", "text": "x"})
+    assert agent.focus_app == "Thunar"
+    assert agent.focus_window == "messy - Thunar"
+
+
+def test_guard_initial_pin_ignores_furniture(rig):
+    agent, driver, _events = rig
+    driver.elements = [
+        el("window.py", "DeskDora Control", focused=True,
+           role="push button", name="Stop")]
+    driver.active_title = "DeskDora Control"
+    agent._guard_focus()
+    assert agent.focus_app is None and agent.focus_window is None
