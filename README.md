@@ -16,6 +16,12 @@ no model at all), and nothing leaves the machine. Cloud planners are
 select it, your goal and a text summary of your screen go to that
 provider — never otherwise, and never by default.
 
+It is also **Linux-only** — that is the whole mission. Xorg/X11 is
+the reference session; Wayland is supported through the desktop
+portals. There are no macOS or Windows versions, and none are
+planned: every driver, test and verification in this project targets
+Linux desktops.
+
 ![DeskDora app window](docs/screenshots/ui-run.png)
 
 ## Why it works (and when it doesn't)
@@ -52,7 +58,7 @@ An agent that can operate your whole PC can also delete your files. So:
 **Easiest — the installable app (Ubuntu 24.04):**
 
 ```bash
-sudo apt install ./deskdora_3.1.0_amd64.deb
+sudo apt install ./deskdora_3.2.0_amd64.deb
 ```
 
 Then launch **DeskDora** from your applications menu: it starts the local
@@ -119,11 +125,18 @@ are refused honestly rather than improvised.
 - Whole-desktop control: file manager, settings, browser, office apps,
   terminal — anything exposing an accessibility tree
 - Hybrid grounding: accessibility tree first, vision fallback
-- **Platform drivers** (v1.1+): Linux/X11 (reference, verified),
-  Linux/Wayland via desktop portals, macOS (Accessibility + Quartz)
-  and Windows (UI Automation + SendInput) — the macOS and Windows
-  drivers are implemented and conformance-tested but **not yet run
-  on real hardware**, and they say so in the UI
+- **Linux drivers**: X11 (AT-SPI + xdotool — the reference driver,
+  verified end-to-end) and Wayland (AT-SPI + xdg-desktop-portal,
+  v1.1; its real level depends on the compositor's portal backend
+  and is probed at runtime, never assumed)
+- **Chat history** (v3.2): every past task as a conversation-style
+  thread — your goal, the plan, each step and the result — searchable,
+  reopenable, with *Run again* and delete
+- **Task queue** (v3.2): line up several tasks and they execute in
+  order, each with its own planner, status and history thread. One
+  desktop has one pointer and one keyboard, so queued tasks take
+  turns — the queue never pretends to run things in parallel. Pause,
+  reorder, remove, and the kill switch halts the whole queue
 - Safety layer: confirmations, app allow-list, sandbox mode, kill
   switch, and a **focus guard** (v1.1) that refuses to type into the
   wrong window instead of following focus blindly
@@ -166,7 +179,7 @@ answer confirmations. Revoking it takes effect immediately.
 running DeskDora service, so an MCP client gets exactly the powers
 of the UI — and the same limits: a run it starts still pauses for
 confirmation, still obeys the autonomy policy, and still dies on the
-kill switch. To connect Claude Desktop (or any MCP client), add:
+kill switch. To connect an MCP client, add:
 
 ```json
 {
@@ -186,9 +199,8 @@ Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
 
 - The X11 driver is the verified reference. The Wayland driver's
   real-world level depends on the compositor's portal backend (see
-  the session note above); the macOS and Windows drivers have never
-  run on real hardware. GNOME is the reference desktop; other AT-SPI
-  desktops (KDE, Cinnamon) are untested.
+  the session note above). GNOME is the reference desktop; other
+  AT-SPI desktops (KDE, Cinnamon) are untested.
 - Some widgets expose their rows poorly to the accessibility tree
   (certain icon views); tasks depending on those can fail — the agent
   reports the failure instead of working around it silently.
