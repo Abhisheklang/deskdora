@@ -674,6 +674,7 @@ const S = {
   plan: [], planTotal: 0, planDone: 0, curIdx: -1, epoch: 0,
   lastAction: "Standby", plannerMode: "", runId: null,
   backfilledFor: null, evKeys: new Set(), liveRows: {},
+  dismissed: null,
   routinesCache: [],
 };
 const VIEW_NAMES = {run:"Command", log:"Action Log", routines:"Routines",
@@ -933,6 +934,21 @@ async function backfill(runId) {
   } catch (e) { /* log not ready yet */ }
 }
 
+let syncBusy = false;
+async function syncEvents(runId) {
+  // Polling last_event alone misses short-lived events — a step_result is
+  // replaced by the next step_start within milliseconds — so while a run
+  // is live, reconcile against the run's own event log. S.evKeys dedupe
+  // makes this incremental and safe to repeat every poll.
+  if (!runId || syncBusy) return;
+  syncBusy = true;
+  try {
+    const data = await (await fetch("/api/runs/" + runId)).json();
+    (data.events || []).forEach(ev => handleEvent(ev, true));
+  } catch (e) { /* log not ready yet */ }
+  syncBusy = false;
+}
+
 /* ================= status polling ================= */
 async function pollStatus() {
   try {
@@ -940,15 +956,16 @@ async function pollStatus() {
     const running = !!st.state.running;
     const wasRunning = S.running;
     S.running = running;
-    S.result = st.state.result || S.result;
-    if (st.state.goal && !S.goal) {           // page loaded mid-run
+    if (st.state.run_dir)
+      S.runId = st.state.run_dir.split("/").filter(Boolean).pop();
+    const dismissed = !!S.dismissed && S.dismissed === S.runId;
+    if (!dismissed) S.result = st.state.result || S.result;
+    if (st.state.goal && !S.goal && !dismissed) {  // page loaded mid-run
       S.goal = st.state.goal;
       $("#cmdIdle").hidden = true; $("#cmdRun").hidden = false;
       $("#goalHead").textContent = S.goal;
       if (S.view === "run") $("#tsName").textContent = trunc(S.goal, 44);
     }
-    if (st.state.run_dir)
-      S.runId = st.state.run_dir.split("/").filter(Boolean).pop();
 
     // state pill / rail
     const pill = $("#statePill"), pillTxt = $("#statePillTxt");
@@ -958,7 +975,7 @@ async function pollStatus() {
       cls = "wait"; label = "AWAITING CONFIRMATION"; dotCls += " wait";
     } else if (running) {
       cls = "run"; label = "RUNNING"; dotCls += " run";
-    } else if (st.state.result) {
+    } else if (st.state.result && !dismissed) {
       const s = st.state.result.status;
       label = (s || "DONE").toUpperCase();
       cls = s === "success" ? "ok" :
@@ -1006,8 +1023,7 @@ async function pollStatus() {
       $("#runAgainBtn").hidden = false;
       if (S.runId) { S.backfilledFor = null; backfill(S.runId); }
     }
-    if (running && S.runId && S.backfilledFor !== S.runId &&
-        !S.evKeys.size) backfill(S.runId);
+    if (running && S.runId) syncEvents(S.runId);
 
     // confirmation modal
     const modal = $("#confirmModal");
@@ -1065,7 +1081,7 @@ document.querySelectorAll(".chip").forEach(chip =>
   }));
 $("#runAgainBtn").addEventListener("click", () => {
   $("#cmdRun").hidden = true; $("#cmdIdle").hidden = false;
-  S.goal = ""; S.result = null;
+  S.goal = ""; S.result = null; S.dismissed = S.runId;
   if (S.view === "run") $("#tsName").textContent = "Command";
   $("#goalInput").focus();
 });
