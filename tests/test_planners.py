@@ -110,3 +110,78 @@ def test_parse_table_single_space_pdf_copy():
     assert ["Rice", "10", "55"] in rows
     assert parse_table("") == []
     assert parse_table("singleword") == []
+
+
+# ---------------------------------------------------------------------
+# v1.1 parse fix: a goal must be consumed in full, or refused.
+# ---------------------------------------------------------------------
+
+def test_parse_fix_form_with_glued_instruction_refused(builtin):
+    with pytest.raises(PlanError, match="can't parse"):
+        builtin.plan(
+            "Fill the form: name=Ada Lovelace, city=Pune and delete "
+            "the downloads folder", None)
+
+
+def test_parse_fix_form_and_separated_fields_refused(builtin):
+    # 'and' instead of a comma hides a second field inside a value.
+    with pytest.raises(PlanError, match="can't parse"):
+        builtin.plan("Fill the form: name=Ada and city=Pune", None)
+
+
+def test_parse_fix_form_truncated_spec_refused(builtin):
+    with pytest.raises(PlanError, match="can't parse"):
+        builtin.plan("Fill the form: name=Ada Lovelace, em", None)
+
+
+def test_parse_fix_form_without_submit_does_not_claim_submission(builtin):
+    plan = builtin.plan("Fill the form: name=Ada Lovelace, city=Pune", None)
+    assert not [s for s in plan if s["action"] == "click"]
+    done = plan[-1]
+    assert done["action"] == "done"
+    assert done["answer"] == "Form filled (not submitted)"
+
+
+def test_parse_fix_organise_with_glued_instruction_refused(builtin, tmp_path):
+    messy = tmp_path / "messy"
+    messy.mkdir()
+    (messy / "a.png").write_text("x")
+    with pytest.raises(PlanError, match="can't parse"):
+        builtin.plan(f"Organise folder {messy} by type and delete "
+                     "the rest", None)
+
+
+def test_parse_fix_article_with_glued_instruction_refused(builtin):
+    with pytest.raises(PlanError, match="can't parse"):
+        builtin.plan(
+            "Open the article about Zorania and report its capital "
+            "and email it to me", None)
+
+
+def test_parse_fix_chain_with_unknown_part_refused(builtin):
+    with pytest.raises(PlanError, match="can't parse"):
+        builtin.plan("Open terminal then defragment the drive", None)
+
+
+def test_parse_fix_unknown_goal_message(builtin):
+    with pytest.raises(PlanError, match="I can't parse this goal"):
+        builtin.plan("Defragment the hard drive", None)
+
+
+def test_parse_fix_valid_goals_still_parse(builtin, tmp_path):
+    messy = tmp_path / "messy"
+    messy.mkdir()
+    (messy / "a.png").write_text("x")
+    assert builtin.plan(f"Organise folder {messy} by type", None)
+    assert builtin.plan("Enable event sounds in Appearance settings", None)
+    assert builtin.plan("Disable event sounds in Appearance settings", None)
+    assert builtin.plan(
+        "Enable input feedback sounds in Appearance settings", None)
+    assert builtin.plan("Set the appearance theme to Adwaita-dark", None)
+    assert builtin.plan(
+        "Create a spreadsheet from /tmp/invoice.pdf saved as out.gnumeric",
+        None)
+    plan = builtin.plan(
+        "Open terminal then type echo deskdora-bench > /tmp/out.txt "
+        "then press Return", None)
+    assert [s["action"] for s in plan][0] == "launch"

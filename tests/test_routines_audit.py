@@ -9,7 +9,7 @@ from deskdora.routines import RoutineStore, cron_matches
 
 
 def test_runlog_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr("deskdora.audit.actions.screenshot",
+    monkeypatch.setattr("deskdora.actions.screenshot",
                         lambda path: path)
     log = RunLog(str(tmp_path), "Test goal", "builtin")
     log.event("plan", steps=[])

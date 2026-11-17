@@ -10,8 +10,6 @@ import os
 import re
 import time
 
-from . import actions
-
 
 def _slug(text, limit=40):
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
@@ -41,7 +39,8 @@ class RunLog:
         name = f"{self._step:03d}-{tag}.png"
         path = os.path.join(self.dir, name)
         try:
-            actions.screenshot(path)
+            from .drivers import get_driver
+            get_driver().screenshot(path)
             return name
         except Exception as exc:  # screenshot failure must not kill the run
             self.event("screenshot_failed", error=str(exc))

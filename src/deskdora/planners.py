@@ -228,12 +228,16 @@ class BuiltinPlanner:
     Supported goal shapes (case-insensitive):
       * "Organise folder <path> by type"
       * "Set the appearance theme to <ThemeName>" / "Change theme to <X>"
+      * "Enable/Disable event sounds in Appearance settings"
       * "Fill the form: name=..., email=..., city=... and submit"
       * "Open the article about <topic> and report its <thing>"
       * "Create a spreadsheet from <file.pdf> saved as <name>"
       * "Open <app>" / "Click <name>" / chains joined with " then "
-    Anything else raises PlanError — the agent reports an honest failure
-    instead of improvising clicks.
+
+    Parsing is *strict* (v1.1): a rule must consume the entire goal.
+    A goal that is only partly understood raises PlanError ("I can't
+    parse this goal…") and nothing is executed — the agent never
+    partially carries out a goal and then reports success.
     """
 
     name = "builtin"
@@ -325,22 +329,83 @@ class BuiltinPlanner:
             {"action": "done", "answer": f"{checkbox} toggled"},
         ]
 
-    def _form(self, spec, submit):
-        pairs = re.findall(r"(\w+)\s*=\s*([^,]+)", spec)
-        if not pairs:
-            raise PlanError("form goal needs field=value pairs")
+    def _form(self, pairs, submit):
         steps = [{"action": "launch", "command": self.apps["form"]},
                  {"action": "wait", "seconds": 2}]
         for field_name, value in pairs:
-            steps.append({"action": "type", "text": value.strip(),
+            steps.append({"action": "type", "text": value,
                           "target": {"label_contains": field_name}})
             steps.append({"action": "wait", "seconds": 0.3})
         if submit:
             steps.append({"action": "click", "target": {
                 "role": "push button", "name_contains": "Submit"}})
             steps.append({"action": "wait", "seconds": 1})
-        steps.append({"action": "done", "answer": "Form submitted"})
+            answer = "Form submitted"
+        else:
+            # Never claim a submission that was not requested/performed.
+            answer = "Form filled (not submitted)"
+        steps.append({"action": "done", "answer": answer})
         return steps
+
+    def _parse_form_spec(self, spec):
+        """Parse 'name=Ada, city=Pune' into (pairs, submit).
+
+        Strict on purpose (the v1.1 parse fix): every character of the
+        spec must be consumed by a field=value pair, a separator, or
+        the trailing submit marker.  Anything left over — a second
+        instruction glued onto the goal, an 'and'-separated field, a
+        truncated value — refuses the whole goal instead of silently
+        filling part of the form and reporting success.
+        """
+        if re.search(r"\s+then\s+", spec, flags=re.I):
+            raise PlanError(
+                "I can't parse this goal: a form specification cannot "
+                "contain a 'then' chain — run the steps as separate "
+                "goals. Nothing was executed.")
+        submit = False
+        m = re.search(r"(?:\s+and)?\s+submit\s*$", spec, flags=re.I)
+        if m:
+            submit = True
+            spec = spec[:m.start()]
+        pairs = []
+        spans = []
+        for match in re.finditer(r"(\w+)\s*=\s*([^,]+)", spec):
+            field_name, value = match.group(1), match.group(2).strip()
+            if not value:
+                raise PlanError(
+                    f"I can't parse this goal: field {field_name!r} has "
+                    "no value. Nothing was executed.")
+            if re.search(r"\w+\s*=", value):
+                raise PlanError(
+                    f"I can't parse this goal: the value for "
+                    f"{field_name!r} contains another 'field=' — fields "
+                    "must be separated by commas. Nothing was executed.")
+            if re.search(r"(?i)\b(?:and|then)\s+(?:delete|remove|erase|"
+                         r"format|send|submit|open|click|press|type|"
+                         r"launch|install|uninstall|empty|move|copy|"
+                         r"run)\b", value):
+                raise PlanError(
+                    f"I can't parse this goal: the value for "
+                    f"{field_name!r} appears to contain a second "
+                    "instruction. Nothing was executed.")
+            pairs.append((field_name, value))
+            spans.append(match.span())
+        if not pairs:
+            raise PlanError(
+                "I can't parse this goal: a form goal needs "
+                "field=value pairs. Nothing was executed.")
+        residue = []
+        pos = 0
+        for start, end in spans:
+            residue.append(spec[pos:start])
+            pos = end
+        residue.append(spec[pos:])
+        leftover = "".join(residue).strip(" \t,;")
+        if leftover:
+            raise PlanError(
+                f"I can't parse this goal: {leftover!r} is not a "
+                "field=value pair. Nothing was executed.")
+        return pairs, submit
 
     def _article(self, topic, thing):
         patterns = {
@@ -379,26 +444,57 @@ class BuiltinPlanner:
 
     # -- dispatch ---------------------------------------------------------
     def plan(self, goal, observation, history=None):
+        """Plan a goal, or refuse it.
+
+        v1.1 parse fix: every grammar rule must consume the *entire*
+        goal (full-string matches, and a residue check for the form
+        grammar).  v1.0 matched prefixes — a truncated or compound
+        goal could be partially executed and then reported as success
+        (e.g. extra instructions glued after a form spec were silently
+        dropped).  A goal that is not fully understood now raises
+        PlanError("I can't parse this goal…") and nothing executes.
+        """
         g = goal.strip()
-        low = g.lower()
-        m = re.search(r"organi[sz]e (?:the )?folder (\S+)", low)
+        cleaned = _clean_goal(g)
+        low = cleaned.lower()
+        m = re.fullmatch(r"organi[sz]e (?:the )?folder (\S+)(?: by type)?",
+                         cleaned, re.I)
         if m:
             return validate_plan(self._organise(m.group(1)))
-        if "event sounds" in low:
-            return validate_plan(self._sounds("Enable event sounds"))
-        if "input feedback sounds" in low:
-            return validate_plan(self._sounds("Enable input feedback sounds"))
-        m = re.search(r"(?:set|change)(?: the)?(?: appearance)? theme to ([A-Za-z0-9 _\-]+)", g, re.I)
+        m = re.fullmatch(
+            r"(?:enable|disable|turn on|turn off) (?:the )?"
+            r"(event sounds|input feedback sounds)"
+            r"(?: in (?:the )?appearance(?: settings)?)?", low)
         if m:
-            return validate_plan(self._theme(m.group(1).strip()))
-        m = re.search(r"fill (?:out )?(?:the )?form[:\s]+(.+)", g, re.I)
+            checkbox = ("Enable event sounds" if m.group(1) == "event sounds"
+                        else "Enable input feedback sounds")
+            return validate_plan(self._sounds(checkbox))
+        if " then " not in low:
+            m = re.fullmatch(
+                r"(?:set|change)(?: the)?(?: appearance)? theme to "
+                r"([A-Za-z0-9 _\-]+)", cleaned, re.I)
+            if m:
+                theme = m.group(1).strip()
+                if " and " in theme.lower():
+                    raise PlanError(
+                        f"I can't parse this goal: the theme name "
+                        f"{theme!r} looks like it contains a second "
+                        "instruction. Nothing was executed.")
+                return validate_plan(self._theme(theme))
+        m = re.fullmatch(r"fill (?:out )?(?:the )?form[:\s]+(.+)", cleaned,
+                         re.I)
         if m:
-            spec = re.sub(r"\s+and submit\s*$", "", m.group(1), flags=re.I)
-            return validate_plan(self._form(spec, "submit" in low))
-        m = re.search(r"open the article about ([\w ]+?) and report (?:its|the) (\w+)", g, re.I)
+            pairs, submit = self._parse_form_spec(m.group(1))
+            return validate_plan(self._form(pairs, submit))
+        m = re.fullmatch(
+            r"open the article about ([\w ]+?) and report (?:its|the) (\w+)",
+            cleaned, re.I)
         if m:
-            return validate_plan(self._article(m.group(1).strip(), m.group(2)))
-        m = re.search(r"(?:create|build|make) a spreadsheet from (\S+\.pdf)(?: saved as (\S+))?", g, re.I)
+            return validate_plan(self._article(m.group(1).strip(),
+                                               m.group(2)))
+        m = re.fullmatch(
+            r"(?:create|build|make) a spreadsheet from (\S+\.pdf)"
+            r"(?: saved as (\S+))?", cleaned, re.I)
         if m:
             save_as = m.group(2) or "spreadsheet.gnumeric"
             return validate_plan(self._sheet_from_pdf(m.group(1), save_as))
@@ -409,19 +505,27 @@ class BuiltinPlanner:
                 steps.extend(sub[:-1] if sub and sub[-1].get("action") == "done" else sub)
             steps.append({"action": "done"})
             return validate_plan(steps)
-        m = re.match(r"open ([a-z0-9 _\-]+)$", low)
+        m = re.fullmatch(r"open (?:the )?([a-z0-9 _\-]+)", low)
         if m:
-            app = self.apps.get(m.group(1).strip(), m.group(1).strip())
-            return validate_plan([
-                {"action": "launch", "command": app},
-                {"action": "wait", "seconds": 2},
-                {"action": "done", "answer": f"Opened {m.group(1).strip()}"}])
-        m = re.match(r"click (?:on )?(.+)$", g, re.I)
+            phrase = m.group(1).strip()
+            words = phrase.split()
+            # An app name is a noun phrase of at most three words.
+            # Anything longer — or containing a conjunction — is a
+            # sentence this rule would otherwise swallow whole and
+            # "open" as if it were an application (a v1.0 trap: the
+            # article grammar's leftovers landed here).
+            if len(words) <= 3 and "and" not in words:
+                app = self.apps.get(phrase, phrase)
+                return validate_plan([
+                    {"action": "launch", "command": app},
+                    {"action": "wait", "seconds": 2},
+                    {"action": "done", "answer": f"Opened {phrase}"}])
+        m = re.fullmatch(r"click (?:on )?(.+)", g, re.I)
         if m:
             return validate_plan([
                 {"action": "click", "target": {"name_contains": m.group(1).strip()}},
                 {"action": "done"}])
-        m = re.match(r"press ([a-z0-9_+\-]+)$", g.strip(), re.I)
+        m = re.fullmatch(r"press ([a-z0-9_+\-]+)", g, re.I)
         if m:
             return validate_plan([
                 {"action": "key", "key": m.group(1)},
@@ -432,8 +536,22 @@ class BuiltinPlanner:
                 {"action": "type", "text": m.group(1)},
                 {"action": "done"}])
         raise PlanError(
-            "built-in planner does not understand this goal; "
-            "try the Ollama planner for free-form goals")
+            f"I can't parse this goal with the built-in planner: "
+            f"{goal.strip()!r}. Nothing was executed. The built-in "
+            "grammar covers organising a folder, appearance settings, "
+            "form fills, article facts, PDF-to-spreadsheet, and "
+            "open/click/type/press steps joined with 'then'. Try the "
+            "Ollama planner for free-form goals.")
+
+
+def _clean_goal(goal):
+    """Strip trailing punctuation and politeness fillers so grammar
+    rules can anchor on the full string ('…by type.' or '…please'
+    still parse; a second instruction after them does not)."""
+    g = goal.strip()
+    g = re.sub(r"(?i)[\s.!]+$", "", g)
+    g = re.sub(r"(?i)\s+(please|thanks|thank you)$", "", g)
+    return g.strip()
 
 
 def get_planner(mode="auto", model="qwen2.5:1.5b", known_apps=None):

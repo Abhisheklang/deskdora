@@ -28,7 +28,8 @@ def default_runs_dir():
 
 def build_agent(goal, planner_mode="auto", model="qwen2.5:1.5b",
                 auto_approve=False, runs_dir=None, max_steps=400,
-                known_apps=None, on_event=None, allow_apps=None):
+                known_apps=None, on_event=None, allow_apps=None,
+                driver=None):
     apps = base_known_apps()
     if known_apps:
         apps.update(known_apps)
@@ -46,7 +47,7 @@ def build_agent(goal, planner_mode="auto", model="qwen2.5:1.5b",
     gate = ConfirmationGate(policy)
     log = RunLog(runs_dir or default_runs_dir(), goal, mode_label)
     return Agent(planner, mode_label, gate, kill, AllowList(allow_apps),
-                 log, max_steps=max_steps, on_event=on_event)
+                 log, max_steps=max_steps, on_event=on_event, driver=driver)
 
 
 def cmd_run(args):

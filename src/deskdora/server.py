@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "model": "qwen2.5:1.5b",
     "allow_apps": [],           # empty = allow all
     "sandbox_mode": True,       # informational flag shown in the UI
+    "driver": "auto",           # auto | linux-x11 | linux-wayland | ...
 }
 
 
@@ -117,9 +118,12 @@ class RunManager:
                 mode, model=cfg["model"], known_apps=base_known_apps())
             gate = ConfirmationGate(self.ui_policy)
             log = RunLog(RUNS_DIR, goal, mode_label)
+            from .drivers import get_driver
+            driver = get_driver(None if cfg.get("driver", "auto") == "auto"
+                                else cfg["driver"])
             agent = Agent(planner, mode_label, gate, self.kill,
                           AllowList(cfg["allow_apps"]), log,
-                          on_event=_on_event)
+                          on_event=_on_event, driver=driver)
             with self.lock:
                 self.agent = agent
                 self.state["planner_mode"] = mode_label
@@ -142,7 +146,9 @@ class RunManager:
 
 
 MANAGER = RunManager()
-app = FastAPI(title="DeskDora", version="1.0.0")
+from . import __version__
+
+app = FastAPI(title="DeskDora", version=__version__)
 
 
 @app.middleware("http")
