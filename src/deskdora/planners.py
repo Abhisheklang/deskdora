@@ -136,21 +136,33 @@ def validate_plan(plan, element_count=None):
 
 SYSTEM_PROMPT = """You are the planner of DeskDora, a desktop agent.
 Given a goal and a numbered list of on-screen elements, reply with ONLY a
-JSON array of steps. Allowed actions: launch{command}, click{element},
-click_at{x, y} (raw screen coordinates — use only when no element fits),
-type{text}, key{key}, scroll{direction}, wait{seconds}, extract{pattern,
-name}, done{answer}, fail{reason}. Click elements by their [number].
-Keep plans short. End with done or fail."""
+JSON array of step objects — no prose, no markdown. Each step is a JSON
+object with an "action" field, using exactly these shapes:
+{"action": "launch", "command": "xfce4-terminal"}
+{"action": "click", "element": 12}            (the element's [number])
+{"action": "click_at", "x": 100, "y": 200}    (only when no element fits)
+{"action": "type", "text": "hello"}
+{"action": "key", "key": "Return"}
+{"action": "scroll", "direction": "down"}
+{"action": "wait", "seconds": 1}
+{"action": "extract", "pattern": "Capital: ([A-Za-z]+)", "name": "capital"}
+{"action": "done", "answer": "what was accomplished"}
+{"action": "fail", "reason": "why the goal cannot be done"}
+Keep plans short. Always end with a done or fail step.
+
+Example — goal "Open the terminal":
+[{"action": "launch", "command": "xfce4-terminal"}, {"action": "wait", "seconds": 2}, {"action": "done", "answer": "Terminal opened"}]"""
 
 
 class OllamaPlanner:
     name = "ollama"
 
     def __init__(self, model="qwen2.5:1.5b", host="http://127.0.0.1:11434",
-                 timeout=300):
+                 timeout=300, memory=None):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
+        self.memory = memory
 
     def available(self):
         try:
@@ -164,6 +176,14 @@ class OllamaPlanner:
 
     def plan(self, goal, observation, history=None):
         user = f"Goal: {goal}\n\nOn-screen elements:\n{observation.summary_for_planner()}"
+        if self.memory is not None:
+            places = self.memory.snapshot()["places"]
+            if places:
+                listing = ", ".join(
+                    f"{alias}={entry['path']}"
+                    for alias, entry in places.items())
+                user += (f"\n\nPlaces the user has taught DeskDora "
+                         f"(name=path): {listing}")
         if history:
             user += f"\n\nPrevious attempt notes: {history}"
         body = {
@@ -174,7 +194,10 @@ class OllamaPlanner:
             ],
             "stream": False,
             "format": "json",
-            "options": {"temperature": 0.1},
+            # A step plan never needs thousands of tokens; capping
+            # generation keeps a small model from rambling past the
+            # request timeout instead of finishing its JSON.
+            "options": {"temperature": 0.1, "num_predict": 1024},
         }
         req = urllib.request.Request(
             self.host + "/api/chat",
@@ -204,6 +227,11 @@ def _extract_json_plan(content):
             raise PlanError(f"planner returned invalid JSON: {exc}")
     if isinstance(parsed, dict) and "steps" in parsed:
         parsed = parsed["steps"]
+    if isinstance(parsed, dict) and "action" in parsed:
+        # Small models often emit a single step object instead of an
+        # array (Ollama's JSON mode pushes them toward one object).
+        # Wrapping it is a shape normalisation, not an invention.
+        parsed = [parsed]
     if not isinstance(parsed, list):
         raise PlanError("planner output is not a step list")
     return parsed
@@ -227,6 +255,8 @@ class BuiltinPlanner:
 
     Supported goal shapes (case-insensitive):
       * "Organise folder <path> by type"
+      * "Organise folder my <place> by type" / "Organise my <place>
+        folder" — resolved through resident memory (v2.0)
       * "Set the appearance theme to <ThemeName>" / "Change theme to <X>"
       * "Enable/Disable event sounds in Appearance settings"
       * "Fill the form: name=..., email=..., city=... and submit"
@@ -242,7 +272,11 @@ class BuiltinPlanner:
 
     name = "builtin"
 
-    def __init__(self, known_apps=None):
+    def __init__(self, known_apps=None, memory=None):
+        # Resident memory (deskdora.memory.MemoryStore) or None.  When
+        # present, a folder token that is not a literal path is
+        # resolved through remembered places ("my messy folder").
+        self.memory = memory
         self.apps = {
             "files": "thunar",
             "file manager": "thunar",
@@ -256,6 +290,24 @@ class BuiltinPlanner:
         }
         if known_apps:
             self.apps.update(known_apps)
+
+    def _resolve_folder(self, token):
+        """A folder token from a goal: a literal path if it exists,
+        else a remembered place (resident memory).  Unresolvable
+        tokens refuse honestly — the run must not organise the wrong
+        folder or silently do nothing."""
+        import os
+        path = os.path.expanduser(token)
+        if os.path.isdir(path):
+            return path
+        if self.memory is not None:
+            resolved = self.memory.resolve_place(token)
+            if resolved and os.path.isdir(resolved):
+                return resolved
+            raise PlanError(
+                f"folder not found: {token} — and no remembered place "
+                "matches that name. Nothing was executed.")
+        return path
 
     # -- skills ---------------------------------------------------------
     def _organise(self, path):
@@ -457,10 +509,13 @@ class BuiltinPlanner:
         g = goal.strip()
         cleaned = _clean_goal(g)
         low = cleaned.lower()
-        m = re.fullmatch(r"organi[sz]e (?:the )?folder (\S+)(?: by type)?",
+        m = re.fullmatch(r"organi[sz]e (?:the )?folder (?:my )?(\S+)"
+                         r"(?: by type)?", cleaned, re.I) or re.fullmatch(
+                         r"organi[sz]e my (\S+) folder(?: by type)?",
                          cleaned, re.I)
         if m:
-            return validate_plan(self._organise(m.group(1)))
+            return validate_plan(self._organise(
+                self._resolve_folder(m.group(1))))
         m = re.fullmatch(
             r"(?:enable|disable|turn on|turn off) (?:the )?"
             r"(event sounds|input feedback sounds)"
@@ -554,15 +609,16 @@ def _clean_goal(goal):
     return g.strip()
 
 
-def get_planner(mode="auto", model="qwen2.5:1.5b", known_apps=None):
+def get_planner(mode="auto", model="qwen2.5:1.5b", known_apps=None,
+                memory=None):
     """Resolve a planner by mode.  'auto' prefers Ollama when a server
     with the model is actually reachable, else the built-in planner.
     Returns (planner, mode_label)."""
     if mode == "builtin":
-        return BuiltinPlanner(known_apps), "builtin"
+        return BuiltinPlanner(known_apps, memory=memory), "builtin"
     if mode == "ollama":
-        return OllamaPlanner(model=model), f"ollama:{model}"
-    ollama = OllamaPlanner(model=model)
+        return OllamaPlanner(model=model, memory=memory), f"ollama:{model}"
+    ollama = OllamaPlanner(model=model, memory=memory)
     if ollama.available():
         return ollama, f"ollama:{model}"
-    return BuiltinPlanner(known_apps), "builtin"
+    return BuiltinPlanner(known_apps, memory=memory), "builtin"
