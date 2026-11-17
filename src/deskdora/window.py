@@ -29,7 +29,6 @@ import threading  # noqa: E402
 import time  # noqa: E402
 import urllib.request  # noqa: E402
 
-import cairo  # noqa: E402
 import gi  # noqa: E402
 
 gi.require_version("Gdk", "3.0")
@@ -360,12 +359,17 @@ class ControlOverlay(Gtk.Window):
 # --- edge light (v3.2) ------------------------------------------------------
 # A neon border around the screen edges while the agent works, in
 # the spirit of phone edge-notification lighting.  The window is
-# fullscreen, transparent and CLICK-THROUGH: its input shape is an
-# empty region, so it can never intercept a click or a key, never
-# takes focus, and the agent's own work is unaffected by it.  (Like
-# any transparency effect it needs a compositor — XFCE's or GNOME's;
-# without one the border still draws, just without the soft glow
-# falloff over other windows.)
+# fullscreen, transparent and CLICK-THROUGH: its X11 input shape is
+# set to an empty region (XShape), so it can never intercept a
+# click or a key, never takes focus, and the agent's own work is
+# unaffected by it.
+#
+# Rendering is GTK CSS, not Cairo: the shipped runtime has no
+# pycairo, and PyGObject cannot marshal a cairo context without it
+# (measured — the draw signal raises TypeError).  Four gradient
+# strips (core line + fading glow) are restyled by the state tick;
+# like any transparency effect it wants a compositor (XFCE's or
+# GNOME's) for the soft falloff.
 #
 # State mapping (deskora.overlay.edge_state, shared with the
 # floating window): running = lime, awaiting confirmation = amber
@@ -382,6 +386,11 @@ LIME_CYCLE = (LIME, GREEN, TEAL, LIME_HOT)
 AMBER_CYCLE = (AMBER, AMBER_DEEP, (0.90, 0.72, 0.30), AMBER)
 
 
+def _css_color(rgb, alpha=1.0):
+    return (f"rgba({int(rgb[0] * 255)},{int(rgb[1] * 255)},"
+            f"{int(rgb[2] * 255)},{alpha:.3f})")
+
+
 def _cycle_color(cycle, t):
     n = len(cycle)
     pos = (t % 1.0) * n
@@ -391,62 +400,24 @@ def _cycle_color(cycle, t):
     return tuple(a[i] + (b[i] - a[i]) * f for i in range(3))
 
 
-def _rounded_rect_points(w, h, inset, radius, step=16):
-    """Sampled points around a rounded rectangle (for the flowing
-    gradient, which Cairo cannot run along a path directly)."""
-    pts = []
-    corners = [
-        (w - inset - radius, inset + radius, -math.pi / 2, 0),
-        (w - inset - radius, h - inset - radius, 0, math.pi / 2),
-        (inset + radius, h - inset - radius, math.pi / 2, math.pi),
-        (inset + radius, inset + radius, math.pi, math.pi * 1.5),
-    ]
-    # straights + arcs, walked clockwise from the top-left
-    def line(x0, y0, x1, y1):
-        dist = math.hypot(x1 - x0, y1 - y0)
-        n = max(1, int(dist / step))
-        for i in range(n):
-            pts.append((x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n))
-
-    def arc(cx, cy, a0, a1):
-        n = max(2, int(abs(a1 - a0) * radius / step))
-        for i in range(n):
-            a = a0 + (a1 - a0) * i / n
-            pts.append((cx + radius * math.cos(a),
-                        cy + radius * math.sin(a)))
-
-    line(inset + radius, inset, w - inset - radius, inset)
-    arc(*corners[0])
-    line(w - inset, inset + radius, w - inset, h - inset - radius)
-    arc(*corners[1])
-    line(w - inset - radius, h - inset, inset + radius, h - inset)
-    arc(*corners[2])
-    line(inset, h - inset - radius, inset, inset + radius)
-    arc(*corners[3])
-    return pts
-
-
-def _rounded_rect_path(ctx, w, h, inset, radius):
-    ctx.new_path()
-    ctx.arc(w - inset - radius, inset + radius, radius,
-            -math.pi / 2, 0)
-    ctx.arc(w - inset - radius, h - inset - radius, radius,
-            0, math.pi / 2)
-    ctx.arc(inset + radius, h - inset - radius, radius,
-            math.pi / 2, math.pi)
-    ctx.arc(inset + radius, inset + radius, radius,
-            math.pi, math.pi * 1.5)
-    ctx.close_path()
-
-
 class EdgeLight(Gtk.Window):
+    """CSS-rendered neon border.  Layout: a Gtk.Overlay holding four
+    edge assemblies (top/bottom/left/right); each assembly is a core
+    strip (the bright line at the very edge) plus a glow strip whose
+    gradient fades inward.  Styles restyle the same widgets."""
+
+    BAND = 14      # glow band thickness, px
+    CORE = 3       # bright line thickness, px
+
     def __init__(self, hub):
         super().__init__(title="DeskDora Edge")
+        self.set_name("edge-root")
         self._hub = hub
         self._state = {"visible": False, "mode": "off",
                        "style": "single", "animated": False}
         self._phase = 0.0
         self._pulse_t = 0.0
+        self._css_cache = None
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_keep_above(True)
@@ -461,21 +432,89 @@ class EdgeLight(Gtk.Window):
         if visual is not None:
             self.set_visual(visual)
         self.set_app_paintable(True)
-        self.area = Gtk.DrawingArea()
-        self.area.connect("draw", self._draw)
-        self.add(self.area)
+
+        self.provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_screen(
+            screen, self.provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        overlay = Gtk.Overlay()
+        base = Gtk.Box()
+        base.set_name("edge-base")
+        overlay.add(base)
+        self.strips = {}
+        for edge in ("top", "bottom", "left", "right"):
+            assembly = self._build_edge(edge)
+            overlay.add_overlay(assembly)
+            overlay.set_overlay_pass_through(assembly, True)
+        self.add(overlay)
         self.connect("map-event", self._make_click_through)
         GLib.timeout_add(60, self._tick)
 
+    def _build_edge(self, edge):
+        vertical = edge in ("left", "right")
+        box = Gtk.Box(
+            orientation=(Gtk.Orientation.VERTICAL if vertical
+                         else Gtk.Orientation.HORIZONTAL))
+        box.set_name(f"edge-{edge}")
+        if edge == "top":
+            box.set_valign(Gtk.Align.START)
+        elif edge == "bottom":
+            box.set_valign(Gtk.Align.END)
+        elif edge == "left":
+            box.set_halign(Gtk.Align.START)
+        else:
+            box.set_halign(Gtk.Align.END)
+
+        core = Gtk.Box()
+        core.set_name(f"edge-{edge}-core")
+        glow = Gtk.Box()
+        glow.set_name(f"edge-{edge}-glow")
+        core2 = Gtk.Box()
+        core2.set_name(f"edge-{edge}-core2")
+        if vertical:
+            core.set_size_request(self.CORE, -1)
+            glow.set_size_request(self.BAND, -1)
+            core2.set_size_request(2, -1)
+        else:
+            core.set_size_request(-1, self.CORE)
+            glow.set_size_request(-1, self.BAND)
+            core2.set_size_request(-1, 2)
+        # Order from the screen edge inward depends on the edge.
+        order = ((core, glow, core2) if edge in ("top", "left")
+                 else (core2, glow, core))
+        for widget in order:
+            box.pack_start(widget, False, False, 0)
+        self.strips[edge] = (core, glow, core2)
+        return box
+
     def _make_click_through(self, *_args):
-        # Empty input shape: every click and key passes straight
-        # through to the window beneath.  This is the whole safety
-        # story of the edge light — it is paint, not a surface.
-        gdk_win = self.get_window()
-        if gdk_win is not None:
-            gdk_win.input_shape_combine_region(cairo.Region(), 0, 0)
+        # Empty X11 input shape (ShapeInput, 0 rectangles): every
+        # click and key passes straight through to the window
+        # beneath.  This is the whole safety story of the edge
+        # light — it is paint, not a surface.  X11-only; on a
+        # non-X11 backend the window still never requests focus.
+        try:
+            import ctypes
+            from gi.repository import GdkX11
+            gdk_win = self.get_window()
+            if gdk_win is None:
+                return False
+            xid = GdkX11.Window.get_xid(gdk_win)
+            display = GdkX11.Display.get_xdisplay(self.get_display())
+            xext = ctypes.CDLL("libXext.so.6")
+            xext.XShapeCombineRectangles(
+                ctypes.c_void_p(display), ctypes.c_ulong(xid),
+                ctypes.c_int(2), ctypes.c_int(0), ctypes.c_int(0),
+                None, ctypes.c_int(0), ctypes.c_int(0),
+                ctypes.c_int(0))
+            x11 = ctypes.CDLL("libX11.so.6")
+            x11.XFlush(ctypes.c_void_p(display))
+        except Exception:
+            pass
         return False
 
+    # -- state ---------------------------------------------------------
     def _tick(self):
         status = self._hub.status
         setting = "single"
@@ -494,28 +533,21 @@ class EdgeLight(Gtk.Window):
         if not self.get_visible():
             self.show_all()
             self.move(0, 0)
+            changed = True
         if st["animated"]:
             speed = 2.3 if st["mode"] == "amber-fast" else 1.0
-            self._phase = (self._phase + 0.0035 * speed) % 1.0
+            self._phase = (self._phase + 0.004 * speed) % 1.0
             self._pulse_t += 0.06 * speed
-            self.area.queue_draw()
+            self._restyle()
         elif changed:
-            self.area.queue_draw()
+            self._restyle()
         return True
 
-    # -- drawing ---------------------------------------------------------
-    def _draw(self, _area, ctx):
+    def _restyle(self):
         st = self._state
-        w = self.area.get_allocated_width()
-        h = self.area.get_allocated_height()
-        ctx.set_operator(cairo.OPERATOR_SOURCE)
-        ctx.set_source_rgba(0, 0, 0, 0)
-        ctx.paint()
-        ctx.set_operator(cairo.OPERATOR_OVER)
-        if not st["visible"] or w < 50 or h < 50:
-            return False
         amber = st["mode"].startswith("amber")
         base = AMBER if amber else LIME
+        cycle = AMBER_CYCLE if amber else LIME_CYCLE
         if st["mode"] == "amber-steady":
             alpha = 0.95
         elif st["animated"]:
@@ -523,49 +555,40 @@ class EdgeLight(Gtk.Window):
             alpha = 0.74 + 0.26 * math.sin(self._pulse_t * speed)
         else:
             alpha = 0.95
-
-        if st["style"] == "flow":
-            self._draw_flow(ctx, w, h, amber, alpha)
-        elif st["style"] == "double":
-            self._stroke_glow(ctx, w, h, 6, base, 2.6, alpha)
-            self._stroke_glow(ctx, w, h, 14, base, 1.5, alpha * 0.7,
-                              halo=False)
-        else:  # single
-            self._stroke_glow(ctx, w, h, 7, base, 3.0, alpha)
-        return False
-
-    def _stroke_glow(self, ctx, w, h, inset, color, width, alpha,
-                     halo=True):
-        if halo:
-            for mult, a in ((3.6, 0.10), (2.0, 0.22)):
-                ctx.set_source_rgba(*color, alpha * a)
-                ctx.set_line_width(width * mult)
-                _rounded_rect_path(ctx, w, h, inset, 26)
-                ctx.stroke()
-        ctx.set_source_rgba(*color, alpha)
-        ctx.set_line_width(width)
-        _rounded_rect_path(ctx, w, h, inset, 26)
-        ctx.stroke()
-
-    def _draw_flow(self, ctx, w, h, amber, alpha):
-        cycle = AMBER_CYCLE if amber else LIME_CYCLE
-        # soft halo under the flow
-        ctx.set_source_rgba(*(AMBER if amber else LIME), 0.10 * alpha)
-        ctx.set_line_width(10)
-        _rounded_rect_path(ctx, w, h, 7, 26)
-        ctx.stroke()
-        pts = _rounded_rect_points(w, h, 7, 26)
-        n = len(pts)
-        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
-        ctx.set_line_width(3.2)
-        for i in range(n):
-            x0, y0 = pts[i]
-            x1, y1 = pts[(i + 1) % n]
-            col = _cycle_color(cycle, i / n + self._phase)
-            ctx.set_source_rgba(*col, alpha)
-            ctx.move_to(x0, y0)
-            ctx.line_to(x1, y1)
-            ctx.stroke()
+        style = st["style"]
+        rules = ["#edge-root, #edge-base { background: transparent; }"]
+        for edge in ("top", "bottom", "left", "right"):
+            vertical = edge in ("left", "right")
+            # gradient direction: fade from the edge inward
+            inward = {"top": "to bottom", "bottom": "to top",
+                      "left": "to right", "right": "to left"}[edge]
+            along = "to bottom" if vertical else "to right"
+            if style == "flow":
+                stops = ", ".join(
+                    f"{_css_color(_cycle_color(cycle, self._phase + k / 5.0), alpha)} {k * 25}%"
+                    for k in range(5))
+                core_bg = f"linear-gradient({along}, {stops})"
+                glow_bg = (f"linear-gradient({inward}, "
+                           f"{_css_color(base, alpha * 0.5)} 0%, "
+                           f"transparent 100%)")
+                core2_bg = "transparent"
+            else:
+                core_bg = _css_color(base, alpha)
+                glow_bg = (f"linear-gradient({inward}, "
+                           f"{_css_color(base, alpha * 0.45)} 0%, "
+                           f"transparent 100%)")
+                core2_bg = (_css_color(base, alpha * 0.65)
+                            if style == "double" else "transparent")
+            rules.append(
+                f"#edge-{edge}-core {{ background: {core_bg}; }}")
+            rules.append(
+                f"#edge-{edge}-glow {{ background: {glow_bg}; }}")
+            rules.append(
+                f"#edge-{edge}-core2 {{ background: {core2_bg}; }}")
+        css = "\n".join(rules)
+        if css != self._css_cache:
+            self._css_cache = css
+            self.provider.load_from_data(css.encode())
 
 
 def main(argv=None):
