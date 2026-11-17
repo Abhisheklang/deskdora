@@ -45,6 +45,7 @@ class DeskDoraWindow(Gtk.Window):
         self.retries = 0
         self.set_default_size(1280, 840)
         self.set_size_request(860, 600)
+        self.set_position(Gtk.WindowPosition.CENTER)
         self._set_icon()
 
         self.view = WebKit2.WebView()
