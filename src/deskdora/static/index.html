@@ -3,645 +3,657 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DeskDora — your desktop, on autopilot</title>
+<title>DeskDora — Desktop Agent</title>
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png">
 <style>
-  /* ============================================================
-     DeskDora "Deep Current" design system — see BRAND.md.
-     Deep Sea neutrals (Coolors 0B132B/1C2541/3A506B), seafoam
-     teal primary (5BC0BE), semantic signals from Coolors'
-     iconic five: gold FFD166, emerald 06D6A0, red EF476F,
-     ocean 118AB2. No live view exists in this UI.
-     ============================================================ */
-  @font-face{font-family:"Inter";src:url("/fonts/inter-400.woff2") format("woff2");
-    font-weight:400;font-style:normal;font-display:swap}
-  @font-face{font-family:"Inter";src:url("/fonts/inter-500.woff2") format("woff2");
-    font-weight:500;font-style:normal;font-display:swap}
-  @font-face{font-family:"Inter";src:url("/fonts/inter-600.woff2") format("woff2");
-    font-weight:600;font-style:normal;font-display:swap}
-  @font-face{font-family:"Inter";src:url("/fonts/inter-700.woff2") format("woff2");
-    font-weight:700;font-style:normal;font-display:swap}
-  @font-face{font-family:"Inter";src:url("/fonts/inter-800.woff2") format("woff2");
-    font-weight:800;font-style:normal;font-display:swap}
-  @font-face{font-family:"JetBrains Mono";src:url("/fonts/jetbrains-mono-400.woff2") format("woff2");
-    font-weight:400;font-style:normal;font-display:swap}
-  @font-face{font-family:"JetBrains Mono";src:url("/fonts/jetbrains-mono-600.woff2") format("woff2");
-    font-weight:600;font-style:normal;font-display:swap}
+/* =====================================================================
+   DESKDORA — "CONTROL ROOM" (BRAND.md round 3)
+   Near-black instrument panel. Hairlines, not shadows. One lime
+   accent, sparingly. Type is the hero. Serif is the agent's voice.
+   ===================================================================== */
+@font-face{font-family:"Oswald";src:url("/fonts/oswald-var.woff2") format("woff2");
+  font-weight:400 700;font-display:swap}
+@font-face{font-family:"Newsreader";src:url("/fonts/newsreader-var.woff2") format("woff2");
+  font-weight:400 700;font-display:swap}
+@font-face{font-family:"Newsreader";src:url("/fonts/newsreader-italic.woff2") format("woff2");
+  font-style:italic;font-weight:400 700;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-400.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-500.woff2") format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-600.woff2") format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-700.woff2") format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-800.woff2") format("woff2");font-weight:800;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("/fonts/jetbrains-mono-400.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("/fonts/jetbrains-mono-600.woff2") format("woff2");font-weight:600;font-display:swap}
 
-  :root{
-    color-scheme:dark;
-    --abyss:#060c16; --deep-900:#0b132b; --deep-850:#0e1930; --deep-800:#14213d;
-    --deep-750:#1c2541; --deep-700:#26355a;
-    --line:#21304f; --line-strong:#3a506b;
-    --text:#edf5f2; --muted:#8da9c4; --faint:#5c7694;
-    --teal-200:#a7e8e2; --teal-300:#8fe3de; --teal:#5bc0be; --teal-500:#3aa7a3;
-    --ocean:#118ab2; --aqua:#6fffe9;
-    --teal-grad:linear-gradient(135deg,#5bc0be,#118ab2);
-    --gold:#ffd166; --ok:#06d6a0; --bad:#ef476f; --info:#118ab2;
-    --on-teal:#04211f;
-    --r-lg:20px; --r-md:16px; --r-sm:12px;
-    --shadow:0 18px 40px rgba(2,6,14,.45);
-    --ring:0 0 0 3px rgba(91,192,190,.32);
-    --ease:cubic-bezier(.22,.8,.24,1);
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
-  body{background:var(--abyss);color:var(--text);
-       font-family:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-       min-height:100vh;-webkit-font-smoothing:antialiased;line-height:1.6;
-       font-size:14.5px}
-  ::selection{background:rgba(91,192,190,.4)}
-  ::-webkit-scrollbar{width:10px;height:10px}
-  ::-webkit-scrollbar-thumb{background:#26355a;border-radius:99px;border:2px solid var(--abyss)}
-  ::-webkit-scrollbar-track{background:transparent}
-  button{font:inherit}
-  button:focus-visible,a:focus-visible{outline:none;box-shadow:var(--ring)}
+:root{
+  color-scheme:dark;
+  --void:#040404; --rail:#060807; --panel:#0A0B0A; --panel2:#101110; --panel3:#171816;
+  --line:rgba(92,92,91,.28); --line-soft:rgba(92,92,91,.14);
+  --text:#F4F4F4; --text2:#9E9F9F; --text3:#5C5C5B;
+  --lime:#CEDE62; --lime-live:#DAF64C; --lime-dim:#A4AF45;
+  --mustard:#ECD06F; --ok:#06D6A0; --bad:#EF476F;
+  --disp:"Oswald","Arial Narrow",sans-serif;
+  --serif:"Newsreader",Georgia,serif;
+  --ui:"Inter",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --rail-w:76px; --tab-w:36px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;padding:0}
+body{background:var(--void);color:var(--text);font-family:var(--ui);
+  font-size:14.5px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  min-height:100vh;overflow-x:hidden}
+::selection{background:var(--lime);color:#040404}
+button{font-family:inherit}
+:focus-visible{outline:1.5px solid var(--lime);outline-offset:2px}
+.mono{font-family:var(--mono)}
 
-  /* ---------- ambient background ---------- */
-  .ambient{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
-  .ambient i{position:absolute;border-radius:50%;will-change:transform}
-  .ambient .a1{width:760px;height:560px;left:-140px;top:-180px;
-    background:radial-gradient(closest-side,rgba(17,138,178,.17),transparent 72%);
-    animation:drift1 38s ease-in-out infinite alternate}
-  .ambient .a2{width:680px;height:680px;right:-200px;bottom:-260px;
-    background:radial-gradient(closest-side,rgba(91,192,190,.11),transparent 72%);
-    animation:drift2 46s ease-in-out infinite alternate}
-  .ambient .a3{width:520px;height:420px;left:44%;top:32%;
-    background:radial-gradient(closest-side,rgba(58,80,107,.13),transparent 72%);
-    animation:drift1 52s ease-in-out infinite alternate-reverse}
-  .ambient::after{content:"";position:absolute;inset:0;
-    background-image:radial-gradient(rgba(141,169,196,.055) 1px,transparent 1.4px);
-    background-size:26px 26px}
-  @keyframes drift1{from{transform:translate3d(0,0,0) scale(1)}
-    to{transform:translate3d(46px,26px,0) scale(1.06)}}
-  @keyframes drift2{from{transform:translate3d(0,0,0) scale(1.04)}
-    to{transform:translate3d(-38px,-30px,0) scale(.98)}}
+/* ---------- lime wipe (view transitions) ---------- */
+#wipe{position:fixed;inset:0;background:var(--lime);z-index:200;
+  transform:translateX(-102%);pointer-events:none}
 
-  /* ---------- app shell ---------- */
-  .shell{position:relative;z-index:1;display:grid;
-         grid-template-columns:252px minmax(0,1fr);min-height:100vh;
-         animation:shellIn .5s var(--ease) both}
-  @keyframes shellIn{from{opacity:0}to{opacity:1}}
+/* ---------- icon rail ---------- */
+#rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail-w);z-index:60;
+  background:var(--rail);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:stretch}
+.rail-logo{padding:14px 0 12px;display:flex;justify-content:center;
+  border-bottom:1px solid var(--line-soft)}
+.rail-logo img{width:44px;height:44px;border-radius:11px;display:block}
+.rail-nav{display:flex;flex-direction:column;padding:10px 0;gap:2px}
+.rnav{position:relative;background:none;border:none;color:var(--text2);
+  padding:10px 0 8px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:5px;transition:color .15s ease}
+.rnav svg{width:21px;height:21px}
+.rnav span{font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase}
+.rnav:hover{color:var(--text)}
+.rnav.active{color:var(--text)}
+.rnav.active::before{content:"";position:absolute;left:0;top:18%;bottom:18%;
+  width:3px;background:var(--lime)}
+.rnav.active svg{color:var(--lime)}
+.rail-foot{margin-top:auto;border-top:1px solid var(--line-soft);
+  padding:12px 6px 14px;display:flex;flex-direction:column;align-items:center;gap:9px}
+.rail-dot{width:11px;height:11px;border-radius:50%;background:var(--text3)}
+.rail-dot.run{background:var(--lime-live);animation:pulse 1.2s ease-in-out infinite}
+.rail-dot.wait{background:var(--mustard);animation:pulse 1.2s ease-in-out infinite}
+.rail-dot.ok{background:var(--ok)} .rail-dot.bad{background:var(--bad)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.rail-state{font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.12em;color:var(--text2);text-align:center;line-height:1.5}
+.rail-kill{font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.12em;color:var(--text3);text-align:center;line-height:1.5}
+.rail-kill.tripped{color:var(--mustard)}
 
-  /* ---------- sidebar ---------- */
-  .side{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;
-        padding:20px 16px;gap:6px;
-        background:linear-gradient(180deg,rgba(20,33,61,.66),rgba(11,19,43,.9));
-        border-right:1px solid var(--line);
-        backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-  .brandlock{display:flex;align-items:center;gap:12px;padding:2px 6px 14px}
-  .logoImg{width:42px;height:42px;flex:none;border-radius:12px;
-           box-shadow:0 8px 22px rgba(17,138,178,.42), 0 0 0 1px rgba(255,255,255,.09)}
-  .brand{line-height:1.15}
-  .brand b{font-size:19.5px;font-weight:800;letter-spacing:-.02em;color:#fff;white-space:nowrap}
-  .brand b .dora{background:linear-gradient(92deg,var(--teal-300),var(--teal) 55%,var(--ocean));
-    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .brand > span{display:block;font-size:10.5px;font-weight:600;color:var(--faint);
-    text-transform:uppercase;letter-spacing:.15em;margin-top:2px}
+/* ---------- pull-tab kill switch (breaks the grid, once) ---------- */
+#pullTab{position:fixed;right:0;top:0;bottom:0;width:var(--tab-w);z-index:60;
+  background:var(--rail);border:none;border-left:1.5px solid var(--mustard);
+  color:var(--mustard);cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;padding:0;
+  transition:background .18s ease,color .18s ease}
+#pullTab .pt-text{writing-mode:vertical-rl;font-family:var(--mono);
+  font-size:11px;font-weight:600;letter-spacing:.34em}
+#pullTab .pt-arrow{font-size:15px;line-height:1;transition:transform .18s ease}
+#pullTab:hover,#pullTab:focus-visible{background:var(--mustard);color:#040404}
+#pullTab:hover .pt-arrow{transform:translateX(-3px)}
+#pullTab.tripped{background:var(--mustard);color:#040404}
 
-  .nav{display:flex;flex-direction:column;gap:4px;margin-top:8px}
-  .nav button{display:flex;align-items:center;gap:11px;position:relative;
-    background:transparent;color:var(--muted);border:none;padding:10px 12px;
-    border-radius:12px;cursor:pointer;font-size:14px;font-weight:600;text-align:left;
-    transition:color .16s ease, background .16s ease}
-  .nav button svg{width:17px;height:17px;flex:none}
-  .nav button:hover{color:var(--text);background:rgba(91,192,190,.06)}
-  .nav button.active{color:#fff;
-    background:linear-gradient(90deg,rgba(91,192,190,.17),rgba(17,138,178,.09))}
-  .nav button.active svg{color:var(--teal-300)}
-  .nav button.active::before{content:"";position:absolute;left:-16px;top:22%;height:56%;
-    width:3px;border-radius:99px;background:var(--teal);
-    box-shadow:0 0 10px rgba(91,192,190,.8)}
-  .navpulse{display:none;width:7px;height:7px;border-radius:50%;background:var(--aqua);
-    margin-left:auto;flex:none;animation:blink 1.1s ease-in-out infinite}
-  body.is-running .navpulse{display:block}
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+/* ---------- shell / top strip ---------- */
+#shell{margin-left:var(--rail-w);margin-right:var(--tab-w);min-height:100vh;
+  display:flex;flex-direction:column}
+#topstrip{display:flex;align-items:center;gap:18px;
+  padding:13px 30px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--void);z-index:50}
+.ts-name{font-family:var(--disp);font-weight:600;font-size:25px;
+  letter-spacing:-.01em;text-transform:uppercase;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:44vw}
+.ts-right{margin-left:auto;display:flex;align-items:center;gap:16px;flex:none}
+.ts-planner{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+  color:var(--text2);text-transform:uppercase;white-space:nowrap}
+.ts-clock{font-family:var(--mono);font-size:12.5px;color:var(--text);
+  letter-spacing:.06em}
+.state-pill{display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.14em;
+  padding:7px 13px;border-radius:999px;border:1px solid var(--line);
+  color:var(--text2);white-space:nowrap}
+.state-pill i{width:8px;height:8px;border-radius:50%;background:var(--text3);flex:none}
+.state-pill.run{color:#040404;background:var(--lime);border-color:var(--lime)}
+.state-pill.run i{background:#040404;animation:pulse 1.1s ease-in-out infinite}
+.state-pill.wait{color:#040404;background:var(--mustard);border-color:var(--mustard)}
+.state-pill.wait i{background:#040404;animation:pulse 1.1s ease-in-out infinite}
+.state-pill.ok{color:var(--ok);border-color:var(--ok)}
+.state-pill.ok i{background:var(--ok)}
+.state-pill.bad{color:var(--bad);border-color:var(--bad)}
+.state-pill.bad i{background:var(--bad)}
 
-  .sidefoot{margin-top:auto;display:flex;flex-direction:column;gap:12px}
-  .statuscard{background:rgba(6,12,22,.55);border:1px solid var(--line);
-    border-radius:var(--r-md);padding:13px 14px;display:flex;flex-direction:column;gap:9px}
-  .sc-head{display:flex;align-items:center;justify-content:space-between}
-  .eyebrow{font-size:11px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.14em;color:var(--teal-300);margin:0}
-  .eyebrow.grey{color:var(--faint)}
-  .sc-dot{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none}
-  .sc-dot.run{background:var(--teal);animation:dotPulse 1.6s ease-out infinite}
-  .sc-dot.ok{background:var(--ok)} .sc-dot.bad{background:var(--bad)}
-  @keyframes dotPulse{0%{box-shadow:0 0 0 0 rgba(111,255,233,.45)}
-    70%{box-shadow:0 0 0 8px rgba(111,255,233,0)}100%{box-shadow:0 0 0 0 rgba(111,255,233,0)}}
-  .pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;
-    padding:6px 12px;border-radius:999px;border:1px solid var(--line);
-    color:var(--muted);background:rgba(20,33,61,.6);white-space:nowrap}
-  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
-  .pill.on{color:var(--ok);background:rgba(6,214,160,.1);border-color:rgba(6,214,160,.45)}
-  .pill.on .dot{background:var(--ok)}
-  .pill.run{color:var(--teal-300);background:rgba(91,192,190,.1);border-color:rgba(91,192,190,.5)}
-  .pill.run .dot{background:var(--aqua);animation:blink 1.1s ease-in-out infinite}
-  .pill.bad{color:#ff8fab;background:rgba(239,71,111,.1);border-color:rgba(239,71,111,.45)}
-  .pill.bad .dot{background:var(--bad)}
-  .pill.mono{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:400;
-    color:var(--faint);letter-spacing:.01em;white-space:normal;line-height:1.5}
-  #killBtn{background:linear-gradient(180deg,#ef476f,#d81159);color:#fff;border:none;
-    width:100%;font-weight:800;padding:12px 14px;border-radius:12px;cursor:pointer;
-    letter-spacing:.06em;font-size:13px;
-    box-shadow:0 8px 20px rgba(239,71,111,.32), inset 0 1px 0 rgba(255,255,255,.28);
-    transition:transform .12s ease, box-shadow .2s ease}
-  #killBtn:hover{transform:translateY(-1px)}
-  #killBtn:active{transform:scale(.98)}
-  body.is-running #killBtn{animation:killPulse 1.6s ease-out infinite}
-  @keyframes killPulse{0%{box-shadow:0 8px 20px rgba(239,71,111,.32),0 0 0 0 rgba(239,71,111,.5)}
-    70%{box-shadow:0 8px 20px rgba(239,71,111,.32),0 0 0 11px rgba(239,71,111,0)}
-    100%{box-shadow:0 8px 20px rgba(239,71,111,.32),0 0 0 0 rgba(239,71,111,0)}}
-  .side-note{font-size:11px;color:var(--faint);text-align:center;margin:0}
+main{padding:30px 30px 56px;flex:1;width:100%;max-width:1560px;margin:0 auto}
 
-  /* ---------- content ---------- */
-  .content{min-width:0}
-  main{padding:30px 34px 56px;max-width:1240px;margin:0 auto}
-  section.enter{animation:viewIn .38s var(--ease) both}
-  @keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-  section.enter .rise{animation:panelIn .5s var(--ease) both;animation-delay:var(--d,0s)}
-  @keyframes panelIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-  .viewhead{margin-bottom:20px}
-  .viewhead h1{font-size:27px;font-weight:750;letter-spacing:-.03em;margin:6px 0 0;line-height:1.2}
-  .lede{color:var(--muted);font-size:14.5px;margin:7px 0 0;max-width:580px}
-  .panel{background:linear-gradient(180deg,var(--deep-800),var(--deep-850));
-    border:1px solid var(--line);border-radius:var(--r-lg);padding:22px;
-    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.04)}
-  .panelhead{display:flex;align-items:baseline;justify-content:space-between;
-    gap:12px;margin-bottom:12px;flex-wrap:wrap}
-  .panel h2{margin:0;font-size:16px;font-weight:700;letter-spacing:-.015em}
-  .muted{color:var(--muted)} .small{font-size:12.5px}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .grow{flex:1;min-width:200px}
+/* ---------- grid + section heads ---------- */
+.grid12{display:grid;grid-template-columns:repeat(12,1fr);gap:28px}
+.col5{grid-column:span 5}.col7{grid-column:span 7}.col12{grid-column:span 12}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
+.sec-no{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--lime);
+  letter-spacing:.1em}
+.sec-name{font-family:var(--mono);font-size:11px;font-weight:600;
+  letter-spacing:.22em;color:var(--text)}
+.sec-head .rule{flex:1;height:1px;background:var(--line);align-self:center}
+.sec-note{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--text3)}
+.view-head{font-family:var(--disp);font-weight:600;text-transform:uppercase;
+  font-size:clamp(38px,4.4vw,58px);line-height:.98;letter-spacing:-.025em;
+  margin:2px 0 26px}
+.view-head .lime-dot{color:var(--lime)}
 
-  /* ---------- controls ---------- */
-  input[type=text],select,textarea{background:var(--deep-900);color:var(--text);
-    border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 13px;
-    font-size:14.5px;width:100%;transition:border-color .15s ease, box-shadow .15s ease}
-  input[type=text]::placeholder,textarea::placeholder{color:var(--faint)}
-  input[type=text]:focus,select:focus,textarea:focus{outline:none;
-    border-color:var(--teal);box-shadow:var(--ring)}
-  select{cursor:pointer;width:auto;appearance:none;-webkit-appearance:none;
-    padding-right:34px;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238da9c4' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat:no-repeat;background-position:right 12px center}
-  textarea{min-height:76px;resize:vertical;font-family:"JetBrains Mono",monospace;font-size:13px}
-  button.primary{background:var(--teal-grad);color:var(--on-teal);border:none;
-    padding:12px 22px;border-radius:12px;font-size:14.5px;font-weight:700;
-    cursor:pointer;box-shadow:0 8px 22px rgba(17,138,178,.35),
-    inset 0 1px 0 rgba(255,255,255,.35);
-    transition:transform .12s ease, box-shadow .18s ease, filter .15s ease, opacity .15s ease;
-    display:inline-flex;align-items:center;gap:8px;justify-content:center}
-  button.primary:hover{transform:translateY(-1px);filter:brightness(1.06);
-    box-shadow:0 11px 26px rgba(17,138,178,.45), inset 0 1px 0 rgba(255,255,255,.35)}
-  button.primary:active{transform:scale(.98)}
-  button.primary:disabled{opacity:.45;cursor:default;transform:none}
-  button.primary.small{padding:8px 15px;font-size:13px;border-radius:10px}
-  button.primary .arr{transition:transform .15s ease}
-  button.primary:hover .arr{transform:translateX(2px)}
-  button.ghost{background:rgba(11,19,43,.55);color:var(--text);
-    border:1px solid var(--line);padding:8px 14px;border-radius:10px;cursor:pointer;
-    font-weight:600;font-size:13.5px;transition:border-color .15s ease, background .15s ease}
-  button.ghost:hover{border-color:var(--teal);background:var(--deep-750)}
-  button.dangerbtn{background:transparent;color:var(--bad);
-    border:1px solid rgba(239,71,111,.5);padding:8px 14px;border-radius:10px;
-    cursor:pointer;font-weight:600;font-size:13.5px;transition:background .15s ease}
-  button.dangerbtn:hover{background:rgba(239,71,111,.1)}
-  button.goldbtn{background:linear-gradient(135deg,#ffd166,#f5b93f);color:#2a1e02;
-    border:none;padding:12px 22px;border-radius:12px;font-size:14.5px;font-weight:700;
-    cursor:pointer;box-shadow:0 8px 22px rgba(255,209,102,.28),
-    inset 0 1px 0 rgba(255,255,255,.4);transition:transform .12s ease, filter .15s ease}
-  button.goldbtn:hover{transform:translateY(-1px);filter:brightness(1.05)}
-  button.goldbtn:active{transform:scale(.98)}
+/* ---------- run: idle composition ---------- */
+.mega{font-family:var(--disp);font-weight:600;text-transform:uppercase;
+  font-size:clamp(46px,4.9vw,70px);line-height:.96;letter-spacing:-.03em;margin:0}
+.mega .lime-dot{color:var(--lime)}
+.lede{color:var(--text2);font-size:15.5px;max-width:52ch;margin:18px 0 26px}
+.cmdline{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+#goalInput{flex:1;min-width:280px;background:var(--panel);color:var(--text);
+  border:1px solid var(--line);border-radius:4px;padding:16px 18px;
+  font-family:var(--ui);font-size:16.5px;transition:border-color .15s ease}
+#goalInput::placeholder{color:var(--text3)}
+#goalInput:focus{outline:none;border-color:var(--lime)}
+.run-btn{background:var(--lime);color:#040404;border:none;border-radius:999px;
+  padding:0 30px;font-family:var(--disp);font-weight:600;font-size:19px;
+  letter-spacing:.04em;text-transform:uppercase;cursor:pointer;
+  display:inline-flex;align-items:center;gap:10px;min-height:56px;
+  transition:background .15s ease,transform .1s ease}
+.run-btn:hover{background:var(--lime-live)}
+.run-btn:active{transform:scale(.98)}
+.run-btn:disabled{opacity:.4;cursor:default;transform:none}
+.run-btn .arr{font-family:var(--ui);font-weight:700}
+.cmdmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+.mono-lab{font-family:var(--mono);font-size:10px;font-weight:600;
+  letter-spacing:.18em;color:var(--text3);text-transform:uppercase}
+select,input[type=text],textarea{font-family:var(--ui)}
+select{background:var(--panel);color:var(--text);border:1px solid var(--line);
+  border-radius:999px;padding:8px 14px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+select:focus{outline:none;border-color:var(--lime)}
+.chip{background:none;border:1px solid var(--line);color:var(--text2);
+  border-radius:999px;padding:8px 15px;font-family:var(--mono);font-size:10.5px;
+  font-weight:600;letter-spacing:.12em;cursor:pointer;transition:all .15s ease}
+.chip:hover{border-color:var(--lime);color:var(--lime)}
+.voice{font-family:var(--serif);font-style:italic;font-size:20px;
+  color:var(--text);margin:26px 0 0;max-width:56ch;line-height:1.45}
+.voice::before{content:"";display:block;width:34px;height:1px;
+  background:var(--lime);margin-bottom:12px}
 
-  /* ---------- run view ---------- */
-  .rungrid{display:grid;grid-template-columns:minmax(0,1fr) 302px;gap:16px;margin-bottom:16px}
-  .command{border:1px solid transparent;
-    background:linear-gradient(180deg,#16263f,#0e1930) padding-box,
-               linear-gradient(135deg,rgba(91,192,190,.55),rgba(33,48,79,.9) 48%,
-               rgba(17,138,178,.5)) border-box}
-  .flabel{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.14em;color:var(--teal-300);margin-bottom:10px}
-  .goalrow{display:flex;gap:10px}
-  #goalInput{font-size:16px;padding:14px 16px;border-radius:12px}
-  #runBtn{padding:13px 24px;font-size:15px;flex:none}
-  .ctlrow{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
-  .examples{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .exlbl{font-size:10.5px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.12em;color:var(--faint)}
-  .chipbtn{font-size:12.5px;font-weight:600;color:var(--muted);
-    background:rgba(11,19,43,.6);border:1px solid var(--line);padding:6px 12px;
-    border-radius:999px;cursor:pointer;
-    transition:color .15s ease, border-color .15s ease, transform .15s ease}
-  .chipbtn:hover{color:var(--text);border-color:var(--teal);transform:translateY(-1px)}
-  #runHint{margin:14px 0 0}
-  .progress{height:6px;border-radius:99px;background:var(--deep-900);
-    overflow:hidden;margin-top:16px;display:none;border:1px solid var(--line)}
-  .progress.show{display:block}
-  .progress i{display:block;height:100%;width:38%;border-radius:99px;
-    background:var(--teal-grad);box-shadow:0 0 12px rgba(91,192,190,.55);
-    animation:slide 1.15s ease-in-out infinite}
-  @keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(290%)}}
+/* ---------- run: running composition ---------- */
+#runKicker{color:var(--lime);margin-bottom:10px}
+.goal-head{font-size:clamp(32px,3.5vw,56px);overflow-wrap:anywhere}
+.step-pill-row{margin:20px 0 14px}
+.step-pill{display:inline-block;background:var(--lime-live);color:#040404;
+  font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.1em;
+  padding:8px 16px;border-radius:999px;text-transform:uppercase;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  vertical-align:top}
+.step-pill.done{background:var(--panel2);color:var(--ok);border:1px solid var(--ok)}
+.step-pill.failed{background:var(--panel2);color:var(--bad);border:1px solid var(--bad)}
+.step-pill.blocked{background:var(--panel2);color:var(--mustard);border:1px solid var(--mustard)}
+.segbar{display:flex;gap:2px;height:14px;margin-top:6px}
+.segbar i{flex:1;border-radius:999px;background:var(--panel3);
+  box-shadow:inset 0 0 0 1px var(--line-soft);min-width:2px}
+.segbar i.done{background:var(--lime-dim);box-shadow:none}
+.segbar i.now{background:var(--lime-live);box-shadow:none;
+  animation:pulse 1.1s ease-in-out infinite}
+.seg-meta{display:flex;justify-content:space-between;margin-top:9px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:var(--text2)}
+.ghost-btn{background:none;border:1px solid var(--line);color:var(--text);
+  border-radius:999px;padding:11px 22px;font-family:var(--mono);font-size:11px;
+  font-weight:600;letter-spacing:.14em;cursor:pointer;margin-top:22px;
+  transition:border-color .15s ease,color .15s ease}
+.ghost-btn:hover{border-color:var(--lime);color:var(--lime)}
 
-  .session .sess-status{display:flex;align-items:center;gap:11px;margin:2px 0 16px}
-  .bigdot{width:11px;height:11px;border-radius:50%;background:var(--faint);flex:none}
-  .bigdot.run{background:var(--teal);animation:dotPulse 1.6s ease-out infinite}
-  .bigdot.ok{background:var(--ok)} .bigdot.bad{background:var(--bad)}
-  #sessState{font-size:19px;font-weight:750;letter-spacing:-.015em}
-  .session dl{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px 14px;margin:0}
-  .session dt{font-size:10.5px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.11em;color:var(--faint);padding-top:3px}
-  .session dd{margin:0;font-size:13.5px;word-break:break-word}
-  .session dd.mono{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--muted)}
-  .session .foot{border-top:1px solid rgba(33,48,79,.7);margin-top:16px;padding-top:13px}
+/* ---------- instrument panel ---------- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:4px}
+.instrument{padding:6px 20px 16px}
+.irow{display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+  padding:11px 0;border-bottom:1px solid var(--line-soft)}
+.irow.last{border-bottom:none}
+.ilab{font-family:var(--mono);font-size:10px;font-weight:600;
+  letter-spacing:.18em;color:var(--text3);text-transform:uppercase;flex:none}
+.ival{font-size:13.5px;text-align:right;overflow-wrap:anywhere}
+.ival.mono-v{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em}
+.capblock{padding:14px 0 12px;border-bottom:1px solid var(--line-soft)}
+.cap-top{display:flex;justify-content:space-between;align-items:baseline}
+.cap-num{font-family:var(--disp);font-weight:600;font-size:46px;line-height:1;
+  letter-spacing:-.02em}
+.cap-num .cap-den{color:var(--text3);font-size:26px}
+.capbar{height:16px;border-radius:999px;background:var(--panel3);
+  box-shadow:inset 0 0 0 1px var(--line-soft);margin-top:10px;overflow:hidden}
+.capbar i{display:block;height:100%;width:0;background:var(--lime);
+  border-radius:999px;transition:width .45s cubic-bezier(.22,.8,.24,1)}
+.nextblock{padding:13px 0 4px;border-bottom:1px solid var(--line-soft)}
+.nextlist{list-style:none;margin:10px 0 6px;padding:0;counter-reset:nx}
+.nextlist li{display:flex;gap:13px;padding:6.5px 0;font-size:13.5px;
+  color:var(--text);align-items:baseline}
+.nextlist li::before{counter-increment:nx;content:counter(nx,decimal-leading-zero);
+  font-family:var(--mono);font-size:10.5px;color:var(--lime);flex:none}
+.nextlist li.dim{color:var(--text3)}
+.nextlist li.dim::before{color:var(--text3)}
 
-  /* ---------- activity feed ---------- */
-  .feed{font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.55;
-    max-height:300px;overflow:auto;padding-right:2px}
-  .feed.tall{max-height:520px}
-  .feed::-webkit-scrollbar{width:8px}
-  .feed::-webkit-scrollbar-thumb{background:#26355a;border:none}
-  .frow{display:flex;gap:10px;padding:7px 2px;align-items:flex-start;
-    border-bottom:1px solid rgba(33,48,79,.45)}
-  .frow:last-child{border-bottom:none}
-  .feedIn{animation:feedIn .3s var(--ease) both}
-  @keyframes feedIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-  .ftime{color:var(--faint);flex:none;font-size:11.5px;padding-top:2px}
-  .fdot{flex:none;width:19px;height:19px;border-radius:50%;margin-top:1px;
-    display:flex;align-items:center;justify-content:center;
-    font-size:11px;font-weight:700;border:1px solid var(--line);color:var(--faint);
-    background:rgba(11,19,43,.5)}
-  .fdot.ok{color:var(--ok);border-color:rgba(6,214,160,.4);background:rgba(6,214,160,.1)}
-  .fdot.err{color:#ff8fab;border-color:rgba(239,71,111,.4);background:rgba(239,71,111,.1)}
-  .fdot.plan{color:var(--teal-300);border-color:rgba(91,192,190,.4);background:rgba(91,192,190,.1)}
-  .fdot.warn{color:var(--gold);border-color:rgba(255,209,102,.45);background:rgba(255,209,102,.1)}
-  .ftext{color:#c9d8e2;word-break:break-word;min-width:0}
-  .ftext b{color:var(--text)}
-  .empty{border:1.5px dashed var(--line);border-radius:12px;padding:28px 20px;
-    text-align:center;color:var(--faint);font-family:"Inter",sans-serif;font-size:13.5px}
+/* ---------- timeline (live log + action log) ---------- */
+.timeline{border-top:1px solid var(--line)}
+.tl-row{display:grid;grid-template-columns:76px 96px 1fr auto;gap:14px;
+  align-items:baseline;padding:9px 10px 9px 14px;position:relative;
+  border-bottom:1px solid var(--line-soft)}
+.tl-time{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.tl-pill{font-family:var(--mono);font-size:9.5px;font-weight:600;
+  letter-spacing:.1em;padding:3.5px 8px;border-radius:999px;text-align:center;
+  border:1px solid var(--line);color:var(--text2);white-space:nowrap}
+.tl-text{font-size:13.5px;overflow-wrap:anywhere}
+.tl-res{font-family:var(--mono);font-size:10.5px;font-weight:600;
+  letter-spacing:.1em;color:var(--text2)}
+.tl-row.ok .tl-pill{border-color:var(--lime-dim);color:var(--lime-dim)}
+.tl-row.ok .tl-res{color:var(--ok)}
+.tl-row.err .tl-pill{border-color:var(--bad);color:var(--bad)}
+.tl-row.err .tl-res{color:var(--bad)}
+.tl-row.warn .tl-pill{border-color:var(--mustard);color:var(--mustard)}
+.tl-row.warn .tl-res{color:var(--mustard)}
+.tl-row.quiet{opacity:.55}
+.tl-row.live{background:var(--lime-live);color:#040404}
+.tl-row.live .tl-time,.tl-row.live .tl-res{color:#040404}
+.tl-row.live .tl-pill{border-color:#040404;color:#040404}
+.tl-empty{padding:20px 14px;color:var(--text3);font-size:13.5px;
+  border-bottom:1px solid var(--line-soft)}
+.feedIn{animation:feedIn .24s ease both}
+@keyframes feedIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
-  /* ---------- skeletons ---------- */
-  .skl{border-radius:10px;
-    background:linear-gradient(100deg,rgba(38,53,90,.45) 40%,rgba(91,192,190,.13) 50%,rgba(38,53,90,.45) 60%);
-    background-size:200% 100%;animation:shimmer 1.3s linear infinite}
-  @keyframes shimmer{to{background-position:-200% 0}}
-  .sklrow{height:46px;margin-bottom:10px}
-  .sklcard{height:132px}
+/* ---------- runs list ---------- */
+.runrow{display:grid;grid-template-columns:158px 1fr auto auto 22px;gap:16px;
+  align-items:center;width:100%;text-align:left;background:none;border:none;
+  border-bottom:1px solid var(--line-soft);color:var(--text);
+  padding:14px 10px;cursor:pointer;transition:background .12s ease}
+.runrow:hover{background:var(--panel)}
+.runrow:first-child{border-top:1px solid var(--line)}
+.rr-time{font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.6}
+.rr-goal{font-family:var(--disp);font-weight:500;font-size:19px;
+  letter-spacing:.005em;text-transform:uppercase;overflow-wrap:anywhere}
+.rr-planner{font-family:var(--mono);font-size:10.5px;color:var(--text2);
+  letter-spacing:.1em;text-transform:uppercase}
+.rr-arrow{color:var(--text3);font-size:16px}
+.pill{display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:600;
+  letter-spacing:.12em;padding:4.5px 11px;border-radius:999px;
+  border:1px solid var(--line);color:var(--text2);white-space:nowrap}
+.pill.st-success,.pill.st-pass{border-color:var(--ok);color:var(--ok)}
+.pill.st-failed,.pill.st-fail{border-color:var(--bad);color:var(--bad)}
+.pill.st-running{border-color:var(--lime);color:var(--lime)}
+.pill.st-blocked,.pill.st-killed{border-color:var(--mustard);color:var(--mustard)}
 
-  /* ---------- tables ---------- */
-  .twrap{overflow-x:auto}
-  .dtable{width:100%;border-collapse:collapse;font-size:14px}
-  .dtable th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
-    color:var(--faint);text-align:left;padding:8px 12px;
-    border-bottom:1px solid var(--line-strong);white-space:nowrap}
-  .dtable td{padding:12px;border-bottom:1px solid rgba(33,48,79,.55);vertical-align:middle}
-  .dtable tbody tr{transition:background .12s ease}
-  .dtable tbody tr:hover{background:rgba(91,192,190,.045)}
-  .dtable tbody tr:last-child td{border-bottom:none}
-  .dtable .goal{font-weight:600}
-  .dtable .mono-sm{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--muted)}
-  .dtable .tright{text-align:right}
-  .chip{font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;
-    letter-spacing:.02em;white-space:nowrap}
-  .chip.success{background:rgba(6,214,160,.13);color:var(--ok)}
-  .chip.failed,.chip.blocked,.chip.killed{background:rgba(239,71,111,.12);color:#ff8fab}
-  .chip.running{background:rgba(91,192,190,.13);color:var(--teal-300)}
+/* ---------- replay ---------- */
+.replay-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:28px;align-items:start}
+.replay-shot img{width:100%;display:block;border:1px solid var(--line);
+  border-radius:4px;background:#000}
+.shot-nav{display:flex;align-items:center;gap:12px;margin-top:12px}
+.shot-lab{font-family:var(--mono);font-size:11px;color:var(--text2);letter-spacing:.08em}
+.mini-btn{background:none;border:1px solid var(--line);color:var(--text);
+  border-radius:999px;padding:7px 15px;font-family:var(--mono);font-size:10.5px;
+  font-weight:600;letter-spacing:.1em;cursor:pointer}
+.mini-btn:hover{border-color:var(--lime);color:var(--lime)}
+.fromrun{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.fromrun input{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);
+  border-radius:4px;color:var(--text);padding:10px 13px;font-size:13.5px}
+.fromrun input:focus{outline:none;border-color:var(--lime)}
+#replayFeed{max-height:560px;overflow:auto}
+#replayFeed::-webkit-scrollbar{width:8px}
+#replayFeed::-webkit-scrollbar-thumb{background:#26261f;border-radius:99px}
 
-  /* ---------- replay ---------- */
-  .shotframe{border:1px solid var(--line-strong);border-radius:14px;overflow:hidden;
-    box-shadow:var(--shadow);background:#000}
-  .shotframe img{width:100%;display:block}
-  .shotNav{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
-  #shotLabel{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--muted)}
+/* ---------- routines ---------- */
+.rrow{display:grid;grid-template-columns:52px 1fr auto;gap:18px;align-items:center;
+  padding:16px 10px;border-bottom:1px solid var(--line-soft)}
+.rrow:first-child{border-top:1px solid var(--line)}
+.rr-idx{font-family:var(--mono);font-size:11px;color:var(--lime)}
+.rr-name{font-family:var(--disp);font-weight:500;font-size:22px;
+  text-transform:uppercase;letter-spacing:.005em}
+.rr-goal{color:var(--text2);font-size:13.5px;margin-top:2px;overflow-wrap:anywhere}
+.rr-meta{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  color:var(--text3);margin-top:6px;text-transform:uppercase}
+.rr-actions{display:flex;gap:9px}
+.pill-btn{border-radius:999px;padding:10px 20px;font-family:var(--mono);
+  font-size:10.5px;font-weight:600;letter-spacing:.12em;cursor:pointer;
+  transition:all .15s ease}
+.pill-btn.lime{background:var(--lime);border:1px solid var(--lime);color:#040404}
+.pill-btn.lime:hover{background:var(--lime-live)}
+.pill-btn.ghosty{background:none;border:1px solid var(--line);color:var(--text2)}
+.pill-btn.ghosty:hover{border-color:var(--bad);color:var(--bad)}
+.form-rows{border-top:1px solid var(--line)}
+.frow2{display:grid;grid-template-columns:170px 1fr;gap:18px;align-items:center;
+  padding:13px 0;border-bottom:1px solid var(--line-soft)}
+.frow2 input[type=text],.frow2 textarea{background:var(--panel);
+  border:1px solid var(--line);border-radius:4px;color:var(--text);
+  padding:11px 14px;font-size:14px;width:100%}
+.frow2 input[type=text]:focus,.frow2 textarea:focus{outline:none;border-color:var(--lime)}
+.frow2 textarea{min-height:64px;resize:vertical}
+.frow2 .hint{grid-column:2;color:var(--text3);font-size:12px;margin-top:-4px}
 
-  /* ---------- routines ---------- */
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(264px,1fr));gap:14px}
-  .routine{background:linear-gradient(180deg,var(--deep-750),var(--deep-850));
-    border:1px solid var(--line);border-radius:var(--r-md);padding:17px;
-    display:flex;flex-direction:column;gap:9px;
-    transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease}
-  .routine:hover{transform:translateY(-3px);border-color:rgba(91,192,190,.5);
-    box-shadow:0 14px 28px rgba(2,6,14,.5)}
-  .rname{font-size:15.5px;font-weight:700;display:flex;align-items:center;gap:10px}
-  .rtile{width:27px;height:27px;flex:none;border-radius:8px;display:flex;
-    align-items:center;justify-content:center;color:var(--teal-300);
-    background:rgba(91,192,190,.12);border:1px solid rgba(91,192,190,.3)}
-  .rtile svg{width:14px;height:14px}
-  .rgoal{color:var(--muted);font-size:13px;margin:0;word-break:break-word;flex:1}
-  .rmeta{display:flex;gap:6px;flex-wrap:wrap}
-  .tag{font-size:11px;font-weight:600;color:var(--muted);border:1px solid var(--line);
-    padding:2.5px 9px;border-radius:999px;background:rgba(11,19,43,.5)}
-  .tag b{color:var(--teal-300);font-weight:700}
-  .ractions{display:flex;gap:8px;margin-top:2px}
-  .formgrid{display:grid;grid-template-columns:220px minmax(0,1fr) 200px auto;gap:10px;align-items:start}
-  .formtitle{margin:20px 0 10px;font-size:11.5px;font-weight:700;color:var(--muted);
-    text-transform:uppercase;letter-spacing:.1em}
-  code{background:var(--deep-700);padding:1px 5px;border-radius:5px;font-size:12px}
+/* ---------- benchmark ---------- */
+.kpi-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:22px 0 18px;margin-bottom:14px}
+.kpi-num{font-family:var(--disp);font-weight:600;font-size:clamp(48px,5vw,64px);
+  line-height:1;letter-spacing:-.02em}
+.kpi-num .kpi-den{color:var(--text3);font-size:.55em}
+.kpi-num.lime-n{color:var(--lime)}
+.kpi-lab{font-family:var(--mono);font-size:10px;font-weight:600;
+  letter-spacing:.2em;color:var(--text2);margin-top:8px;text-transform:uppercase}
+.scorebar{height:18px;border-radius:999px;background:var(--panel3);
+  box-shadow:inset 0 0 0 1px var(--line-soft);overflow:hidden;margin:16px 0 30px}
+.scorebar i{display:block;height:100%;width:0;background:var(--lime);
+  transition:width .8s cubic-bezier(.22,.8,.24,1)}
+.brow{display:grid;grid-template-columns:52px 1fr auto auto;gap:18px;
+  align-items:center;padding:15px 10px;border-bottom:1px solid var(--line-soft)}
+.brow:first-child{border-top:1px solid var(--line)}
+.b-idx{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.b-title{font-size:14.5px;font-weight:600}
+.b-cap{height:13px;border-radius:999px;background:var(--panel3);
+  box-shadow:inset 0 0 0 1px var(--line-soft);margin-top:8px;overflow:hidden;max-width:520px}
+.b-cap i{display:block;height:100%;width:0;background:var(--lime-dim);
+  transition:width .7s cubic-bezier(.22,.8,.24,1)}
+.b-cap.fail i{background:var(--bad)}
+.b-detail{color:var(--text3);font-size:12px;margin-top:6px}
+.b-nums{font-family:var(--mono);font-size:10.5px;color:var(--text2);
+  letter-spacing:.08em;text-align:right;line-height:1.9;white-space:nowrap}
 
-  /* ---------- benchmark ---------- */
-  .benchhero{display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
-  .bigscore{font-size:46px;font-weight:800;letter-spacing:-.03em;line-height:1}
-  .bigscore span{color:var(--faint);font-weight:600;font-size:27px}
-  .benchbar{flex:1;min-width:180px;height:10px;border-radius:99px;
-    background:var(--deep-900);overflow:hidden;border:1px solid var(--line)}
-  .benchbar i{display:block;height:100%;width:0;border-radius:99px;
-    background:linear-gradient(90deg,var(--ocean),var(--teal),var(--ok));
-    transition:width .8s var(--ease)}
+/* ---------- settings ---------- */
+.set-note{color:var(--text3);font-size:12.5px}
+.switch{position:relative;width:46px;height:25px;flex:none;cursor:pointer}
+.switch input{opacity:0;width:0;height:0}
+.switch i{position:absolute;inset:0;border-radius:999px;background:var(--panel3);
+  box-shadow:inset 0 0 0 1px var(--line);transition:background .15s ease}
+.switch i::after{content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;
+  border-radius:50%;background:var(--text2);transition:all .15s ease}
+.switch input:checked + i{background:var(--lime)}
+.switch input:checked + i::after{left:24px;background:#040404}
 
-  /* ---------- settings ---------- */
-  .setrow{display:grid;grid-template-columns:250px minmax(0,1fr);gap:6px 24px;
-    padding:17px 0;border-bottom:1px solid rgba(33,48,79,.55)}
-  .setrow:first-child{padding-top:2px}
-  .setrow h3{margin:0;font-size:14px;font-weight:650}
-  .setlbl p{margin:4px 0 0;color:var(--muted);font-size:12.5px}
-  .setctl{min-width:0}
-  .switch{position:relative;display:inline-block;width:46px;height:26px;flex:none}
-  .switch input{opacity:0;width:100%;height:100%;position:absolute;margin:0;
-    cursor:pointer;z-index:1}
-  .switch .track{position:absolute;inset:0;background:var(--deep-700);
-    border:1px solid var(--line-strong);border-radius:999px;transition:background .2s ease, border-color .2s ease}
-  .switch .track::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;
-    border-radius:50%;background:#c9d8e2;transition:transform .2s var(--ease), background .2s ease}
-  .switch input:checked + .track{background:rgba(91,192,190,.35);border-color:var(--teal)}
-  .switch input:checked + .track::after{transform:translateX(20px);background:var(--teal-300)}
-  .switch input:focus-visible + .track{box-shadow:var(--ring)}
-  .note{display:flex;gap:10px;align-items:flex-start;margin-top:18px;
-    background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.25);
-    border-radius:12px;padding:12px 14px;font-size:13px;color:#e6cf9a}
-  .note svg{width:16px;height:16px;flex:none;margin-top:2px}
+/* ---------- loader ---------- */
+#loader{position:fixed;inset:0;z-index:150;background:var(--void);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.ld-word{font-family:var(--mono);font-size:11px;font-weight:600;
+  letter-spacing:.34em;color:var(--lime)}
+.ld-num{font-family:var(--disp);font-weight:600;font-size:130px;line-height:1;
+  letter-spacing:-.03em}
+.ld-sub{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--text3)}
 
-  /* ---------- modal ---------- */
-  .modal{position:fixed;inset:0;background:rgba(3,7,13,.7);display:none;
-    align-items:center;justify-content:center;z-index:90;padding:18px;
-    backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
-  .modal.open{display:flex;animation:fadeIn .2s ease both}
-  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-  .modalBox{background:linear-gradient(180deg,var(--deep-800),var(--deep-850));
-    border:1px solid rgba(255,209,102,.55);border-radius:20px;padding:24px;
-    max-width:500px;width:100%;
-    box-shadow:0 30px 70px rgba(0,0,0,.55), 0 0 0 5px rgba(255,209,102,.08)}
-  .modal.open .modalBox{animation:modalIn .3s var(--ease) both}
-  @keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(10px)}
-    to{opacity:1;transform:none}}
-  .mhead{display:flex;gap:13px;align-items:center;margin-bottom:8px}
-  .warnBadge{width:46px;height:46px;border-radius:14px;flex:none;color:var(--gold);
-    background:rgba(255,209,102,.12);border:1px solid rgba(255,209,102,.5);
-    display:flex;align-items:center;justify-content:center}
-  .warnBadge svg{width:22px;height:22px}
-  .modalBox h2{margin:0;font-size:18.5px;font-weight:750;letter-spacing:-.015em;color:#ffdf9e}
-  #confirmDesc{font-size:15px;font-weight:600;margin:8px 0}
-  .stepjson{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);
-    background:var(--deep-900);border:1px solid var(--line);border-radius:10px;
-    padding:10px 12px;white-space:pre-wrap;word-break:break-all;
-    max-height:130px;overflow:auto;margin:10px 0 0}
-  .mactions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+/* ---------- confirmation modal ---------- */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.78);display:none;
+  align-items:center;justify-content:center;z-index:180;padding:20px}
+.modal.open{display:flex}
+.modal-panel{background:var(--rail);border:1px solid var(--line);
+  border-radius:4px;padding:38px 40px 30px;max-width:580px;width:100%}
+.modal.open .modal-panel{animation:modalIn .26s cubic-bezier(.22,.8,.24,1) both}
+@keyframes modalIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.m-eyebrow{font-family:var(--mono);font-size:10.5px;font-weight:600;
+  letter-spacing:.26em;color:var(--mustard);margin-bottom:16px}
+.m-question{font-family:var(--serif);font-size:32px;line-height:1.28;
+  margin:0 0 18px;font-weight:500}
+.m-step{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px;
+  padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--text2);
+  white-space:pre-wrap;word-break:break-word;max-height:130px;overflow:auto;margin:0 0 22px}
+.m-actions{display:flex;flex-direction:column;gap:10px}
+.m-confirm{background:var(--lime);color:#040404;border:none;border-radius:999px;
+  padding:15px;font-family:var(--disp);font-weight:600;font-size:17px;
+  letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+.m-confirm:hover{background:var(--lime-live)}
+.m-cancel{background:none;border:1px solid var(--line);color:var(--text2);
+  border-radius:999px;padding:13px;font-family:var(--mono);font-size:11px;
+  font-weight:600;letter-spacing:.14em;cursor:pointer}
+.m-cancel:hover{border-color:var(--bad);color:var(--bad)}
+.m-note{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+  color:var(--text3);margin:16px 0 0;text-align:center}
 
-  /* ---------- responsive ---------- */
-  @media (max-width:1180px){
-    .rungrid{grid-template-columns:1fr}
-    .formgrid{grid-template-columns:1fr 1fr}
-  }
-  @media (max-width:1080px){
-    .shell{grid-template-columns:1fr}
-    .side{position:sticky;top:0;z-index:50;height:auto;flex-direction:row;
-      align-items:center;flex-wrap:wrap;padding:12px 16px;gap:10px 14px}
-    .brandlock{padding:0}
-    .logoImg{width:34px;height:34px;border-radius:9px}
-    .brand > span{display:none}
-    .nav{flex-direction:row;margin:0;overflow-x:auto;flex:1;scrollbar-width:none}
-    .nav::-webkit-scrollbar{display:none}
-    .nav button{flex:none;padding:9px 12px}
-    .nav button.active::before{display:none}
-    .sidefoot{margin:0;flex-direction:row;align-items:center;gap:10px}
-    .statuscard{flex-direction:row;align-items:center;padding:8px 10px;gap:8px}
-    .sc-head,.side-note{display:none}
-    #killBtn{width:auto}
-    main{padding:22px 18px 48px}
-  }
-  @media (max-width:720px){
-    .viewhead h1{font-size:23px}
-    .goalrow{flex-direction:column}
-    #runBtn{width:100%}
-    .formgrid{grid-template-columns:1fr}
-    .setrow{grid-template-columns:1fr}
-    .nav{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:60;
-      background:rgba(11,19,43,.96);backdrop-filter:blur(12px);
-      border-top:1px solid var(--line);padding:8px 10px;justify-content:space-between}
-    .nav button{flex-direction:column;gap:4px;font-size:10.5px;padding:7px 9px}
-    body{padding-bottom:66px}
-    .pill.mono{display:none}
-  }
-  @media (prefers-reduced-motion: reduce){
-    *,*::before,*::after{animation-duration:.001s !important;
-      animation-iteration-count:1 !important;transition-duration:.001s !important}
-  }
+/* ---------- skeletons ---------- */
+.skl{border-radius:4px;background:linear-gradient(100deg,var(--panel) 40%,
+  var(--panel3) 50%,var(--panel) 60%);background-size:200% 100%;
+  animation:skl 1.2s linear infinite}
+@keyframes skl{to{background-position:-200% 0}}
+.sklrow{height:52px;margin-bottom:8px}.sklbar{height:64px;margin-bottom:10px}
+
+/* ---------- responsive ---------- */
+@media (max-width:1080px){
+  .col7,.col5{grid-column:span 12}
+  .replay-grid{grid-template-columns:1fr}
+  .kpi-strip{grid-template-columns:1fr 1fr}
+  .runrow{grid-template-columns:120px 1fr auto}
+  .rr-planner,.rr-arrow{display:none}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s !important;
+    animation-iteration-count:1 !important;transition-duration:.001s !important}
+}
 </style>
 </head>
 <body>
-<div class="ambient" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+<div id="wipe" aria-hidden="true"></div>
 
-<div class="shell">
-  <aside class="side">
-    <div class="brandlock">
-      <img class="logoImg" src="/logo.svg" alt="DeskDora logo">
-      <div class="brand"><b>Desk<span class="dora">Dora</span></b><span>Desktop agent</span></div>
+<!-- ======================= ICON RAIL ======================= -->
+<nav id="rail" aria-label="Primary">
+  <div class="rail-logo"><img src="/logo.svg" alt="DeskDora"></div>
+  <div class="rail-nav">
+    <button class="rnav active" data-view="run" data-name="Command">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+      <span>Run</span></button>
+    <button class="rnav" data-view="log" data-name="Action Log">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>
+      <span>Log</span></button>
+    <button class="rnav" data-view="routines" data-name="Routines">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M20.5 6H9a5 5 0 0 0-5 5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M3.5 18H15a5 5 0 0 0 5-5"/></svg>
+      <span>Routines</span></button>
+    <button class="rnav" data-view="benchmark" data-name="Benchmark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
+      <span>Bench</span></button>
+    <button class="rnav" data-view="settings" data-name="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1 1.55.61.26 1.31.13 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01c.26.6.87 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.51 1z"/></svg>
+      <span>Settings</span></button>
+  </div>
+  <div class="rail-foot">
+    <div class="rail-dot" id="railDot"></div>
+    <div class="rail-state" id="railState">AGENT<br>IDLE</div>
+    <div class="rail-kill" id="railKill">KILL<br>READY</div>
+  </div>
+</nav>
+
+<!-- ======================= PULL-TAB KILL SWITCH ======================= -->
+<button id="pullTab" aria-label="Kill switch — stop the agent immediately"
+        title="Kill switch — stop the agent immediately">
+  <span class="pt-arrow" aria-hidden="true">&#9664;</span>
+  <span class="pt-text">PULL TO STOP</span>
+  <span class="pt-arrow" aria-hidden="true">&#9664;</span>
+</button>
+
+<div id="shell">
+  <!-- ======================= TOP STRIP ======================= -->
+  <header id="topstrip">
+    <div class="ts-name" id="tsName">Command</div>
+    <div class="ts-right">
+      <span class="ts-planner" id="plannerPill">PLANNER —</span>
+      <span class="ts-clock" id="clock">--:--:--</span>
+      <span class="state-pill" id="statePill"><i></i><span id="statePillTxt">IDLE</span></span>
     </div>
+  </header>
 
-    <nav class="nav" aria-label="Views">
-      <button data-view="run" class="active"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>Run<span class="navpulse"></span></button>
-      <button data-view="runs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>Action log</button>
-      <button data-view="routines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M20.5 6H9a5 5 0 0 0-5 5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M3.5 18H15a5 5 0 0 0 5-5"/></svg>Routines</button>
-      <button data-view="benchmark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>Benchmark</button>
-      <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1 1.55.61.26 1.31.13 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01c.26.6.87 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.51 1z"/></svg>Settings</button>
-    </nav>
-
-    <div class="sidefoot">
-      <div class="statuscard">
-        <div class="sc-head"><span class="eyebrow grey">Agent</span><span class="sc-dot" id="scDot"></span></div>
-        <span class="pill" id="statusPill"><span class="dot"></span>idle</span>
-        <span class="pill mono" id="plannerPill">planner: …</span>
-      </div>
-      <button id="killBtn" title="Stop the agent immediately">■ KILL SWITCH</button>
-      <p class="side-note">Local-first — nothing leaves this machine.</p>
-    </div>
-  </aside>
-
-  <div class="content">
   <main>
-    <!-- RUN VIEW -->
-    <section id="view-run">
-      <div class="viewhead">
-        <p class="eyebrow">Command</p>
-        <h1>Give DeskDora a task</h1>
-        <p class="lede">Describe the outcome in plain words. DeskDora reads the
-          screen, plans the steps, and does the work — asking before anything risky.</p>
-      </div>
-      <div class="rungrid">
-        <div class="panel command rise">
-          <label class="flabel" for="goalInput">Task</label>
-          <div class="goalrow">
-            <input type="text" id="goalInput"
+  <!-- ======================= RUN VIEW ======================= -->
+  <section id="view-run" class="view">
+    <div class="grid12">
+      <div class="col7">
+        <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">COMMAND</span><span class="rule"></span></div>
+
+        <div id="cmdIdle">
+          <h1 class="mega">Tell it<br>what to do<span class="lime-dot">.</span></h1>
+          <p class="lede">Describe the outcome in plain words. DeskDora reads
+            the screen through the accessibility tree, plans the steps, and
+            does the work — asking before anything risky. Every step is
+            logged with a screenshot.</p>
+          <div class="cmdline">
+            <input type="text" id="goalInput" autocomplete="off"
               placeholder="e.g. Organise folder /home/you/Downloads by type">
-            <button class="primary" id="runBtn">Run task <span class="arr">→</span></button>
+            <button class="run-btn" id="runBtn">Run task <span class="arr">&rarr;</span></button>
           </div>
-          <div class="ctlrow">
+          <div class="cmdmeta">
+            <span class="mono-lab">Planner</span>
             <select id="plannerSelect" aria-label="Planner">
-              <option value="">Planner: auto</option>
-              <option value="builtin">Planner: built-in</option>
-              <option value="ollama">Planner: Ollama (local LLM)</option>
-            </select>
-            <div class="examples">
-              <span class="exlbl">Try</span>
-              <button class="chipbtn" data-goal="Organise folder Downloads by file type">Tidy a folder</button>
-              <button class="chipbtn" data-goal="Fill the form: name=Ada Lovelace, email=ada@example.org, city=Pune and submit">Fill a form</button>
-              <button class="chipbtn" data-goal="Turn on event sounds in Settings">Change a setting</button>
-            </div>
-          </div>
-          <p class="muted small" id="runHint">The agent reads your screen through the
-            accessibility tree, plans, and acts — asking before anything risky.
-            Every step is logged with a screenshot.</p>
-          <div class="progress" id="runProgress"><i></i></div>
-        </div>
-        <aside class="panel session rise" style="--d:.06s">
-          <p class="eyebrow grey">Session</p>
-          <div class="sess-status"><span class="bigdot" id="sessDot"></span><span id="sessState">Idle</span></div>
-          <dl>
-            <dt>Goal</dt><dd id="runGoal">—</dd>
-            <dt>Planner</dt><dd class="mono" id="sessPlanner">—</dd>
-            <dt>Result</dt><dd id="sessResult">—</dd>
-          </dl>
-          <p class="muted small foot">You stay in charge: risky actions pause for
-            your approval, and the kill switch stops the agent instantly.</p>
-        </aside>
-      </div>
-      <div class="panel rise" style="--d:.12s">
-        <div class="panelhead"><h2>Activity</h2>
-          <span class="muted small">Every step, as it happens</span></div>
-        <div class="feed tall" id="feed"><div class="empty">No run yet — give DeskDora a task above and watch it work.</div></div>
-      </div>
-    </section>
-
-    <!-- RUNS VIEW -->
-    <section id="view-runs" hidden>
-      <div class="viewhead">
-        <p class="eyebrow">History</p>
-        <h1>Action log</h1>
-        <p class="lede">Every run, every step — with the screenshots to prove it.</p>
-      </div>
-      <div class="panel rise">
-        <div id="runsList" class="muted">Loading…</div>
-      </div>
-      <div class="panel rise" id="replayCard" hidden style="margin-top:16px">
-        <div class="panelhead"><h2 id="replayTitle">Replay</h2></div>
-        <div class="shotframe"><img id="replayImg" alt="Run screenshot"></div>
-        <div class="shotNav">
-          <button class="ghost" id="shotPrev">← Prev step</button>
-          <span id="shotLabel"></span>
-          <button class="ghost" id="shotNext">Next step →</button>
-        </div>
-        <h3 class="formtitle">Events</h3>
-        <div class="feed" id="replayFeed"></div>
-      </div>
-    </section>
-
-    <!-- ROUTINES VIEW -->
-    <section id="view-routines" hidden>
-      <div class="viewhead">
-        <p class="eyebrow">Saved work</p>
-        <h1>Routines</h1>
-        <p class="lede">Tasks you run often — saved on this machine, re-run in one click.</p>
-      </div>
-      <div class="panel rise">
-        <div class="grid" id="routineGrid"></div>
-        <h3 class="formtitle">Create a routine</h3>
-        <div class="formgrid">
-          <input type="text" id="routineName" placeholder="Name, e.g. Morning tidy">
-          <input type="text" id="routineGoal" placeholder="The task, in plain words">
-          <input type="text" id="routineSchedule" placeholder="Schedule (cron, optional)">
-          <button class="primary" id="routineSave">Save routine</button>
-        </div>
-        <p class="muted small">Routines live only on this machine. A schedule uses
-          five-field cron (e.g. <code>0 9 * * 1</code> = Mondays 09:00).</p>
-      </div>
-    </section>
-
-    <!-- BENCHMARK VIEW -->
-    <section id="view-benchmark" hidden>
-      <div class="viewhead">
-        <p class="eyebrow">Evidence</p>
-        <h1>Benchmark</h1>
-        <p class="lede">Measured in the reference rig — not promised.</p>
-      </div>
-      <div class="panel rise">
-        <div class="benchhero">
-          <div class="bigscore" id="benchBig">—</div>
-          <div class="benchbar"><i id="benchBarFill"></i></div>
-        </div>
-        <p class="muted" id="benchSummary">Loading…</p>
-        <div class="twrap"><table class="dtable" id="benchTable">
-          <thead><tr><th>#</th><th>Task</th><th>Verdict</th><th>Steps</th>
-          <th>Time</th><th>Evidence</th></tr></thead><tbody></tbody>
-        </table></div>
-      </div>
-    </section>
-
-    <!-- SETTINGS VIEW -->
-    <section id="view-settings" hidden>
-      <div class="viewhead">
-        <p class="eyebrow">Control</p>
-        <h1>Settings</h1>
-        <p class="lede">Planner, permissions, and safety.</p>
-      </div>
-      <div class="panel rise">
-        <div class="setrow">
-          <div class="setlbl"><h3>Planner</h3>
-            <p>How DeskDora plans. Auto uses your local model when Ollama is running, and falls back to the built-in planner otherwise.</p></div>
-          <div class="setctl"><div class="row">
-            <select id="cfgPlanner">
-              <option value="auto">Auto (Ollama if available, else built-in)</option>
-              <option value="builtin">Built-in deterministic planner</option>
+              <option value="">Auto</option>
+              <option value="builtin">Built-in</option>
               <option value="ollama">Ollama (local LLM)</option>
             </select>
-            <input type="text" id="cfgModel" placeholder="Ollama model" style="max-width:240px">
-          </div></div>
+            <span class="mono-lab" style="margin-left:10px">Try</span>
+            <button class="chip" data-goal="Organise folder ~/Downloads by type">Tidy a folder</button>
+            <button class="chip" data-goal="Fill the form: name=Ada Lovelace, email=ada@example.org, city=Pune and submit">Fill a form</button>
+            <button class="chip" data-goal="Enable event sounds in Appearance settings">Change a setting</button>
+          </div>
+          <p class="voice" id="voiceIdle">&ldquo;Ready when you are.&rdquo;</p>
         </div>
-        <div class="setrow">
-          <div class="setlbl"><h3>App allow-list</h3>
-            <p>One app per line. Empty means allow all — the agent may only drive the apps listed here.</p></div>
-          <div class="setctl"><textarea id="cfgAllow" placeholder="thunar&#10;gnumeric&#10;xfce4-terminal"></textarea></div>
+
+        <div id="cmdRun" hidden>
+          <div class="mono-lab" id="runKicker">Now running</div>
+          <h1 class="mega goal-head" id="goalHead">—</h1>
+          <div class="step-pill-row"><span class="step-pill" id="stepPill">Planning</span></div>
+          <div class="segbar" id="segBar" aria-hidden="true"></div>
+          <div class="seg-meta"><span id="segText">STEPS 0 / 0</span><span id="segPct"></span></div>
+          <p class="voice" id="voiceRun">&ldquo;Working on it.&rdquo;</p>
+          <button class="ghost-btn" id="runAgainBtn" hidden>Run another task</button>
         </div>
-        <div class="setrow">
-          <div class="setlbl"><h3>Sandbox / VM mode</h3>
-            <p>Recommended while you evaluate DeskDora.</p></div>
-          <div class="setctl"><label class="switch"><input type="checkbox" id="cfgSandbox"><span class="track"></span></label></div>
-        </div>
-        <div class="note">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
-          <span>Confirmations before delete / send / submit / install are always on and cannot be disabled.</span>
-        </div>
-        <div class="row" style="margin-top:18px"><button class="primary" id="cfgSave">Save settings</button>
-        <span class="muted small" id="cfgMsg"></span></div>
       </div>
-    </section>
+
+      <div class="col5">
+        <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">INSTRUMENT</span><span class="rule"></span></div>
+        <div class="panel instrument">
+          <div class="irow"><span class="ilab">Action now</span><span class="ival" id="insAction">Standby</span></div>
+          <div class="irow"><span class="ilab">Target app</span><span class="ival" id="insApp">—</span></div>
+          <div class="irow"><span class="ilab">Window</span><span class="ival" id="insWindow">—</span></div>
+          <div class="capblock">
+            <div class="cap-top"><span class="ilab">Steps</span>
+              <span class="cap-num"><span id="capDone">0</span><span class="cap-den"> / <span id="capTotal">0</span></span></span></div>
+            <div class="capbar"><i id="capFill"></i></div>
+          </div>
+          <div class="nextblock">
+            <div class="ilab">Next actions</div>
+            <ol class="nextlist" id="nextList"><li class="dim">Nothing in flight.</li></ol>
+          </div>
+          <div class="irow last"><span class="ilab">Planner</span><span class="ival mono-v" id="insPlanner">—</span></div>
+        </div>
+      </div>
+
+      <div class="col12">
+        <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">LIVE LOG</span><span class="rule"></span><span class="sec-note">EVERY STEP, AS IT HAPPENS</span></div>
+        <div class="timeline" id="feed"><div class="tl-empty">No run yet — give DeskDora a task above.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= ACTION LOG VIEW ======================= -->
+  <section id="view-log" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ACTION LOG</span><span class="rule"></span><span class="sec-note">NOTHING THE AGENT DOES IS INVISIBLE</span></div>
+    <h2 class="view-head">Every run,<br>every step<span class="lime-dot">.</span></h2>
+    <div id="runsList"><div class="skl sklrow"></div><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
+
+    <div id="replayWrap" hidden style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">REPLAY</span><span class="rule"></span><span class="sec-note" id="replayTitle">—</span></div>
+      <div class="replay-grid">
+        <div class="replay-shot">
+          <img id="replayImg" alt="Run screenshot">
+          <div class="shot-nav">
+            <button class="mini-btn" id="shotPrev">&larr; PREV</button>
+            <span class="shot-lab" id="shotLabel">—</span>
+            <button class="mini-btn" id="shotNext">NEXT &rarr;</button>
+          </div>
+          <div class="fromrun">
+            <input type="text" id="fromRunName" placeholder="Save this run as a routine — name it">
+            <button class="mini-btn" id="fromRunSave">SAVE AS ROUTINE</button>
+            <span class="shot-lab" id="fromRunMsg"></span>
+          </div>
+        </div>
+        <div class="timeline" id="replayFeed"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= ROUTINES VIEW ======================= -->
+  <section id="view-routines" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ROUTINES</span><span class="rule"></span><span class="sec-note">STORED ONLY ON THIS MACHINE</span></div>
+    <h2 class="view-head">Saved work,<br>one click<span class="lime-dot">.</span></h2>
+    <div id="routineList"><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">NEW ROUTINE</span><span class="rule"></span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Name</span>
+          <input type="text" id="routineName" placeholder="e.g. Morning tidy"></div>
+        <div class="frow2"><span class="mono-lab">Goal</span>
+          <input type="text" id="routineGoal" placeholder="The task, in plain words"></div>
+        <div class="frow2"><span class="mono-lab">Schedule</span>
+          <input type="text" id="routineSchedule" placeholder="Cron — optional, e.g. 0 9 * * 1">
+          <span class="hint">Five-field cron. Leave empty to run only on demand.</span></div>
+        <div class="frow2"><span class="mono-lab"></span>
+          <span><button class="pill-btn lime" id="routineSave">SAVE ROUTINE</button></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= BENCHMARK VIEW ======================= -->
+  <section id="view-benchmark" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">BENCHMARK</span><span class="rule"></span><span class="sec-note">EXTERNAL END-STATE ASSERTIONS ONLY</span></div>
+    <h2 class="view-head">Measured,<br>not promised<span class="lime-dot">.</span></h2>
+    <div class="kpi-strip">
+      <div class="kpi"><div class="kpi-num lime-n" id="kpiPass">—</div><div class="kpi-lab">Tasks passed</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpiFail">—</div><div class="kpi-lab">Tasks failed</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpiVerified">—</div><div class="kpi-lab">Assertion-verified</div></div>
+    </div>
+    <div class="scorebar"><i id="scoreFill"></i></div>
+    <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">TASKS</span><span class="rule"></span><span class="sec-note" id="benchNote">—</span></div>
+    <div id="benchRows"><div class="skl sklbar"></div><div class="skl sklbar"></div><div class="skl sklbar"></div></div>
+  </section>
+
+  <!-- ======================= SETTINGS VIEW ======================= -->
+  <section id="view-settings" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">SETTINGS</span><span class="rule"></span></div>
+    <h2 class="view-head">Configuration<span class="lime-dot">.</span></h2>
+    <div class="form-rows">
+      <div class="frow2"><span class="mono-lab">Planner</span>
+        <span><select id="cfgPlanner" aria-label="Planner">
+          <option value="auto">Auto (Ollama if available, else built-in)</option>
+          <option value="builtin">Built-in deterministic planner</option>
+          <option value="ollama">Ollama (local LLM)</option>
+        </select></span></div>
+      <div class="frow2"><span class="mono-lab">Ollama model</span>
+        <input type="text" id="cfgModel" placeholder="qwen2.5:1.5b"></div>
+      <div class="frow2"><span class="mono-lab">App allow-list</span>
+        <textarea id="cfgAllow" placeholder="One app per line — empty means allow all"></textarea>
+        <span class="hint">The agent may only launch apps on this list. Empty = allow all.</span></div>
+      <div class="frow2"><span class="mono-lab">Sandbox / VM mode</span>
+        <label class="switch"><input type="checkbox" id="cfgSandbox"><i></i></label>
+        <span class="hint">Recommended while you evaluate DeskDora.</span></div>
+      <div class="frow2"><span class="mono-lab">Confirmations</span>
+        <span class="set-note">Before delete / send / submit / install — always on, cannot be disabled.</span></div>
+      <div class="frow2"><span class="mono-lab"></span>
+        <span><button class="pill-btn lime" id="cfgSave">SAVE SETTINGS</button>
+        <span class="shot-lab" id="cfgMsg" style="margin-left:12px"></span></span></div>
+    </div>
+  </section>
   </main>
-  </div>
 </div>
 
-<!-- CONFIRMATION MODAL -->
-<div class="modal" id="confirmModal">
-  <div class="modalBox">
-    <div class="mhead">
-      <div class="warnBadge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
-      <h2>Confirmation needed</h2>
+<!-- ======================= RUN LOADER ======================= -->
+<div id="loader" hidden>
+  <div class="ld-word">PREPARING</div>
+  <div class="ld-num" id="ldNum">00</div>
+  <div class="ld-sub">READING THE DESKTOP — BUILDING THE PLAN</div>
+</div>
+
+<!-- ======================= CONFIRMATION MODAL ======================= -->
+<div class="modal" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmQ">
+  <div class="modal-panel">
+    <div class="m-eyebrow">CONFIRMATION REQUIRED</div>
+    <p class="m-question" id="confirmQ">Allow DeskDora to do this?</p>
+    <pre class="m-step" id="confirmStep"></pre>
+    <div class="m-actions">
+      <button class="m-confirm" id="confirmYes">Confirm — do it</button>
+      <button class="m-cancel" id="confirmNo">CANCEL — STOP THE RUN</button>
     </div>
-    <p class="muted" style="margin:0">The agent wants to perform an action that needs your approval:</p>
-    <p id="confirmDesc"></p>
-    <pre class="stepjson" id="confirmStep"></pre>
-    <div class="mactions">
-      <button class="goldbtn" id="confirmYes">Allow once</button>
-      <button class="dangerbtn" id="confirmNo">Deny &amp; stop</button>
-    </div>
+    <p class="m-note">DESKDORA PAUSES UNTIL YOU ANSWER — NO ANSWER IN 5 MINUTES MEANS NO</p>
   </div>
 </div>
 
@@ -650,135 +662,414 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad2 = (n) => String(n).padStart(2, "0");
+const trunc = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+const capFirst = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+const lowFirst = (s) => s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// ---------- navigation ----------
-document.querySelectorAll(".nav button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".nav button").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    ["run","runs","routines","benchmark","settings"].forEach(v => {
-      const sec = $("#view-" + v);
-      sec.hidden = v !== btn.dataset.view;
-      if (v === btn.dataset.view) {           // replay the entrance animation
-        sec.classList.remove("enter"); void sec.offsetWidth; sec.classList.add("enter");
-      }
-    });
-    window.scrollTo({ top: 0 });
-    if (btn.dataset.view === "runs") loadRuns();
-    if (btn.dataset.view === "routines") loadRoutines();
-    if (btn.dataset.view === "benchmark") loadBenchmark();
-    if (btn.dataset.view === "settings") loadConfig();
-  });
-});
+/* ================= state ================= */
+const S = {
+  view: "run", goal: "", running: false, result: null,
+  plan: [], planTotal: 0, planDone: 0, curIdx: -1, epoch: 0,
+  lastAction: "Standby", plannerMode: "", runId: null,
+  backfilledFor: null, evKeys: new Set(), liveRows: {},
+  routinesCache: [],
+};
+const VIEW_NAMES = {run:"Command", log:"Action Log", routines:"Routines",
+                    benchmark:"Benchmark", settings:"Settings"};
 
-// ---------- example chips ----------
-document.querySelectorAll(".chipbtn").forEach(chip => {
-  chip.addEventListener("click", () => {
-    $("#goalInput").value = chip.dataset.goal || "";
-    $("#goalInput").focus();
-  });
-});
-
-// ---------- status ----------
-function feedLine(ev) {
-  const t = new Date((ev.ts || 0) * 1000).toLocaleTimeString();
-  let cls = "dim", icon = "●", txt = "";
-  if (ev.kind === "step_result") {
-    cls = ev.ok ? "ok" : "err"; icon = ev.ok ? "✓" : "✗";
-    txt = `step ${ev.index}: ` + (ev.ok ? esc(ev.detail || "") : esc(ev.error || ""));
-  } else if (ev.kind === "plan") {
-    cls = "plan"; icon = "◆";
-    txt = `plan ready (${(ev.steps || []).length} steps, ${esc(ev.planner_mode || "")})`;
-  } else if (ev.kind === "confirmation") {
-    cls = "warn"; icon = "!";
-    txt = `confirmation ${ev.approved ? "approved" : "DENIED"}`;
-  } else if (ev.kind === "run_end") {
-    cls = ev.status === "success" ? "ok" : "err";
-    icon = ev.status === "success" ? "✓" : "■";
-    txt = `<b>run finished: ${esc(ev.status)}</b> ${esc(ev.answer || ev.reason || "")}`;
-  } else {
-    txt = esc(ev.kind);
-  }
-  return `<span class="ftime">${t}</span><span class="fdot ${cls}">${icon}</span>` +
-         `<span class="ftext">${txt}</span>`;
+/* ================= clock ================= */
+function tickClock() {
+  $("#clock").textContent = new Date().toLocaleTimeString("en-GB");
 }
+setInterval(tickClock, 1000); tickClock();
+
+/* ================= navigation (lime wipe) ================= */
+let wiping = false;
+function switchView(name) {
+  if (name === S.view) { activate(name); return; }
+  if (REDUCED || wiping) { activate(name); return; }
+  wiping = true;
+  const w = $("#wipe");
+  w.style.transition = "transform .18s cubic-bezier(.7,0,.3,1)";
+  w.style.transform = "translateX(0)";
+  setTimeout(() => {
+    activate(name);
+    w.style.transition = "transform .27s cubic-bezier(.7,0,.3,1)";
+    w.style.transform = "translateX(102%)";
+    setTimeout(() => { w.style.transition = "none";
+      w.style.transform = "translateX(-102%)"; wiping = false; }, 290);
+  }, 195);
+}
+function activate(name) {
+  S.view = name;
+  document.querySelectorAll(".rnav").forEach(b =>
+    b.classList.toggle("active", b.dataset.view === name));
+  ["run","log","routines","benchmark","settings"].forEach(v => {
+    $("#view-" + v).hidden = v !== name;
+  });
+  $("#tsName").textContent = name === "run"
+    ? (S.goal ? trunc(S.goal, 44) : "Command") : VIEW_NAMES[name];
+  if (name === "log") loadRuns();
+  if (name === "routines") loadRoutines();
+  if (name === "benchmark") loadBenchmark();
+  if (name === "settings") loadConfig();
+}
+document.querySelectorAll(".rnav").forEach(btn =>
+  btn.addEventListener("click", () => switchView(btn.dataset.view)));
+
+/* ================= step / event language ================= */
+function baseName(cmd) {
+  const parts = String(cmd || "").trim().split(/\s+/);
+  if (!parts.length) return "";
+  let first = parts[0].split("/").pop();
+  if ((first === "python3" || first === "python") && parts[1])
+    return parts[1].split("/").pop();
+  return first;
+}
+function stepTargetName(step) {
+  if (step.target && step.target.name) return step.target.name;
+  if (step.target && step.target.role) return step.target.role;
+  return "";
+}
+function describeStep(step) {
+  if (!step) return "—";
+  const t = stepTargetName(step);
+  switch (step.action) {
+    case "launch": return "Launch " + baseName(step.command);
+    case "click": return "Click " + (t ? "'" + t + "'" : "element");
+    case "double_click": return "Double-click " + (t ? "'" + t + "'" : "element");
+    case "click_at": return "Click at " + step.x + ", " + step.y;
+    case "type": return "Type “" + trunc(step.text || "", 26) + "”" +
+      (t ? " into '" + t + "'" : "");
+    case "key": return "Press " + (step.key || "");
+    case "scroll": return "Scroll " + (step.direction || "down");
+    case "wait": return "Wait " + (step.seconds ?? 1) + "s";
+    case "extract": return "Extract " + (step.name || "value");
+    case "read_clipboard": return "Read the clipboard";
+    case "build_sheet": return "Build spreadsheet → " + (step.save_as || "file");
+    case "done": return "Finish";
+    case "fail": return "Give up — " + (step.reason || "");
+    default: return step.action || "step";
+  }
+}
+function countable(steps) {
+  return (steps || []).filter(s => s.action !== "done" && s.action !== "fail");
+}
+function eventRow(ev) {
+  const idx = ev.index != null ? ev.index + 1 : null;
+  switch (ev.kind) {
+    case "run_start": return {cls:"", pill:"RUN",
+      text:"Run started — " + (ev.goal || ""), res:""};
+    case "plan": return {cls:"", pill:"PLAN",
+      text:"Plan ready — " + countable(ev.steps).length + " steps (" +
+        (ev.planner_mode || "") + ")", res:""};
+    case "step_start": return {cls:"live", pill:"STEP " + pad2(idx),
+      text: describeStep(ev.step), res:"···"};
+    case "step_result": return ev.ok
+      ? {cls:"ok", pill:"STEP " + pad2(ev.index + 1),
+         text: ev.detail || "Done", res:"OK"}
+      : {cls:"err", pill:"STEP " + pad2(ev.index + 1),
+         text: ev.error || "Failed", res:"FAIL"};
+    case "confirmation": return {cls:"warn", pill:"CONFIRM",
+      text:"Confirmation " + (ev.approved ? "approved" : "DENIED") +
+        " — " + describeStep(ev.step), res: ev.approved ? "YES" : "NO"};
+    case "target": return {cls:"quiet", pill:"TARGET",
+      text:(ev.element?.role || "") + " '" + (ev.element?.name || "") +
+        "' — " + (ev.element?.app || ""), res:""};
+    case "macro_substeps": return {cls:"quiet", pill:"MACRO",
+      text:"Spreadsheet macro — " + (ev.cells || []).length + " cells entered", res:""};
+    case "replan": return {cls:"warn", pill:"REPLAN",
+      text:"Replanned after step " + (ev.after_step + 1) + " — " + (ev.error || ""), res:""};
+    case "plan_failed": return {cls:"err", pill:"PLAN",
+      text:"Planning failed — " + (ev.error || ""), res:"FAIL"};
+    case "run_end": return {cls: ev.status === "success" ? "ok" : "err",
+      pill:"END", text:"Run finished: " + ev.status +
+        (ev.answer ? " — " + ev.answer : "") +
+        (ev.reason ? " — " + ev.reason : ""), res:(ev.status || "").toUpperCase()};
+    default: return {cls:"quiet", pill:(ev.kind || "").toUpperCase().slice(0, 7),
+      text: ev.kind || "", res:""};
+  }
+}
+function rowHTML(ev) {
+  const r = eventRow(ev);
+  const t = ev.ts ? new Date(ev.ts * 1000).toLocaleTimeString("en-GB") : "--:--:--";
+  return `<span class="tl-time">${t}</span><span class="tl-pill">${esc(r.pill)}</span>` +
+    `<span class="tl-text">${esc(r.text)}</span><span class="tl-res">${esc(r.res)}</span>`;
+}
+function makeRow(ev, animate) {
+  const r = eventRow(ev);
+  const el = document.createElement("div");
+  el.className = "tl-row " + r.cls + (animate ? " feedIn" : "");
+  el.innerHTML = rowHTML(ev);
+  return el;
+}
+
+/* ================= run UI ================= */
+function resetRunUI(goal) {
+  S.goal = goal; S.plan = []; S.planTotal = 0; S.planDone = 0;
+  S.curIdx = -1; S.result = null; S.evKeys.clear(); S.liveRows = {};
+  S.lastAction = "Planning";
+  $("#cmdIdle").hidden = true; $("#cmdRun").hidden = false;
+  $("#goalHead").textContent = goal;
+  $("#runKicker").textContent = "Now running";
+  const pill = $("#stepPill");
+  pill.textContent = "Planning"; pill.className = "step-pill";
+  $("#segBar").innerHTML = ""; $("#segText").textContent = "STEPS 0 / 0";
+  $("#segPct").textContent = "";
+  $("#voiceRun").innerHTML = "&ldquo;Working on it.&rdquo;";
+  $("#runAgainBtn").hidden = true;
+  $("#feed").innerHTML = "";
+  $("#insAction").textContent = "Planning";
+  $("#insApp").textContent = "—"; $("#insWindow").textContent = "—";
+  updateCapacity(); updateNext();
+  if (S.view === "run") $("#tsName").textContent = trunc(goal, 44);
+}
+function updateCapacity() {
+  $("#capDone").textContent = S.planDone;
+  $("#capTotal").textContent = S.planTotal;
+  $("#capFill").style.width =
+    S.planTotal ? (S.planDone / S.planTotal * 100) + "%" : "0%";
+  $("#segText").textContent = "STEPS " + S.planDone + " / " + S.planTotal;
+  $("#segPct").textContent =
+    S.planTotal ? Math.round(S.planDone / S.planTotal * 100) + "%" : "";
+  const bar = $("#segBar");
+  [...bar.children].forEach((seg, i) => {
+    seg.className = i < S.planDone ? "done" : (i === S.curIdx ? "now" : "");
+  });
+}
+function buildSegbar() {
+  const bar = $("#segBar"); bar.innerHTML = "";
+  for (let i = 0; i < S.planTotal; i++) bar.appendChild(document.createElement("i"));
+  updateCapacity();
+}
+function updateNext() {
+  const list = $("#nextList");
+  const upcoming = S.plan.slice(S.curIdx + 1, S.curIdx + 6);
+  if (!upcoming.length) {
+    list.innerHTML = S.running
+      ? "<li class='dim'>Nothing queued — finishing.</li>"
+      : "<li class='dim'>Nothing in flight.</li>";
+    return;
+  }
+  list.innerHTML = upcoming.map(s =>
+    `<li>${esc(describeStep(s))}</li>`).join("");
+}
+function setVoice(html) { $("#voiceRun").innerHTML = html; }
+
+function handleEvent(ev, fromLog) {
+  if (!ev || !ev.kind) return;
+  const key = (ev.ts || "") + "|" + ev.kind + "|" + (ev.index ?? "") + "|" +
+    (ev.detail || ev.error || "");
+  if (S.evKeys.has(key)) return;
+  S.evKeys.add(key);
+
+  const feed = $("#feed");
+  const addRow = (animate) => {
+    if (feed.querySelector(".tl-empty")) feed.innerHTML = "";
+    const el = makeRow(ev, animate && !fromLog);
+    feed.appendChild(el); feed.scrollTop = feed.scrollHeight;
+    return el;
+  };
+
+  switch (ev.kind) {
+    case "run_start":
+      S.plan = []; S.planTotal = 0; S.planDone = 0; S.curIdx = -1;
+      S.liveRows = {}; feed.innerHTML = "";
+      addRow(true); break;
+    case "plan":
+      S.epoch++; S.plan = countable(ev.steps); S.planTotal = S.plan.length;
+      S.planDone = 0; S.curIdx = -1; S.liveRows = {};
+      buildSegbar(); updateNext(); addRow(true); break;
+    case "step_start": {
+      S.curIdx = ev.index;
+      S.lastAction = describeStep(ev.step);
+      $("#insAction").textContent = S.lastAction;
+      const pill = $("#stepPill");
+      pill.textContent = "Step " + pad2(ev.index + 1) + " / " + pad2(S.planTotal) +
+        " — " + describeStep(ev.step);
+      pill.className = "step-pill";
+      setVoice("&ldquo;Now — " + esc(lowFirst(describeStep(ev.step))) + ".&rdquo;");
+      updateCapacity(); updateNext();
+      S.liveRows[S.epoch + ":" + ev.index] = addRow(true);
+      break; }
+    case "step_result": {
+      if (ev.ok) S.planDone = Math.max(S.planDone, ev.index + 1);
+      S.lastAction = ev.ok ? (ev.detail || "Done") : ("Failed — " + (ev.error || ""));
+      $("#insAction").textContent = trunc(S.lastAction, 90);
+      if (ev.ok) setVoice("&ldquo;" + esc(capFirst(trunc(ev.detail || "Done", 110))) + ".&rdquo;");
+      const row = S.liveRows[S.epoch + ":" + ev.index];
+      if (row) { row.className = "tl-row " + (ev.ok ? "ok" : "err");
+        row.innerHTML = rowHTML(ev); }
+      else addRow(true);
+      updateCapacity();
+      break; }
+    case "target":
+      if (ev.element) {
+        if (ev.element.app) $("#insApp").textContent = ev.element.app;
+        if (ev.element.window) $("#insWindow").textContent = ev.element.window;
+      }
+      break;  // instrument only — too frequent for the timeline
+    case "confirmation":
+      addRow(true);
+      if (!ev.approved)
+        setVoice("&ldquo;You said no, so I stopped before that step.&rdquo;");
+      break;
+    case "run_end":
+      addRow(true); break;
+    default:
+      addRow(true);
+  }
+}
+
+async function backfill(runId) {
+  if (!runId || S.backfilledFor === runId) return;
+  try {
+    const data = await (await fetch("/api/runs/" + runId)).json();
+    S.backfilledFor = runId;
+    $("#feed").innerHTML = ""; S.evKeys.clear(); S.liveRows = {};
+    (data.events || []).forEach(ev => handleEvent(ev, true));
+  } catch (e) { /* log not ready yet */ }
+}
+
+/* ================= status polling ================= */
 async function pollStatus() {
   try {
     const st = await (await fetch("/api/status")).json();
     const running = !!st.state.running;
-    document.body.classList.toggle("is-running", running);
-    $("#runProgress").classList.toggle("show", running);
-    // sidebar status + session card
-    const pill = $("#statusPill"), dot = $("#sessDot"), scDot = $("#scDot");
-    const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-    if (running) {
-      pill.innerHTML = "<span class='dot'></span>running";
-      pill.className = "pill run";
-      $("#sessState").textContent = "Running";
-      dot.className = "bigdot run"; scDot.className = "sc-dot run";
+    const wasRunning = S.running;
+    S.running = running;
+    S.result = st.state.result || S.result;
+    if (st.state.goal && !S.goal) {           // page loaded mid-run
+      S.goal = st.state.goal;
+      $("#cmdIdle").hidden = true; $("#cmdRun").hidden = false;
+      $("#goalHead").textContent = S.goal;
+      if (S.view === "run") $("#tsName").textContent = trunc(S.goal, 44);
+    }
+    if (st.state.run_dir)
+      S.runId = st.state.run_dir.split("/").filter(Boolean).pop();
+
+    // state pill / rail
+    const pill = $("#statePill"), pillTxt = $("#statePillTxt");
+    const dot = $("#railDot"), railState = $("#railState");
+    let cls = "", label = "IDLE", dotCls = "rail-dot";
+    if (st.pending_confirmation) {
+      cls = "wait"; label = "AWAITING CONFIRMATION"; dotCls += " wait";
+    } else if (running) {
+      cls = "run"; label = "RUNNING"; dotCls += " run";
     } else if (st.state.result) {
       const s = st.state.result.status;
-      pill.innerHTML = "<span class='dot'></span>" + esc(s);
-      pill.className = "pill " + (s === "success" ? "on" : "bad");
-      $("#sessState").textContent = cap(s);
-      dot.className = "bigdot " + (s === "success" ? "ok" : "bad");
-      scDot.className = "sc-dot " + (s === "success" ? "ok" : "bad");
-    } else {
-      pill.innerHTML = "<span class='dot'></span>idle";
-      pill.className = "pill";
-      $("#sessState").textContent = "Idle";
-      dot.className = "bigdot"; scDot.className = "sc-dot";
+      label = (s || "DONE").toUpperCase();
+      cls = s === "success" ? "ok" :
+            (s === "blocked" || s === "killed") ? "wait" : "bad";
+      dotCls += s === "success" ? " ok" :
+            (s === "blocked" || s === "killed") ? " wait" : " bad";
     }
+    pill.className = "state-pill " + cls; pillTxt.textContent = label;
+    dot.className = dotCls;
+    railState.innerHTML = "AGENT<br>" +
+      (label === "AWAITING CONFIRMATION" ? "WAITING" : label);
+    $("#railKill").className = "rail-kill" + (st.kill_tripped ? " tripped" : "");
+    $("#railKill").innerHTML = st.kill_tripped ? "KILL<br>TRIPPED" : "KILL<br>READY";
+    $("#pullTab").classList.toggle("tripped", !!st.kill_tripped);
+
     const suffix = st.config.planner !== "builtin"
-      ? (st.ollama_available ? " · ollama up" : " · ollama down") : "";
-    $("#plannerPill").textContent =
-      "planner: " + (st.state.planner_mode || st.config.planner) + suffix;
-    $("#sessPlanner").textContent =
-      (st.state.planner_mode || st.config.planner) + suffix;
-    $("#sessResult").textContent = st.state.result ? st.state.result.status : "—";
-    $("#runGoal").textContent = st.state.goal || "—";
-    // feed
-    const ev = st.last_event;
-    if (ev) {
-      const feed = $("#feed");
-      if (feed.dataset.lastTs !== String(ev.ts || "") + ev.kind) {
-        feed.dataset.lastTs = String(ev.ts || "") + ev.kind;
-        if (feed.querySelector(".empty")) feed.innerHTML = "";
-        const line = document.createElement("div");
-        line.className = "frow feedIn";
-        line.innerHTML = feedLine(ev);
-        feed.appendChild(line); feed.scrollTop = feed.scrollHeight;
+      ? (st.ollama_available ? " · OLLAMA UP" : " · OLLAMA DOWN") : "";
+    const pm = (st.state.planner_mode || st.config.planner || "").toUpperCase();
+    $("#plannerPill").textContent = "PLANNER " + pm + suffix;
+    $("#insPlanner").textContent = pm + suffix;
+    S.plannerMode = st.state.planner_mode || st.config.planner;
+
+    $("#runBtn").disabled = running;
+
+    if (st.last_event) handleEvent(st.last_event, false);
+
+    // run finished: settle the composition + complete the timeline
+    if (wasRunning && !running && st.state.result) {
+      const r = st.state.result;
+      const pill2 = $("#stepPill");
+      $("#runKicker").textContent = "Run finished";
+      if (r.status === "success") {
+        pill2.textContent = "Complete — " + S.planDone + " / " + S.planTotal + " steps";
+        pill2.className = "step-pill done";
+        setVoice("&ldquo;Done" + (r.answer ? " — " + esc(r.answer) : "") +
+          ". The full story is in the log.&rdquo;");
+      } else if (r.status === "blocked") {
+        pill2.textContent = "Blocked — confirmation denied";
+        pill2.className = "step-pill blocked";
+      } else {
+        pill2.textContent = "Stopped — " + (r.status || "failed");
+        pill2.className = "step-pill failed";
+        if (r.reason) setVoice("&ldquo;I stopped — " + esc(r.reason) + ".&rdquo;");
       }
+      $("#runAgainBtn").hidden = false;
+      if (S.runId) { S.backfilledFor = null; backfill(S.runId); }
     }
+    if (running && S.runId && S.backfilledFor !== S.runId &&
+        !S.evKeys.size) backfill(S.runId);
+
     // confirmation modal
     const modal = $("#confirmModal");
     if (st.pending_confirmation) {
+      const p = st.pending_confirmation;
       modal.classList.add("open");
-      modal.dataset.cid = st.pending_confirmation.id;
-      $("#confirmDesc").textContent = st.pending_confirmation.description || "Destructive action";
-      $("#confirmStep").textContent = JSON.stringify(st.pending_confirmation.step, null, 2);
+      modal.dataset.cid = p.id;
+      $("#confirmQ").textContent =
+        "Allow DeskDora to " + lowFirst(describeStep(p.step)) + "?";
+      $("#confirmStep").textContent =
+        (p.description ? p.description + "\n" : "") +
+        JSON.stringify(p.step, null, 2);
+      setVoice("&ldquo;I've paused — the next step needs your word first.&rdquo;");
     } else modal.classList.remove("open");
   } catch (e) { /* server busy; next poll retries */ }
 }
 setInterval(pollStatus, 1200); pollStatus();
 
-// ---------- run controls ----------
-$("#runBtn").addEventListener("click", async () => {
-  const goal = $("#goalInput").value.trim();
-  if (!goal) return;
-  $("#feed").innerHTML = ""; delete $("#feed").dataset.lastTs;
+/* ================= run controls ================= */
+function playLoader() {
+  if (REDUCED) return;
+  const loader = $("#loader"), num = $("#ldNum");
+  loader.hidden = false;
+  const t0 = performance.now(), dur = 720;
+  (function frame(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    num.textContent = pad2(Math.round(p * 100));
+    if (p < 1 && !loader.hidden) requestAnimationFrame(frame);
+    else loader.hidden = true;
+  })(t0);
+}
+async function startGoal(goal, planner) {
   const body = { goal };
-  const p = $("#plannerSelect").value; if (p) body.planner = p;
+  if (planner) body.planner = planner;
   const res = await fetch("/api/run", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
-  if (!res.ok) alert("Could not start: " + (await res.text()));
-  else $("#goalInput").value = "";   // clear so stale text can't be re-sent
+  if (!res.ok) { alert("Could not start: " + (await res.text())); return; }
+  S.backfilledFor = null;
+  resetRunUI(goal);
+  playLoader();
   pollStatus();
+}
+$("#runBtn").addEventListener("click", () => {
+  const goal = $("#goalInput").value.trim();
+  if (!goal) return;
+  $("#goalInput").value = "";
+  startGoal(goal, $("#plannerSelect").value);
 });
 $("#goalInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("#runBtn").click();
 });
-$("#killBtn").addEventListener("click", async () => {
+document.querySelectorAll(".chip").forEach(chip =>
+  chip.addEventListener("click", () => {
+    $("#goalInput").value = chip.dataset.goal; $("#goalInput").focus();
+  }));
+$("#runAgainBtn").addEventListener("click", () => {
+  $("#cmdRun").hidden = true; $("#cmdIdle").hidden = false;
+  S.goal = ""; S.result = null;
+  if (S.view === "run") $("#tsName").textContent = "Command";
+  $("#goalInput").focus();
+});
+$("#pullTab").addEventListener("click", async () => {
   await fetch("/api/kill", { method: "POST" });
   pollStatus();
 });
@@ -792,64 +1083,99 @@ async function answerConfirm(approved) {
   $("#confirmModal").classList.remove("open");
 }
 
-// ---------- runs / replay ----------
+/* ================= action log / replay ================= */
 let replayShots = [], replayIdx = 0, replayRunId = "";
+function runStamp(id) {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(id || "");
+  return m ? `${m[1]}-${m[2]}-${m[3]}<br>${m[4]}:${m[5]}:${m[6]}` : esc(id);
+}
 async function loadRuns() {
   const el = $("#runsList");
   el.innerHTML = "<div class='skl sklrow'></div><div class='skl sklrow'></div><div class='skl sklrow'></div>";
   const runs = await (await fetch("/api/runs")).json();
-  if (!runs.length) { el.innerHTML = "<p class='muted' style='margin:4px 0'>No runs yet.</p>"; return; }
-  el.innerHTML = "<div class='twrap'><table class='dtable'><thead><tr><th>Goal</th><th>Status</th><th>Planner</th><th></th></tr></thead><tbody>" +
-    runs.map(r => `<tr><td class="goal">${esc(r.goal)}</td>
-      <td><span class="chip ${esc(r.status)}">${esc(r.status)}</span></td>
-      <td class="mono-sm">${esc(r.planner_mode)}</td>
-      <td class="tright"><button class="ghost" onclick="openReplay('${esc(r.id)}')">Replay</button></td></tr>`).join("") +
-    "</tbody></table></div>";
+  if (!runs.length) {
+    el.innerHTML = "<div class='tl-empty' style='border-top:1px solid var(--line)'>No runs yet.</div>";
+    return;
+  }
+  el.innerHTML = runs.map(r => `
+    <button class="runrow" onclick="openReplay('${esc(r.id)}')">
+      <span class="rr-time">${runStamp(r.id)}</span>
+      <span class="rr-goal">${esc(r.goal)}</span>
+      <span class="rr-planner">${esc(r.planner_mode)}</span>
+      <span class="pill st-${esc(r.status)}">${esc(r.status.toUpperCase())}</span>
+      <span class="rr-arrow">&rarr;</span>
+    </button>`).join("");
 }
 async function openReplay(id) {
   replayRunId = id;
   const data = await (await fetch("/api/runs/" + id)).json();
-  replayShots = data.screenshots; replayIdx = 0;
-  $("#replayCard").hidden = false;
-  $("#replayTitle").textContent = "Replay — " + id;
-  $("#replayFeed").innerHTML = data.events.map(e =>
-    `<div class="frow">${feedLine(e)}</div>`).join("");
+  replayShots = data.screenshots || []; replayIdx = 0;
+  $("#replayWrap").hidden = false;
+  $("#replayTitle").textContent = id.toUpperCase();
+  $("#replayFeed").innerHTML = (data.events || []).map(ev => {
+    const el = makeRow(ev, false);
+    return el.outerHTML;
+  }).join("");
   showShot();
-  $("#replayCard").scrollIntoView({ behavior: "smooth" });
+  $("#replayWrap").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" });
 }
 function showShot() {
-  if (!replayShots.length) return;
+  if (!replayShots.length) {
+    $("#replayImg").removeAttribute("src");
+    $("#shotLabel").textContent = "NO SCREENSHOTS"; return;
+  }
   replayIdx = Math.max(0, Math.min(replayIdx, replayShots.length - 1));
   $("#replayImg").src = `/api/runs/${replayRunId}/screenshots/${replayShots[replayIdx]}`;
-  $("#shotLabel").textContent = `${replayIdx + 1} / ${replayShots.length} — ${replayShots[replayIdx]}`;
+  $("#shotLabel").textContent =
+    pad2(replayIdx + 1) + " / " + pad2(replayShots.length) + " — " + replayShots[replayIdx];
 }
 $("#shotPrev").addEventListener("click", () => { replayIdx--; showShot(); });
 $("#shotNext").addEventListener("click", () => { replayIdx++; showShot(); });
+$("#fromRunSave").addEventListener("click", async () => {
+  const name = $("#fromRunName").value.trim();
+  if (!name || !replayRunId) return;
+  const res = await fetch("/api/routines/from-run", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ name, run_id: replayRunId }) });
+  $("#fromRunMsg").textContent = res.ok ? "SAVED" :
+    "FAILED — " + (await res.text()).slice(0, 60);
+  if (res.ok) $("#fromRunName").value = "";
+});
 
-// ---------- routines ----------
-const boltSvg = "<svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><path d='M13 2L4.5 13.5H11L9.5 22 19 10h-6.5L13 2z'/></svg>";
+/* ================= routines ================= */
 async function loadRoutines() {
-  const grid = $("#routineGrid");
-  grid.innerHTML = "<div class='skl sklcard'></div><div class='skl sklcard'></div><div class='skl sklcard'></div>";
+  const el = $("#routineList");
+  el.innerHTML = "<div class='skl sklrow'></div><div class='skl sklrow'></div>";
   const list = await (await fetch("/api/routines")).json();
-  grid.innerHTML = list.length ? list.map(r => `
-    <div class="routine">
-      <div class="rname"><span class="rtile">${boltSvg}</span>${esc(r.name)}</div>
-      <p class="rgoal">${esc(r.goal)}</p>
-      <div class="rmeta">${r.schedule ? `<span class="tag">🕐 ${esc(r.schedule)}</span>` : ""}<span class="tag">ran <b>${r.run_count || 0}×</b></span></div>
-      <div class="ractions">
-        <button class="primary small" onclick="runRoutine('${esc(r.name)}')">Run now</button>
-        <button class="dangerbtn" onclick="deleteRoutine('${esc(r.name)}')">Delete</button>
+  S.routinesCache = list;
+  el.innerHTML = list.length ? list.map((r, i) => `
+    <div class="rrow">
+      <span class="rr-idx">R—${pad2(i + 1)}</span>
+      <div>
+        <div class="rr-name">${esc(r.name)}</div>
+        <div class="rr-goal">${esc(r.goal)}</div>
+        <div class="rr-meta">${r.schedule ? "CRON " + esc(r.schedule) + " · " : ""}RAN ${r.run_count || 0}&times;</div>
       </div>
-    </div>`).join("") : "<p class='muted' style='margin:4px 0'>No routines yet — create one below, or save a finished run from the Action log.</p>";
+      <div class="rr-actions">
+        <button class="pill-btn lime" onclick="runRoutine('${esc(r.name)}')">RUN NOW</button>
+        <button class="pill-btn ghosty" onclick="deleteRoutine('${esc(r.name)}')">DELETE</button>
+      </div>
+    </div>`).join("")
+    : "<div class='tl-empty' style='border-top:1px solid var(--line)'>No routines yet — create one below, or save a finished run from the Action log.</div>";
 }
 async function runRoutine(name) {
-  const res = await fetch(`/api/routines/${name}/run`, { method: "POST" });
-  if (!res.ok) alert("Could not start routine: " + (await res.text()));
-  document.querySelector('[data-view="run"]').click();
+  const res = await fetch(`/api/routines/${encodeURIComponent(name)}/run`, { method: "POST" });
+  if (!res.ok) { alert("Could not start routine: " + (await res.text())); return; }
+  const r = S.routinesCache.find(x => x.name === name);
+  S.backfilledFor = null;
+  if (r) resetRunUI(r.goal);
+  playLoader();
+  switchView("run");
+  pollStatus();
 }
 async function deleteRoutine(name) {
-  await fetch(`/api/routines/${name}`, { method: "DELETE" }); loadRoutines();
+  await fetch(`/api/routines/${encodeURIComponent(name)}`, { method: "DELETE" });
+  loadRoutines();
 }
 $("#routineSave").addEventListener("click", async () => {
   const body = { name: $("#routineName").value.trim(),
@@ -858,33 +1184,46 @@ $("#routineSave").addEventListener("click", async () => {
   if (!body.name || !body.goal) return alert("Name and goal are required.");
   await fetch("/api/routines", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  $("#routineName").value = ""; $("#routineGoal").value = "";
+  $("#routineSchedule").value = "";
   loadRoutines();
 });
 
-// ---------- benchmark ----------
+/* ================= benchmark ================= */
 async function loadBenchmark() {
   const data = await (await fetch("/api/benchmark")).json();
-  const tbody = document.querySelector("#benchTable tbody");
+  const el = $("#benchRows");
   if (!data.length) {
-    $("#benchBig").textContent = "—";
-    $("#benchSummary").textContent = "No benchmark run recorded yet.";
-    tbody.innerHTML = ""; return;
+    $("#kpiPass").textContent = "—"; $("#kpiFail").textContent = "—";
+    $("#kpiVerified").textContent = "—";
+    $("#benchNote").textContent = "NO BENCHMARK RUN RECORDED YET";
+    el.innerHTML = "<div class='tl-empty' style='border-top:1px solid var(--line)'>No benchmark run recorded yet.</div>";
+    return;
   }
   const passed = data.filter(r => r.verdict === "PASS").length;
-  $("#benchBig").innerHTML = `${passed}<span>/${data.length}</span>`;
-  requestAnimationFrame(() => {
-    $("#benchBarFill").style.width = (passed / data.length * 100) + "%";
-  });
-  $("#benchSummary").textContent =
-    "tasks passed in the reference rig. Every verdict comes from an external " +
-    "end-state assertion — the agent's own claim is never taken as proof.";
-  tbody.innerHTML = data.map((r, i) => `<tr><td class="mono-sm">${i + 1}</td><td class="goal">${esc(r.title)}</td>
-    <td><span class="chip ${r.verdict === "PASS" ? "success" : "failed"}">${esc(r.verdict)}</span></td>
-    <td>${r.steps ?? "—"}</td><td>${r.seconds ?? "—"}s</td>
-    <td class="muted">${esc(r.assertion_detail || "")}</td></tr>`).join("");
+  const failed = data.length - passed;
+  $("#kpiPass").innerHTML = passed + "<span class='kpi-den'>/" + data.length + "</span>";
+  $("#kpiFail").innerHTML = failed + "<span class='kpi-den'>/" + data.length + "</span>";
+  $("#kpiVerified").innerHTML = data.length + "<span class='kpi-den'>/" + data.length + "</span>";
+  $("#benchNote").textContent = "REFERENCE RIG — EVERY VERDICT FROM AN EXTERNAL END-STATE ASSERTION";
+  el.innerHTML = data.map((r, i) => `
+    <div class="brow">
+      <span class="b-idx">B—${pad2(i + 1)}</span>
+      <div>
+        <div class="b-title">${esc(r.title)}</div>
+        <div class="b-cap ${r.verdict === "PASS" ? "" : "fail"}"><i data-w="${r.verdict === "PASS" ? 100 : 6}"></i></div>
+        <div class="b-detail">${esc(r.assertion_detail || "")}</div>
+      </div>
+      <div class="b-nums">${r.steps ?? "—"} STEPS<br>${r.seconds ?? "—"} S</div>
+      <span class="pill st-${r.verdict === "PASS" ? "pass" : "fail"}">${esc(r.verdict)}</span>
+    </div>`).join("");
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    $("#scoreFill").style.width = (passed / data.length * 100) + "%";
+    el.querySelectorAll(".b-cap i").forEach(b => b.style.width = b.dataset.w + "%");
+  }));
 }
 
-// ---------- settings ----------
+/* ================= settings ================= */
 async function loadConfig() {
   const cfg = await (await fetch("/api/config")).json();
   $("#cfgPlanner").value = cfg.planner;
@@ -898,7 +1237,7 @@ $("#cfgSave").addEventListener("click", async () => {
     sandbox_mode: $("#cfgSandbox").checked };
   await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
-  $("#cfgMsg").textContent = "Saved.";
+  $("#cfgMsg").textContent = "SAVED";
   pollStatus();
 });
 </script>

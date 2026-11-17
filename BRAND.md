@@ -1,192 +1,159 @@
-# DeskDora Brand System
+# DeskDora Brand System — Round 3: "Control Room"
 
 The visual identity for DeskDora, rebuilt from scratch in November
-2026 after two earlier attempts were rejected as basic. This version
-starts from published, community-curated palettes (sources below),
-not from colours invented at the keyboard, and it changes the
-product's whole register: out goes the violet-and-amber "AI SaaS"
-look; in comes a deep-sea control room.
+2026 after two earlier identities ("Ink / Iris / Amber", then
+"Deep Current") were rejected as basic. This version is not
+invented at the keyboard and it is not a re-skin: it is built to a
+brief derived from **live visual research** — award-winning work
+opened and studied in a real browser on 2026-11-17 (sources
+below) — and it changes the product's register completely: out
+goes the soft, shadowed, seafoam "AI product" look; in comes a
+**near-black instrument panel** run by typography, hairlines, and
+a single acid accent.
 
-**The idea: "Deep Current."** DeskDora is a calm, powerful presence
-working beneath the surface of your desktop. The interface is deep
-water at night — dark blue-green, quiet, controlled — and the
-brand colour is the current running through it: a seafoam teal
-that means *the agent is present and working for you*. Nothing in
-the UI shouts. State changes are carried by small, exact colour
-signals, the way instruments on a bridge change: one light, one
-meaning.
+**The idea: a control room, not a dashboard.** DeskDora operates
+your whole computer. Its interface should feel like the panel of
+a machine that does serious work: black surfaces, hairline
+divisions, huge exact numerals, one lime signal colour, and a
+human voice — set in serif — that narrates what the agent is
+doing and asks before it does anything irreversible.
 
-## Research sources
+## Research sources (viewed live, 2026-11-17)
 
-Palettes were gathered from the two sources the product owner
-named — Coolors and ColorHunt — on 2026-11-17. Exact hexes below
-were read from the pages listed; nothing is approximated.
+| Reference | What was taken from it |
+|---|---|
+| **Sweet Tape** — Awwwards Site of the Day | Acid lime `#B6FE00` as the single accent on near-black; huge condensed-grotesque headlines; a physical "pull" tab as an interface gesture |
+| **Haulix** logistics dashboard — Dribbble | Near-black instrument panel; hairline dividers; **no drop shadows**; capacity bars ("used / total" fills); severity pills; palette `#040404` `#5C5C5B` `#F4F4F4` `#9E9F9F` `#CEDE62` |
+| **Nixtio** dashboard — Dribbble | Solid black icon rail; oversized headline with lime pills set inline; capsule-segment progress; fat capsule-bar charts; palette `#060807` `#DAF64C` `#A4AF45` |
+| **Grids** by Obys | Three colours only (`#000` `#FFF` `#ECD06F` mustard); the visible grid as a design element; numbered sections; a "00→100" preparing loader |
+| **Perplexity Computer** | A serif display face for the agent's own voice; restraint everywhere else |
+| **Cyera** | Agent work presented as a mission narrative, not a log dump |
 
-| # | Palette | Hexes | Source |
-|---|---|---|---|
-| A | Coolors — "Deep Blue Sea" | `#0B132B` `#1C2541` `#3A506B` `#5BC0BE` `#6FFFE9` | Similar-palettes listing on coolors.co/palette/134074-13315c-0b2545-8da9c4-eef4ed |
-| B | Coolors — the iconic five | `#EF476F` `#FFD166` `#06D6A0` `#118AB2` `#073B4C` | coolors.co/ef476f-ffd166-06d6a0-118ab2-073b4c (Coolors names: Bubblegum Pink, Golden Pollen, Emerald, Ocean Blue, Dark Teal) |
-| C | Coolors — Yale/Oxford/Prussian | `#134074` `#13315C` `#0B2545` `#8DA9C4` `#EEF4ED` | coolors.co/palette/134074-13315c-0b2545-8da9c4-eef4ed |
-| D | Coolors — "Deep Ocean Blue" | `#0A1128` `#001F54` `#034078` `#1282A2` `#FEFCFB` | Similar-palettes listing, same page as A |
-| E | ColorHunt — teal/sage | `#557B83` `#39AEA9` `#A2D5AB` `#E5EFC1` | colorhunt.co/palette/557b8339aea9a2d5abe5efc1 |
+## Colour palette — Option A: "Control-room lime"
 
-Honest research notes: ColorHunt's own pages render their palette
-grids with JavaScript and could not be text-fetched in this
-environment; palette E was verified through its canonical
-ColorHunt palette URL (the hexes are encoded in the URL itself).
-Dribbble's tag pages were unreachable (bot wall, empty response);
-the layout language below — sidebar app shell, generous radii,
-soft layered depth, big confident type — reflects the current
-dashboard idiom visible across Dribbble's web-design tag as known
-to the designer, not a scrape.
-
-**Why this fusion:** A supplies the structure (deep navy surfaces,
-seafoam primary) — maritime, technical, calm. B supplies the
-semantics: four of the most battle-tested signal colours on the
-internet, each already carrying the right psychology (emerald =
-go/done, golden = caution/attention, pink-red = stop/danger,
-ocean blue = information). C contributes the powder-blue muted
-text that keeps long reading comfortable on navy. E confirms the
-teal register is where current palette taste sits. The result is
-fresh against the rejected violet/amber identity (hue family moves
-from ~265° violet to ~174° teal) while every colour remains
-traceable to a published palette.
-
-## Colour palette
-
-### Deep Sea — neutrals (the water)
-
-Tinted blue-green, never pure grey, never violet. Steps marked ◆
-are palette-source colours; the rest are interpolated within the
-same hue family to complete the scale.
+One accent, sparingly. Everything else is black, grey, or white.
 
 | Token | Hex | Use |
 |---|---|---|
-| `abyss` | `#060C16` | App background |
-| `deep-900` | `#0B132B` ◆A | Sidebar, sunken wells |
-| `deep-850` | `#0E1930` | Panel gradient base |
-| `deep-800` | `#14213D` | Cards, raised panels |
-| `deep-750` | `#1C2541` ◆A | Hover surfaces, chips |
-| `deep-700` | `#26355A` | Inset wells, active nav |
-| `line` | `#21304F` | Default borders |
-| `line-strong` | `#3A506B` ◆A | Emphasised borders, table rules |
+| `void` | `#040404` | App background |
+| `rail` | `#060807` | Icon rail, shell chrome (Nixtio) |
+| `panel` | `#0A0B0A` | Instrument panels — one step off the blacks |
+| `panel-2` | `#101110` | Raised rows, inputs, hover |
+| `hairline` | `#5C5C5B` @ 28% | All dividers, borders, grid rules (Haulix) |
+| `hairline-soft` | `#5C5C5B` @ 14% | Secondary rules, timeline spine |
+| `text` | `#F4F4F4` | Primary text |
+| `text-2` | `#9E9F9F` | Secondary text, labels |
+| `text-3` | `#5C5C5B` | Faint text, disabled, placeholders |
+| **`lime`** | **`#CEDE62`** | **THE accent** (Haulix) — a tile, a pill, a progress fill, a dot. Never a wash, never a background field |
+| `lime-live` | `#DAF64C` | The single most-live element only (Nixtio): the executing step |
+| `lime-dim` | `#A4AF45` | Lime at rest: completed segments, quiet brand marks |
+| **`mustard`** | **`#ECD06F`** | **Reserved**: the kill switch / irreversible danger ONLY (Grids) |
+| `ok` | `#06D6A0` | Success — pills only |
+| `bad` | `#EF476F` | Failure / critical — pills only |
 
-### Current — primary brand colour
-
-Seafoam teal: the colour of the agent's presence. It owns the
-primary call-to-action, the logo ring, links, focus rings, active
-navigation, and the running state. Teal sits between blue (trust,
-competence) and green (go, safety) — precisely the two things a
-user must feel about software that operates their computer.
-
-| Token | Hex | Use |
-|---|---|---|
-| `teal-200` | `#A7E8E2` | Light accents, gradient start on dark |
-| `teal-300` | `#8FE3DE` | Wordmark gradient end, highlights |
-| `teal-400` | `#5BC0BE` ◆A | **Primary** — CTA, brand moments |
-| `teal-500` | `#3AA7A3` | CTA hover/pressed |
-| `ocean-500` | `#118AB2` ◆B | Gradient partner, links, info |
-| `ocean-700` | `#073B4C` ◆B | Logo tile gradient end |
-| `aqua-glow` | `#6FFFE9` ◆A | Glow only: running pulse dot, logo desk line |
-| gradient | `135deg, #5BC0BE → #118AB2` | Logo tile, primary CTA, progress |
-| on-teal text | `#04211F` | Text on teal surfaces |
-
-### State colours — semantic, never decorative
-
-| State | Colour | Hex | Source | Meaning |
-|---|---|---|---|---|
-| Idle | Powder | `#8DA9C4` | ◆C | Nothing is happening |
-| Running | Current teal | `#5BC0BE` | ◆A | The agent is acting — watch the feed |
-| Needs confirmation | Golden pollen | `#FFD166` | ◆B | Paused — the agent needs *you* |
-| Success | Emerald | `#06D6A0` | ◆B | Verified done |
-| Danger / kill | Bubblegum red | `#EF476F` | ◆B | Destructive or stopped — kill switch, deny, failures |
-| Info | Ocean blue | `#118AB2` | ◆B | Neutral information, benchmark data |
-
-Text colours: primary `#EDF5F2` (a breath away from C's Mint Cream
-`#EEF4ED`), muted `#8DA9C4` ◆C, faint `#5C7694` (derived).
+Rules that follow from the palette: lime never tints a large
+surface; mustard appears nowhere except the stop gesture and
+irreversible-action warnings; status colours are sampled
+sparingly, as pills, never as panel fills.
 
 ## Typography
 
-- **Typeface: Inter**, bundled locally as woff2 (latin subset,
-  weights 400/500/600/700/800) in `src/deskdora/static/fonts/` —
-  the app never fetches fonts from the network. Inter is the
-  typeface of the current dashboard generation: neutral, exact,
-  with tabular figures for data.
-- **Data: JetBrains Mono** (400/600 woff2, bundled the same way) —
-  activity feed, timestamps, step JSON, benchmark numbers. Data
-  should look engineered, not typed.
-- **Scale:** 30 / 24 / 20 / 17 / 15 / 14 / 13 / 12 / 11 px.
-  Display headings 700 weight, letter-spacing −0.03em. Eyebrow
-  labels 11px, 600, uppercase, letter-spacing 0.14em, teal or
-  muted. Body 14.5px, line-height 1.6.
-- **Wordmark:** "Desk" in primary text, "Dora" in the teal
-  gradient — the capable half of the name carries the current.
+Three voices, each with one job. All bundled locally as woff2 —
+the app never fetches fonts from the network.
+
+- **Display: Oswald** (variable, 400–700) — a condensed grotesque.
+  Headlines, the current task rendered at display size, KPI
+  numerals. Tight tracking (−0.02…−0.04em), uppercase for
+  headlines. Type is the hero: hierarchy comes from size and
+  weight, not colour.
+- **Serif: Newsreader** (variable + italic) — the agent's voice,
+  and nothing else: the confirmation question, and the one-line
+  agent summary on the Run screen. When DeskDora "speaks", it
+  speaks in serif.
+- **UI/body: Inter** (400–800) — controls, prose, tables.
+- **Mono: JetBrains Mono** (400/600) — timestamps, step IDs,
+  paths, section numbers, labels. 11–12px, uppercase,
+  letter-spacing 0.14em.
+
+Scale anchors: run-task headline 56–72px (clamped to fit),
+view headlines 40–56px, KPI numerals 48–64px, modal question
+28–36px serif, body 14.5px.
 
 ## Layout
 
-A true app shell, not a stack of centred cards:
+- **76px solid black icon rail** (`#060807`): logo tile at top;
+  Run / Action log / Routines / Benchmark / Settings as icons
+  with mono micro-labels; agent-state dot and the kill indicator
+  pinned at the bottom. No wide labelled sidebar.
+- **Slim top strip**: the current run's name in large Oswald, a
+  live clock (mono), and the agent state as ONE pill —
+  `IDLE` / `RUNNING` / `AWAITING CONFIRMATION`.
+- **Visible 12-column grid**, 24–32px gutters, hairline dividers;
+  sections numbered `01`–`04` in small mono. The grid is a design
+  element, not an accident.
+- **Run screen = one composition.** Left 7 columns: the current
+  task as an oversized headline (the goal text itself), the
+  current step carried in a lime pill inside the headline area,
+  the big Run control, one segmented capsule progress row (steps
+  done vs remaining). Right 5 columns: ONE dark instrument panel —
+  action being performed now, target app/window, a capacity bar
+  ("Steps 14 / 20"), next actions as a numbered list. Idle, the
+  same composition is the "give a task" state: giant headline
+  prompt, input integrated into the composition (no form card),
+  quick-start chips as pills.
+- **The kill switch breaks the grid — exactly once.** A fixed,
+  full-height pull-tab on the right edge: "PULL TO STOP",
+  mustard-outlined. A physical gesture (Sweet Tape's pull tab),
+  not a corner button. Clickable across its whole area and
+  keyboard-operable.
+- **Activity / Action log**: one timeline — hairline spine, one
+  line per event: mono timestamp, status pill, plain-language
+  action, result. No card per event. The currently-executing row
+  is the only lime-filled row in the product.
+- **Benchmark**: one wide statistics panel — fat capsule bars per
+  task (fill = verdict) and a KPI strip of huge numerals with
+  mono labels, every number carrying its denominator
+  ("20/25 TASKS · 5/5 GATE").
+- **Routines**: pill list, not cards. **Settings**: quiet
+  two-column hairline rows.
+- **Confirmation modal**: a centred black panel; the question in
+  Newsreader serif at 28–36px stating the exact action ("Allow
+  DeskDora to submit this form?"); the step in mono beneath;
+  full-width Confirm (lime) / Cancel (hairline ghost).
 
-- **Sidebar (252px)** — brand lockup, primary navigation with an
-  animated active indicator, and at its foot the agent status card
-  and the kill switch: the two safety elements are always on
-  screen, in the same place, in every view.
-- **Content** — fluid, max 1240px, 28px gutters. Views are
-  composed: the Run view pairs the command panel with a session
-  column; data views use full-width tables and card grids.
-- **Responsive:** sidebar collapses to an icon rail under 1080px
-  and to a bottom bar under 720px; grids stack; nothing overflows.
+## Motion
 
-## Space, radius, elevation
-
-- **Spacing:** 4pt scale — 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40.
-- **Radius:** 8 (chips, small controls), 12 (inputs, buttons),
-  16 (cards), 20 (panels, modal), 999 (pills).
-- **Elevation:** three steps only — flat panels with a 1px line,
-  raised cards (`0 18px 40px rgba(2,6,14,.45)` + top-edge light),
-  and floating (modal) with backdrop blur. Coloured glow is
-  reserved: teal under the primary CTA and the running pulse;
-  nothing else glows.
-- **Texture:** a very subtle ambient gradient mesh (teal and ocean
-  at 5–7% opacity) drifting slowly behind the shell, plus a faint
-  top light line on panels. Tasteful, static-safe, GPU-cheap
-  (transform/opacity only).
-
-## Motion principles
-
-1. Motion explains state: the running pulse, the progress sweep,
-   the feed entry arriving. Decoration-only movement is limited
-   to the ambient background drift.
-2. Everything animates on transform/opacity, 160–320ms,
-   `cubic-bezier(.22,.8,.24,1)`. View changes cross-fade/slide
-   8px. The modal scales from .96 with a fade.
-3. Loading is shown as shimmer skeletons in the shape of the
-   coming content — never spinners alone, never layout jumps.
-4. `prefers-reduced-motion` disables the animation layer
-   entirely, including the ambient drift.
+- **Full-field lime wipe** on view transitions — a lime plane
+  sweeps, the view changes beneath it. The one theatrical gesture,
+  used once per navigation.
+- **"Preparing… 00→100"** run-start loader moment (Grids homage) —
+  fast, under a second, skippable by reality: it yields the moment
+  the plan actually arrives.
+- Capsule bars and progress segments grow from zero on view entry.
+- Timeline rows ease in (opacity/translate, ≤240ms).
+- Nothing bounces. Everything is transform/opacity, GPU-cheap.
+  `prefers-reduced-motion` disables the motion layer entirely,
+  including the wipe and the loader.
 
 ## The logo
 
-Unchanged geometry — it was well drawn — recoloured into Deep
-Current: a rounded tile in the ocean gradient (`#1282A2` ◆D →
-`#073B4C` ◆B), a bold white cursor (the agent's hand), the target
-ring around its tip now in seafoam `#5BC0BE`, and the desk line
-beneath in the `#5BC0BE → #6FFFE9` gradient — the surface lit by
-the current. At 48px the cursor and ring remain the only elements
-that need to read, and both are bold.
-
-Source: `src/deskdora/static/logo.svg`; PNG renders in
+The cursor-and-ring geometry, recoloured to the system and
+flattened: a single lime tile (`#CEDE62` — lime used as a tile is
+the accent's sanctioned form), the cursor, target ring, and desk
+line all in solid `#040404` black. No gradients, no shadows, no
+glow. Source: `src/deskdora/static/logo.svg`; PNG renders in
 `packaging/icons/`.
 
-## Rules
+## The 5 rules
 
-1. Teal means the agent: presence, action, running. If an element
-   is teal and the agent isn't involved, it's wrong.
-2. Gold appears only when the agent is waiting on the user.
-   Emerald only for verified success. Red only for danger.
-3. Gradients are brand moments only: logo, wordmark accent,
-   primary CTA, progress. Never card backgrounds.
-4. Neutrals are always the Deep Sea scale — no pure greys, no
-   violet tint, no second neutral family.
-5. The kill switch is always visible, always in the sidebar foot,
-   always red. It is never styled down for aesthetics.
-6. `prefers-reduced-motion` disables the animation layer entirely.
+1. **One accent, sparingly.** Lime is a tile, a pill, a fill, or a
+   dot — never a wash. Mustard is danger, only.
+2. **No drop shadows.** Hairlines, the solid rail, and scale do
+   the work shadows used to do.
+3. **Instruments, not cards.** Every number has a denominator
+   and a fill; every panel reads like a gauge.
+4. **Type is the hero.** The grid is visible — and broken exactly
+   once, by the pull-tab.
+5. **The agent has a narrative and a serif voice.** It says what
+   it is doing in plain language, and it asks — in serif — before
+   anything irreversible.
