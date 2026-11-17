@@ -309,8 +309,15 @@ class RunManager:
                 self.state["last_event"] = {"ts": time.time(),
                                             "kind": kind, **fields}
                 if kind == "plan":
+                    steps = fields.get("steps") or []
+                    # The trailing "done" marker is not a step the
+                    # user watches execute — the app instrument
+                    # excludes it, and so does this counter.
+                    total = len(steps) - (
+                        1 if steps and steps[-1].get("action") == "done"
+                        else 0)
                     self.progress.update(
-                        {"step_total": len(fields.get("steps") or []),
+                        {"step_total": total,
                          "done": 0, "step_index": 0,
                          "current_action": "Plan ready"})
                 elif kind == "step_start":

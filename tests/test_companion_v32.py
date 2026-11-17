@@ -197,6 +197,10 @@ def _status(state=None, progress=None):
 def test_overlay_idle_hidden():
     assert overlay_state(_status())["visible"] is False
     assert overlay_state(None)["visible"] is False
+    # a halted but EMPTY queue is not work — the overlay stays off
+    halted_empty = _status(progress={"queue_halted": True,
+                                     "queue_total": 0})
+    assert overlay_state(halted_empty)["visible"] is False
 
 
 def test_overlay_running_shows_percent_and_freeze():

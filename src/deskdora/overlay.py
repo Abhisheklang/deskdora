@@ -74,7 +74,7 @@ def overlay_state(status):
             "can_reset": True,
         }
 
-    if progress.get("queue_total") or progress.get("queue_halted"):
+    if progress.get("queue_total"):
         halted = bool(progress.get("queue_halted"))
         qpaused = bool(progress.get("queue_paused"))
         return {
