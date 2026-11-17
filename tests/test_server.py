@@ -48,6 +48,64 @@ def test_run_rejects_empty_goal():
     assert res.status_code == 400
 
 
+def test_queue_api_roundtrip():
+    from deskdora.queue import TaskQueue
+
+    class IdleRunner:
+        def busy(self):
+            return True      # desktop "busy": items stay queued
+
+        def start(self, goal, planner):
+            raise AssertionError("must not start while busy")
+
+        def join(self):
+            return {"status": "success"}
+
+        def kill_tripped(self):
+            return False
+
+    from deskdora import server
+    original = server.MANAGER.queue
+    server.MANAGER.queue = TaskQueue(IdleRunner())
+    try:
+        res = client.post("/api/queue", json={"goal": "  "})
+        assert res.status_code == 400
+        res = client.post("/api/queue",
+                          json={"goal": "Tidy the folder",
+                                "planner": "builtin"})
+        assert res.status_code == 200
+        item_id = res.json()["id"]
+        res = client.get("/api/queue")
+        body = res.json()
+        assert body["queued"] == 1
+        assert body["items"][0]["goal"] == "Tidy the folder"
+        res = client.post("/api/queue/pause")
+        assert res.json()["paused"] is True
+        res = client.post("/api/queue/resume")
+        assert res.json()["paused"] is False
+        res = client.delete(f"/api/queue/{item_id}")
+        assert res.status_code == 200
+        res = client.delete(f"/api/queue/{item_id}")
+        assert res.status_code == 404
+    finally:
+        server.MANAGER.queue = original
+
+
+def test_run_delete(tmp_path, monkeypatch):
+    from deskdora import server
+    run_dir = tmp_path / "20990101-000000-fake-run"
+    run_dir.mkdir()
+    (run_dir / "log.jsonl").write_text("{}\n")
+    monkeypatch.setattr(server, "RUNS_DIR", str(tmp_path))
+    res = client.delete("/api/runs/20990101-000000-fake-run")
+    assert res.status_code == 200
+    assert not run_dir.exists()
+    res = client.delete("/api/runs/20990101-000000-fake-run")
+    assert res.status_code == 404
+    res = client.delete("/api/runs/..%2F..%2Fetc")
+    assert res.status_code in (404, 405)
+
+
 def test_confirmation_404():
     res = client.post("/api/confirmations/nope", json={"approved": True})
     assert res.status_code == 404

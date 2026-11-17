@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -31,6 +32,7 @@ from .planners import (PROVIDER_REGISTRY, OllamaPlanner, PlanError,
                        get_planner, make_provider_planner,
                        validate_custom_provider)
 from .proactive import ProposalStore, ProactiveWatcher
+from .queue import BusyError, TaskQueue
 from .routines import RoutineStore
 from .safety import AllowList, ConfirmationGate, KillSwitch
 from .scheduler import Scheduler
@@ -111,6 +113,32 @@ def provider_state(cfg):
     return out
 
 
+class _ManagerRunner:
+    """Adapter between TaskQueue and RunManager: the queue speaks in
+    plain callables, the manager in HTTP-flavoured methods."""
+
+    def __init__(self, manager):
+        self._m = manager
+
+    def busy(self):
+        return bool(self._m.state["running"])
+
+    def start(self, goal, planner):
+        try:
+            self._m.start_run(goal, planner or None)
+        except HTTPException as exc:
+            raise BusyError(str(exc.detail)) from exc
+
+    def join(self):
+        thread = self._m.thread
+        if thread is not None:
+            thread.join()
+        return self._m.state.get("result")
+
+    def kill_tripped(self):
+        return self._m.kill.is_tripped()
+
+
 class RunManager:
     """Owns the (single) active run, the kill switch, and any pending
     confirmation request."""
@@ -124,6 +152,9 @@ class RunManager:
             "last_event": None, "run_dir": None, "result": None,
         }
         self.kill = KillSwitch()
+        self.queue = TaskQueue(
+            _ManagerRunner(self),
+            os.path.join(DATA_DIR, "queue.json"))
         self.pending = None          # dict with an Event + verdict
         self.routines = RoutineStore()
         self.memory = MemoryStore(os.path.join(DATA_DIR, "memory.json"))
@@ -248,6 +279,9 @@ class RunManager:
 
     def trip_kill(self):
         self.kill.trip()
+        # The kill switch also fences the queue: nothing new starts
+        # until the user explicitly resumes it.
+        self.queue.halt()
         return {"ok": True, "tripped": True}
 
 
@@ -265,6 +299,7 @@ def start_background():
     if _background_started:
         return
     _background_started = True
+    MANAGER.queue.start()
     MANAGER.scheduler.start()
     threading.Thread(target=_watcher_loop, daemon=True,
                      name="deskdora-watcher").start()
@@ -415,6 +450,84 @@ def run_screenshot(run_id: str, name: str):
     if not os.path.isfile(path):
         raise HTTPException(404, "screenshot not found")
     return FileResponse(path, media_type="image/png")
+
+
+@app.delete("/api/runs/{run_id}")
+def run_delete(run_id: str):
+    """Delete one run's history record (its log + screenshots)."""
+    name = os.path.basename(run_id)
+    path = os.path.join(RUNS_DIR, name)
+    if not name or not os.path.isdir(path):
+        raise HTTPException(404, "run not found")
+    if MANAGER.state.get("running") \
+            and MANAGER.state.get("run_dir") == path:
+        raise HTTPException(409, "that run is still in progress")
+    shutil.rmtree(path)
+    return {"ok": True, "deleted": name}
+
+
+# ---------------------------------------------------------------------------
+# Task queue (v3.2): multiple works, executed in order — one desktop
+# has one pointer and one keyboard, so queued tasks take turns.
+# ---------------------------------------------------------------------------
+
+class QueueAddRequest(BaseModel):
+    goal: str
+    planner: str | None = None
+
+
+class QueueMoveRequest(BaseModel):
+    direction: str
+
+
+@app.get("/api/queue")
+def queue_get():
+    return MANAGER.queue.snapshot()
+
+
+@app.post("/api/queue")
+def queue_add(req: QueueAddRequest):
+    try:
+        item = MANAGER.queue.add(req.goal, req.planner)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return item
+
+
+@app.delete("/api/queue/{item_id}")
+def queue_remove(item_id: str):
+    if not MANAGER.queue.remove(item_id):
+        raise HTTPException(404, "no such queued item")
+    return {"ok": True}
+
+
+@app.post("/api/queue/{item_id}/move")
+def queue_move(item_id: str, req: QueueMoveRequest):
+    try:
+        moved = MANAGER.queue.move(item_id, req.direction)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if not moved:
+        raise HTTPException(404, "item cannot be moved")
+    return MANAGER.queue.snapshot()
+
+
+@app.post("/api/queue/pause")
+def queue_pause():
+    MANAGER.queue.pause()
+    return MANAGER.queue.snapshot()
+
+
+@app.post("/api/queue/resume")
+def queue_resume():
+    MANAGER.queue.resume()
+    return MANAGER.queue.snapshot()
+
+
+@app.post("/api/queue/clear")
+def queue_clear():
+    removed = MANAGER.queue.clear()
+    return {"ok": True, "removed": removed}
 
 
 @app.get("/api/routines")
