@@ -861,10 +861,21 @@ function setVoice(html) { $("#voiceRun").innerHTML = html; }
 
 function handleEvent(ev, fromLog) {
   if (!ev || !ev.kind) return;
-  const key = (ev.ts || "") + "|" + ev.kind + "|" + (ev.index ?? "") + "|" +
-    (ev.detail || ev.error || "");
-  if (S.evKeys.has(key)) return;
-  S.evKeys.add(key);
+  // Dedupe key deliberately excludes ts: the same event reaches us twice
+  // (live via /api/status, reconciled via the run log) with different
+  // timestamps. Target events are exempt — they only feed the instrument
+  // panel and must never be swallowed.
+  if (ev.kind !== "target") {
+    const key = ev.kind + "|" + (ev.index ?? "") + "|" +
+      (ev.detail || ev.error || "") + "|" +
+      (ev.ok === undefined ? "" : ev.ok) + "|" +
+      (ev.kind === "plan" ? (ev.steps || []).length : "") + "|" +
+      (ev.kind === "step_start" || ev.kind === "confirmation"
+        ? JSON.stringify(ev.step || {}) : "") + "|" +
+      (ev.kind === "run_end" ? (ev.status || "") : "");
+    if (S.evKeys.has(key)) return;
+    S.evKeys.add(key);
+  }
 
   const feed = $("#feed");
   const addRow = (animate) => {
@@ -965,6 +976,13 @@ async function pollStatus() {
       $("#cmdIdle").hidden = true; $("#cmdRun").hidden = false;
       $("#goalHead").textContent = S.goal;
       if (S.view === "run") $("#tsName").textContent = trunc(S.goal, 44);
+      if (!running && st.state.result && S.runId) {
+        // window was reloaded after the run ended: restore the finished
+        // composition from the run log instead of stranding the user
+        $("#runKicker").textContent = "Run finished";
+        $("#runAgainBtn").hidden = false;
+        backfill(S.runId);
+      }
     }
 
     // state pill / rail

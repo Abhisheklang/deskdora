@@ -109,7 +109,8 @@ class RunManager:
 
         def _on_event(kind, **fields):
             with self.lock:
-                self.state["last_event"] = {"kind": kind, **fields}
+                self.state["last_event"] = {"ts": time.time(),
+                                            "kind": kind, **fields}
 
         def _work():
             planner, mode_label = get_planner(
@@ -142,6 +143,15 @@ class RunManager:
 
 MANAGER = RunManager()
 app = FastAPI(title="DeskDora", version="1.0.0")
+
+
+@app.middleware("http")
+async def _no_store(request, call_next):
+    # The UI is a local app shell: after an upgrade the window must never
+    # be served a stale cached page (WebKitGTK happily caches the old UI).
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 class RunRequest(BaseModel):
