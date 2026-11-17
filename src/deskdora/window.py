@@ -510,12 +510,17 @@ class EdgeLight(Gtk.Window):
         # any reset is healed within one tick (60 ms).
         try:
             import ctypes
-            from gi.repository import GdkX11
             gdk_win = self.get_window()
             if gdk_win is None:
                 return False
-            xid = GdkX11.Window.get_xid(gdk_win)
-            display = GdkX11.Display.get_xdisplay(self.get_display())
+            # Instance methods on the X11 subclasses — the
+            # GdkX11.Window / GdkX11.Display class attributes do
+            # not exist in this GDK build (they are X11Window /
+            # X11Display), and the AttributeError was silently
+            # swallowed here for several releases: the shape was
+            # never applied at all until this was measured live.
+            xid = gdk_win.get_xid()
+            display = self.get_display().get_xdisplay()
             xext = ctypes.CDLL("libXext.so.6")
             xext.XShapeCombineRectangles(
                 ctypes.c_void_p(display), ctypes.c_ulong(xid),
@@ -524,8 +529,11 @@ class EdgeLight(Gtk.Window):
                 ctypes.c_int(0))
             x11 = ctypes.CDLL("libX11.so.6")
             x11.XFlush(ctypes.c_void_p(display))
-        except Exception:
-            pass
+        except Exception as exc:  # never silent again: say it once
+            if not getattr(self, "_shape_warned", False):
+                self._shape_warned = True
+                print(f"DeskDora Edge: click-through shape failed: "
+                      f"{exc!r}", flush=True)
         return False
 
     # -- state ---------------------------------------------------------
