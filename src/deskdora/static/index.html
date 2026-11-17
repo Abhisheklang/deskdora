@@ -530,6 +530,7 @@ select:focus{outline:none;border-color:var(--lime)}
     <div class="ts-name" id="tsName">Command</div>
     <div class="ts-right">
       <span class="ts-planner" id="plannerPill">PLANNER —</span>
+      <span class="state-pill" id="shareChip" hidden style="color:var(--bad);border-color:var(--bad)"><i style="background:var(--bad)"></i><span>SCREEN SHARED</span></span>
       <span class="ts-clock" id="clock">--:--:--</span>
       <span class="state-pill" id="statePill"><i></i><span id="statePillTxt">IDLE</span></span>
     </div>
@@ -857,6 +858,10 @@ select:focus{outline:none;border-color:var(--lime)}
           <span class="shot-lab" id="apiKeyMsg" style="margin-left:12px"></span></span></div>
         <div class="frow2"><span class="mono-lab">MCP server</span>
           <span class="set-note">Connect an MCP client with the command <span class="mono">deskdora-mcp</span> (stdio) — setup in the README.</span></div>
+        <div class="frow2"><span class="mono-lab">Screen share</span>
+          <span><label class="switch"><input type="checkbox" id="shareToggle"><i></i></label>
+          <span class="shot-lab" id="shareState" style="margin-left:12px">OFF</span></span>
+          <span class="hint">A paired companion can watch this screen (view only).</span></div>
       </div>
     </div>
 
@@ -1279,6 +1284,8 @@ async function pollStatus() {
     let cls = "", label = "IDLE", dotCls = "rail-dot";
     if (st.pending_confirmation) {
       cls = "wait"; label = "AWAITING CONFIRMATION"; dotCls += " wait";
+    } else if (running && st.progress && st.progress.paused) {
+      cls = "wait"; label = "PAUSED"; dotCls += " wait";
     } else if (running) {
       cls = "run"; label = "RUNNING"; dotCls += " run";
     } else if (st.state.result && !dismissed) {
@@ -1296,6 +1303,15 @@ async function pollStatus() {
     $("#railKill").className = "rail-kill" + (st.kill_tripped ? " tripped" : "");
     $("#railKill").innerHTML = st.kill_tripped ? "KILL<br>TRIPPED" : "KILL<br>READY";
     $("#pullTab").classList.toggle("tripped", !!st.kill_tripped);
+    const share = st.screen_share || { enabled: false, viewers: 0 };
+    $("#shareChip").hidden = !(share.enabled && share.viewers > 0);
+    const shareSw = $("#shareToggle");
+    if (shareSw && document.activeElement !== shareSw) {
+      shareSw.checked = !!share.enabled;
+      $("#shareState").textContent = share.enabled
+        ? "ON" + (share.viewers ? " · " + share.viewers + " WATCHING" : "")
+        : "OFF";
+    }
 
     const pm = (st.state.planner_mode || st.config.planner || "").toUpperCase();
     const provId = pm.split(":")[0];
@@ -1370,7 +1386,8 @@ async function startGoal(goal, planner) {
   const body = { goal };
   if (planner) body.planner = planner;
   const res = await fetch("/api/run", { method: "POST",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+    headers: {"Content-Type": "application/json",
+              "X-DeskDora-Client": "ui"}, body: JSON.stringify(body) });
   if (!res.ok) { alert("Could not start: " + (await res.text())); return; }
   S.backfilledFor = null;
   resetRunUI(goal);
@@ -2073,6 +2090,12 @@ $("#provSave").addEventListener("click", saveProvider);
 $("#provTest").addEventListener("click", testProvider);
 $("#provFetch").addEventListener("click", fetchModels);
 $("#custAdd").addEventListener("click", addCustom);
+$("#shareToggle").addEventListener("change", async (e) => {
+  await fetch("/api/config", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ screen_share: e.target.checked }) });
+  pollStatus();
+});
 $("#apiKeyGen").addEventListener("click", async () => {
   const res = await fetch("/api/access/key/generate", { method: "POST" });
   const body = await res.json();

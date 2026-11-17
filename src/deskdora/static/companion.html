@@ -65,6 +65,27 @@ pre{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
   font-family:var(--mono);letter-spacing:.3em;text-align:center}
 #pinCard button{margin-top:12px}
 .note{color:var(--text3);font-size:12px;margin-top:10px}
+.bar{height:6px;background:var(--panel2);border-radius:99px;margin-top:12px;
+  overflow:hidden}
+.bar i{display:block;height:100%;background:var(--lime);border-radius:99px;
+  transition:width .5s ease}
+.meta{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  color:var(--text2);margin-top:9px}
+.ctlrow{display:flex;gap:10px;margin-top:12px}
+.ctlrow button{flex:1;padding:12px;font-size:13px}
+.resume{background:var(--lime);color:#040404;border:1px solid var(--lime);
+  font-family:var(--disp);text-transform:uppercase;letter-spacing:.04em}
+.ghostbtn{background:none;color:var(--text);border:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.12em}
+button:disabled{opacity:.35;cursor:default}
+#screenImg{width:100%;display:block;border:1px solid var(--line);
+  border-radius:4px;background:#000}
+.runrow{cursor:pointer}
+.thread{border-top:1px solid var(--line);margin-top:6px;padding-top:8px}
+.thread .tstep{font-size:12.5px;color:var(--text2);padding:3px 0;
+  overflow-wrap:anywhere}
+.thread .tstep b{font-family:var(--mono);font-size:10px;letter-spacing:.08em}
+.ok-t{color:var(--ok)} .bad-t{color:var(--bad)}
 [hidden]{display:none !important}
 </style>
 </head>
@@ -85,8 +106,26 @@ pre{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
   <div class="lab">Agent state</div>
   <span class="pill" id="statePill"><i></i><span id="stateTxt">—</span></span>
   <div class="goal" id="goalText" style="margin-top:12px">No run yet</div>
+  <div class="meta" id="plannerLine">—</div>
+  <div class="bar"><i id="progFill" style="width:0%"></i></div>
+  <div class="meta" id="progLine">—</div>
   <div class="event" id="lastEvent">—</div>
+  <div class="ctlrow">
+    <button class="ghostbtn" id="freezeBtn">FREEZE</button>
+    <button class="resume" id="resumeBtn">RESUME</button>
+    <button class="ghostbtn" id="resetBtn">RESET</button>
+  </div>
+  <div class="meta" id="ctlNote">—</div>
   <button class="stop" id="stopBtn">■ STOP THE AGENT</button>
+</div>
+
+<div class="card" id="screenCard">
+  <div class="lab">Live screen</div>
+  <div id="screenOff" class="event">Screen sharing is off — turn it on in DeskDora Settings → Access.</div>
+  <div id="screenWrap" hidden>
+    <img id="screenImg" alt="Shared desktop screen">
+    <div class="meta" id="screenMeta">VIEW ONLY</div>
+  </div>
 </div>
 
 <div class="card" id="confirmCard" hidden>
@@ -102,8 +141,14 @@ pre{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
   <div id="proposalList"></div>
 </div>
 
+<div class="card" id="mcpCard">
+  <div class="lab">MCP access</div>
+  <div class="event" id="mcpState">—</div>
+  <pre id="mcpConfig"></pre>
+</div>
+
 <div class="card">
-  <div class="lab">Recent runs</div>
+  <div class="lab">History — tap a run for its thread</div>
   <div id="runList"><div class="event">Loading…</div></div>
 </div>
 
@@ -126,15 +171,98 @@ async function post(path, body) {
   if (res.status === 401) { $("#pinCard").hidden = false; throw new Error("pin"); }
   return res;
 }
-$("#pinSave").addEventListener("click", () => {
+async function authSession() {
+  // Exchange the PIN for a session cookie so the screen <img> (which
+  // cannot send headers) is authenticated too.
+  if (!pin()) return;
+  try { await post("/api/companion/auth"); } catch (e) { /* shown */ }
+}
+$("#pinSave").addEventListener("click", async () => {
   sessionStorage.setItem("dd-pin", $("#pinInput").value.trim());
   $("#pinCard").hidden = true;
+  await authSession();
+  screenOn = false;  // re-arm the stream with the fresh cookie
   poll();
 });
+if (pin()) authSession();
 $("#stopBtn").addEventListener("click", async () => {
   try { await post("/api/kill"); } catch (e) { /* pin card shown */ }
   poll();
 });
+$("#freezeBtn").addEventListener("click", async () => {
+  try { await post("/api/pause"); } catch (e) { /* pin card shown */ }
+  poll();
+});
+$("#resumeBtn").addEventListener("click", async () => {
+  try { await post("/api/resume"); } catch (e) { /* pin card shown */ }
+  poll();
+});
+$("#resetBtn").addEventListener("click", async () => {
+  try { await post("/api/reset"); } catch (e) { /* pin card shown */ }
+  poll();
+});
+
+let screenOn = false;
+function updateScreen(share) {
+  const off = $("#screenOff"), wrap = $("#screenWrap");
+  if (!share || !share.enabled) {
+    off.hidden = false; wrap.hidden = true;
+    if (screenOn) { $("#screenImg").removeAttribute("src"); screenOn = false; }
+    return;
+  }
+  off.hidden = true; wrap.hidden = false;
+  if (!screenOn) {
+    $("#screenImg").src = "/api/screen.mjpg?t=" + Date.now();
+    screenOn = true;
+  }
+  $("#screenMeta").textContent = "VIEW ONLY · " + share.viewers +
+    (share.viewers === 1 ? " WATCHING" : " WATCHING");
+}
+$("#screenImg").addEventListener("error", () => {
+  if (screenOn) {
+    $("#screenOff").hidden = false;
+    $("#screenOff").textContent =
+      "Screen stream refused — unlock with the PIN, and check sharing is on in Settings → Access.";
+    $("#screenWrap").hidden = true;
+    screenOn = false;
+  }
+});
+
+let openThreadId = null, runsSig = "";
+async function toggleThread(id) {
+  openThreadId = openThreadId === id ? null : id;
+  document.querySelectorAll(".thread").forEach(t => t.remove());
+  if (!openThreadId) return;
+  await renderThread(id);
+}
+async function renderThread(id) {
+  const host = document.querySelector(`[data-thread="${id}"]`);
+  if (!host) return;
+  const box = document.createElement("div");
+  box.className = "thread";
+  box.innerHTML = "<div class='tstep'>Loading…</div>";
+  host.after(box);
+  try {
+    const d = await (await fetch("/api/runs/" + id)).json();
+    const evs = d.events || [];
+    const start = evs.find(e => e.kind === "run_start") || {};
+    const end = [...evs].reverse().find(e => e.kind === "run_end");
+    let html = `<div class="tstep"><b>GOAL</b> ${esc(start.goal || "")}</div>`;
+    html += `<div class="tstep"><b>MODEL</b> ${esc(d.planner_display || start.planner_mode || "")}</div>`;
+    for (const ev of evs) {
+      if (ev.kind === "plan")
+        html += `<div class="tstep"><b>PLAN</b> ${(ev.steps || []).length} steps</div>`;
+      else if (ev.kind === "step_result")
+        html += `<div class="tstep"><b>STEP ${(ev.index ?? 0) + 1}</b> ` +
+          `<span class="${ev.ok ? "ok-t" : "bad-t"}">${ev.ok ? "DONE" : "FAILED"}</span></div>`;
+    }
+    if (end)
+      html += `<div class="tstep"><b>RESULT</b> ${esc((end.status || "").toUpperCase())}${end.answer ? " — " + esc(end.answer) : ""}</div>`;
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = "<div class='tstep'>Could not load this thread.</div>";
+  }
+}
 $("#approveBtn").addEventListener("click", () => answer(true));
 $("#denyBtn").addEventListener("click", () => answer(false));
 async function answer(approved) {
@@ -199,6 +327,43 @@ async function poll() {
     $("#lastEvent").textContent = describeEvent(st.last_event) +
       (st.kill_tripped ? " · KILL SWITCH TRIPPED" : "");
 
+    const prog = st.progress || {};
+    $("#plannerLine").textContent = prog.planner_display
+      ? "PLANNER " + prog.planner_display.toUpperCase() +
+        (prog.source ? " · VIA " + prog.source.toUpperCase() : "")
+      : "—";
+    $("#progFill").style.width = (prog.percent || 0) + "%";
+    let progTxt = "—";
+    if (prog.running) {
+      progTxt = (prog.step_total
+        ? `STEP ${prog.steps_done}/${prog.step_total} · ${prog.percent}%`
+        : "PLANNING") + (prog.current_action
+        ? " · " + prog.current_action.toUpperCase() : "");
+      if (prog.queue_position)
+        progTxt += ` · QUEUE ${prog.queue_position}/${prog.queue_total}`;
+    } else if (st.state.result) {
+      progTxt = "FINISHED · " +
+        (st.state.result.status || "").toUpperCase();
+    } else if (prog.queue_total) {
+      progTxt = `QUEUE · ${prog.queue_total} WAITING` +
+        (prog.queue_halted ? " · HALTED" : prog.queue_paused
+          ? " · PAUSED" : "");
+    }
+    $("#progLine").textContent = progTxt;
+
+    const fz = $("#freezeBtn"), rs = $("#resumeBtn"), rx = $("#resetBtn");
+    fz.disabled = !(prog.running && !prog.paused);
+    rs.disabled = !(prog.paused || prog.queue_paused ||
+                    prog.queue_halted);
+    rx.disabled = !(!prog.running && st.state.result);
+    $("#ctlNote").textContent = st.kill_tripped
+      ? "KILL TRIPPED — RESUME CONTINUES THE QUEUE; THE STOPPED RUN DOES NOT RESUME"
+      : prog.paused ? "FROZEN — TAKES EFFECT BETWEEN STEPS"
+      : prog.running ? "FREEZE PAUSES AT THE NEXT STEP BOUNDARY"
+      : st.state.result ? "RESET CLEARS THIS RUN BACK TO IDLE"
+      : "IDLE";
+    updateScreen(st.screen_share);
+
     const card = $("#confirmCard");
     if (st.pending_confirmation) {
       pendingId = st.pending_confirmation.id;
@@ -209,10 +374,27 @@ async function poll() {
     } else { pendingId = null; card.hidden = true; }
 
     const runs = await (await fetch("/api/runs")).json();
-    $("#runList").innerHTML = runs.slice(0, 5).map(r =>
-      `<div class="row"><span class="g">${esc(r.goal)}</span>` +
-      `<span class="s">${esc((r.status || "").toUpperCase())}</span></div>`).join("")
-      || "<div class='event'>No runs yet.</div>";
+    const sig = runs.map(r => r.id + r.status).join("|");
+    if (sig !== runsSig) {
+      runsSig = sig;
+      $("#runList").innerHTML = runs.slice(0, 8).map(r =>
+        `<div class="row runrow" data-thread="${esc(r.id)}" ` +
+        `onclick="toggleThread('${esc(r.id)}')">` +
+        `<span class="g">${esc(r.goal)}<br>` +
+        `<span class="s" style="color:var(--text3)">${esc(r.planner_display || r.planner_mode || "")}</span></span>` +
+        `<span class="s">${esc((r.status || "").toUpperCase())}</span></div>`).join("")
+        || "<div class='event'>No runs yet.</div>";
+      if (openThreadId && !runs.some(r => r.id === openThreadId))
+        openThreadId = null;
+      else if (openThreadId) renderThread(openThreadId);
+    }
+
+    const mcp = await (await fetch("/api/mcp")).json();
+    $("#mcpState").textContent = mcp.available
+      ? "SERVER AVAILABLE · STDIO · RUNS VIA MCP APPEAR HERE AND CAN BE STOPPED HERE"
+      : "SERVER NOT FOUND ON THIS MACHINE";
+    $("#mcpConfig").textContent =
+      JSON.stringify(mcp.config, null, 2);
 
     const proposals = await (await fetch("/api/proposals")).json();
     const open = proposals.filter(p => p.status === "proposed");
