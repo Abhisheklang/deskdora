@@ -1,0 +1,4 @@
+#!/bin/sh
+# DeskDora MCP server — runs the stdio MCP server inside DeskDora's
+# private venv, for MCP clients (Claude Desktop, IDEs, other agents).
+exec /opt/deskdora/venv/bin/python -m deskdora.mcp_server "$@"

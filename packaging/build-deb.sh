@@ -49,6 +49,7 @@ echo "    wheels: $(ls "$WH" | wc -l)"
 mkdir -p "$STAGE/usr/bin"
 install -m 0755 "$PKG/bin/deskdora" "$STAGE/usr/bin/deskdora"
 install -m 0755 "$PKG/bin/deskdora-launcher" "$STAGE/usr/bin/deskdora-launcher"
+install -m 0755 "$PKG/bin/deskdora-mcp" "$STAGE/usr/bin/deskdora-mcp"
 
 # ---- desktop entry + icons ----------------------------------------------------
 mkdir -p "$STAGE/usr/share/applications"
