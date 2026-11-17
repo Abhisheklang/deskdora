@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 
 # Element names / key actions that mark a step as destructive.
 DESTRUCTIVE_NAME_HINTS = (
@@ -67,6 +68,37 @@ class KillSwitch:
 
     def is_tripped(self):
         return self._tripped.is_set() or os.path.exists(self.stop_file)
+
+
+class PauseGate:
+    """Cooperative pause, checked by the agent between steps.
+
+    Pausing never freezes a half-executed action: the current step
+    finishes, then the run waits at the boundary.  A kill that lands
+    while paused still aborts the run — wait() returns False and the
+    agent treats it exactly like a kill at any other boundary."""
+
+    def __init__(self):
+        self._paused = threading.Event()
+
+    def request(self):
+        self._paused.set()
+
+    def clear(self):
+        self._paused.clear()
+
+    @property
+    def paused(self):
+        return self._paused.is_set()
+
+    def wait(self, kill_switch, poll=0.15):
+        """Block while paused.  False = the kill switch tripped
+        during the wait (the run must stop, not resume)."""
+        while self._paused.is_set():
+            if kill_switch.is_tripped():
+                return False
+            time.sleep(poll)
+        return not kill_switch.is_tripped()
 
 
 class ConfirmationGate:

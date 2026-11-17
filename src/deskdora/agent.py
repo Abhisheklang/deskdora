@@ -53,7 +53,7 @@ def parse_table(raw):
 class Agent:
     def __init__(self, planner, planner_mode, gate, kill_switch, allow_list,
                  run_log, max_steps=400, on_event=None, settle=0.45,
-                 driver=None, autonomy=None):
+                 driver=None, autonomy=None, pause_gate=None):
         self.planner = planner
         self.planner_mode = planner_mode
         self.gate = gate
@@ -66,6 +66,9 @@ class Agent:
         # Per-category autonomy policy (deskdora.autonomy) or None
         # for the legacy all-confirm behaviour.
         self.autonomy = autonomy
+        # Cooperative pause (safety.PauseGate) or None: checked at
+        # each step boundary, never mid-action.
+        self.pause_gate = pause_gate
         self.d = driver or get_driver()
         self.answers = {}
         self.executed = 0
@@ -537,6 +540,11 @@ class Agent:
             while i < len(plan):
                 step = plan[i]
                 self._check_kill()
+                if self.pause_gate is not None and self.pause_gate.paused:
+                    self._emit("run_paused", index=i)
+                    if not self.pause_gate.wait(self.kill):
+                        raise StepFailure("kill switch tripped")
+                    self._emit("run_resumed", index=i)
                 if self.executed >= self.max_steps:
                     raise StepFailure(f"step cap reached ({self.max_steps})")
                 action = step["action"]

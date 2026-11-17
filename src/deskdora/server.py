@@ -11,13 +11,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
+import tempfile
 import threading
 import time
 import uuid
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -34,7 +36,7 @@ from .planners import (PROVIDER_REGISTRY, OllamaPlanner, PlanError,
 from .proactive import ProposalStore, ProactiveWatcher
 from .queue import BusyError, TaskQueue
 from .routines import RoutineStore
-from .safety import AllowList, ConfirmationGate, KillSwitch
+from .safety import AllowList, ConfirmationGate, KillSwitch, PauseGate
 from .scheduler import Scheduler
 from .tasks import base_known_apps
 
@@ -57,7 +59,35 @@ DEFAULT_CONFIG = {
     "autonomy": dict(DEFAULT_POLICY),
     "watch_folders": [],        # folders the proactive watcher scans
     "companion_pin": "",        # PIN for non-loopback mutating calls
+    # Companion screen share (v3.2): view-only live screen for
+    # paired companions.  OFF by default; the app shows an indicator
+    # while anyone is watching.  Never shown inside the app itself.
+    "screen_share": False,
 }
+
+
+def planner_display(mode_label):
+    """Truthful human name for a planner mode label, e.g.
+    'anthropic:claude-sonnet-4-5' -> 'Anthropic · claude-sonnet-4-5',
+    'ollama:qwen2.5:1.5b' -> 'Ollama · qwen2.5:1.5b',
+    'builtin' -> 'Built-in'."""
+    if not mode_label:
+        return ""
+    if mode_label == "builtin":
+        return "Built-in"
+    head, sep, model = mode_label.partition(":")
+    preset = PROVIDER_REGISTRY.get(head)
+    if preset:
+        name = preset["label"].replace(" (local)", "")
+        return f"{name} · {model}" if model else name
+    try:
+        for custom in load_config().get("custom_providers") or []:
+            if custom.get("id") == head:
+                name = custom.get("name", head)
+                return f"{name} · {model}" if model else name
+    except Exception:
+        pass
+    return f"{head} · {model}" if sep else mode_label
 
 
 def load_config():
@@ -125,7 +155,7 @@ class _ManagerRunner:
 
     def start(self, goal, planner):
         try:
-            self._m.start_run(goal, planner or None)
+            self._m.start_run(goal, planner or None, source="queue")
         except HTTPException as exc:
             raise BusyError(str(exc.detail)) from exc
 
@@ -137,6 +167,42 @@ class _ManagerRunner:
 
     def kill_tripped(self):
         return self._m.kill.is_tripped()
+
+
+def grab_screen_frame(max_width=960):
+    """One screen-share frame as (bytes, content_type).
+
+    Captures through the same scrot path the agent uses, then
+    downscales and JPEG-encodes with GdkPixbuf (part of the GTK
+    stack the app already ships).  Falls back to the raw PNG when
+    GdkPixbuf is not importable in the service process."""
+    from . import actions
+    fd, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    try:
+        actions.screenshot(path)
+        try:
+            import gi
+            gi.require_version("GdkPixbuf", "2.0")
+            from gi.repository import GdkPixbuf
+            pix = GdkPixbuf.Pixbuf.new_from_file(path)
+            if pix.get_width() > max_width:
+                scale = max_width / pix.get_width()
+                pix = pix.scale_simple(
+                    max_width, max(1, int(pix.get_height() * scale)),
+                    GdkPixbuf.InterpType.BILINEAR)
+            ok, buf = pix.save_to_bufferv("jpeg", ["quality"], ["62"])
+            if ok:
+                return bytes(buf), "image/jpeg"
+        except Exception:
+            pass
+        with open(path, "rb") as fh:
+            return fh.read(), "image/png"
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 class RunManager:
@@ -152,6 +218,14 @@ class RunManager:
             "last_event": None, "run_dir": None, "result": None,
         }
         self.kill = KillSwitch()
+        self.pause_gate = PauseGate()
+        self.progress = {"step_index": 0, "step_total": 0, "done": 0,
+                         "current_action": ""}
+        # Companion screen share (v3.2): live viewer count + the
+        # frame source (indirected so tests can serve fake frames).
+        self.screen_viewers = 0
+        self.companion_sessions = {}   # cookie token -> expiry time
+        self.frame_provider = grab_screen_frame
         self.queue = TaskQueue(
             _ManagerRunner(self),
             os.path.join(DATA_DIR, "queue.json"))
@@ -213,20 +287,42 @@ class RunManager:
         record["event"].set()
         return {"ok": True}
 
-    def start_run(self, goal, planner_mode=None, routine_name=None):
+    def start_run(self, goal, planner_mode=None, routine_name=None,
+                  source="ui"):
         with self.lock:
             if self.state["running"]:
                 raise HTTPException(409, "a run is already in progress")
             self.state.update({"running": True, "goal": goal,
-                               "result": None})
+                               "result": None, "source": source})
+            self.progress = {"step_index": 0, "step_total": 0,
+                             "done": 0, "current_action": "Planning"}
         cfg = load_config()
         mode = planner_mode or cfg["planner"]
         self.kill.reset()
+        self.pause_gate.clear()
 
         def _on_event(kind, **fields):
             with self.lock:
                 self.state["last_event"] = {"ts": time.time(),
                                             "kind": kind, **fields}
+                if kind == "plan":
+                    self.progress.update(
+                        {"step_total": len(fields.get("steps") or []),
+                         "done": 0, "step_index": 0,
+                         "current_action": "Plan ready"})
+                elif kind == "step_start":
+                    step = fields.get("step") or {}
+                    self.progress["step_index"] = fields.get("index", 0)
+                    self.progress["current_action"] = (
+                        str(step.get("action", "")) + " " +
+                        str(step.get("target") or step.get("key")
+                            or "")).strip()
+                elif kind == "step_result":
+                    self.progress["done"] = max(
+                        self.progress["done"],
+                        int(fields.get("index", 0)) + 1)
+                elif kind == "run_paused":
+                    self.progress["current_action"] = "Paused"
 
         def _work():
             planner, mode_label = get_planner(
@@ -234,7 +330,7 @@ class RunManager:
                 memory=self.memory, providers=cfg.get("providers"),
                 customs=cfg.get("custom_providers"))
             gate = ConfirmationGate(self.ui_policy)
-            log = RunLog(RUNS_DIR, goal, mode_label)
+            log = RunLog(RUNS_DIR, goal, mode_label, source=source)
             from .drivers import get_driver
             driver = get_driver(None if cfg.get("driver", "auto") == "auto"
                                 else cfg["driver"])
@@ -246,7 +342,7 @@ class RunManager:
             agent = Agent(planner, mode_label, gate, self.kill,
                           AllowList(cfg["allow_apps"]), log,
                           on_event=_on_event, driver=driver,
-                          autonomy=policy)
+                          autonomy=policy, pause_gate=self.pause_gate)
             with self.lock:
                 self.agent = agent
                 self.state["planner_mode"] = mode_label
@@ -283,6 +379,79 @@ class RunManager:
         # until the user explicitly resumes it.
         self.queue.halt()
         return {"ok": True, "tripped": True}
+
+    # -- companion / overlay controls (v3.2) --------------------------
+    def pause_all(self):
+        """Freeze: the active run pauses at its next step boundary
+        and the queue holds its remaining items."""
+        self.pause_gate.request()
+        self.queue.pause()
+        return {"ok": True, "paused": True}
+
+    def resume_all(self):
+        """Resume a frozen run and/or the queue.  After a kill this
+        continues the QUEUE with its next item — a killed run is
+        never resumed mid-action; it restarts cleanly or not at all."""
+        self.pause_gate.clear()
+        self.queue.resume()
+        return {"ok": True, "paused": False}
+
+    def reset_state(self):
+        """Clear a finished/stopped run back to idle."""
+        with self.lock:
+            if self.state["running"]:
+                raise HTTPException(409, "a run is in progress")
+            self.state.update({"goal": "", "planner_mode": "",
+                               "run_dir": None, "result": None,
+                               "last_event": None, "source": "ui"})
+            self.progress = {"step_index": 0, "step_total": 0,
+                             "done": 0, "current_action": ""}
+        self.pause_gate.clear()
+        self.kill.reset()
+        return {"ok": True}
+
+    def progress_payload(self):
+        """Live work-completed view for companion + overlay."""
+        q = self.queue.snapshot()
+        total = self.progress["step_total"]
+        done = self.progress["done"]
+        result = self.state["result"]
+        if total:
+            percent = int(round(100 * done / total))
+        elif result and result.get("status") == "success":
+            percent = 100
+        else:
+            percent = 0
+        active = [it for it in q["items"]
+                  if it["status"] in ("running", "queued")]
+        qpos = None
+        if q["running_id"]:
+            ids = [it["id"] for it in active]
+            if q["running_id"] in ids:
+                qpos = ids.index(q["running_id"]) + 1
+        return {
+            "goal": self.state["goal"],
+            "planner_mode": self.state["planner_mode"],
+            "planner_display": planner_display(
+                self.state["planner_mode"]),
+            "source": self.state.get("source", "ui"),
+            "running": self.state["running"],
+            "paused": bool(self.pause_gate.paused
+                           and self.state["running"]),
+            "step_index": self.progress["step_index"],
+            "step_total": total,
+            "steps_done": done,
+            "percent": percent,
+            "current_action": self.progress["current_action"],
+            "queue_position": qpos,
+            "queue_total": len(active),
+            "queue_paused": q["paused"],
+            "queue_halted": q["halted"],
+        }
+
+    def screen_info(self):
+        return {"enabled": bool(load_config().get("screen_share")),
+                "viewers": self.screen_viewers}
 
 
 MANAGER = RunManager()
@@ -408,19 +577,45 @@ def status():
         "ollama_available": ollama.available(),
         "pending_confirmation": pending,
         "kill_tripped": MANAGER.kill.is_tripped(),
+        "progress": MANAGER.progress_payload(),
+        "screen_share": MANAGER.screen_info(),
     }
 
 
 @app.post("/api/run")
-def run(req: RunRequest):
+def run(req: RunRequest, request: Request):
     if not req.goal.strip():
         raise HTTPException(400, "goal is empty")
-    return MANAGER.start_run(req.goal.strip(), req.planner)
+    source = request.headers.get("x-deskdora-client", "api")
+    if source not in ("ui", "mcp", "api"):
+        source = "api"
+    return MANAGER.start_run(req.goal.strip(), req.planner,
+                             source=source)
 
 
 @app.post("/api/kill")
 def kill():
     return MANAGER.trip_kill()
+
+
+@app.post("/api/pause")
+def pause():
+    """Freeze: active run pauses at its next step boundary; the
+    queue holds its remaining items."""
+    return MANAGER.pause_all()
+
+
+@app.post("/api/resume")
+def resume():
+    """Resume a frozen run and/or the queue.  After a kill, this
+    continues the queue — a killed run never resumes mid-action."""
+    return MANAGER.resume_all()
+
+
+@app.post("/api/reset")
+def reset():
+    """Clear a finished/stopped run back to idle."""
+    return MANAGER.reset_state()
 
 
 @app.post("/api/confirmations/{cid}")
@@ -430,7 +625,10 @@ def confirm(cid: str, req: ConfirmRequest):
 
 @app.get("/api/runs")
 def runs():
-    return list_runs(RUNS_DIR)
+    out = list_runs(RUNS_DIR)
+    for r in out:
+        r["planner_display"] = planner_display(r.get("planner_mode"))
+    return out
 
 
 @app.get("/api/runs/{run_id}")
@@ -441,7 +639,11 @@ def run_detail(run_id: str):
     events = read_log(path)
     shots = sorted(f for f in os.listdir(os.path.join(RUNS_DIR, run_id))
                    if f.endswith(".png"))
-    return {"id": run_id, "events": events, "screenshots": shots}
+    start_ev = next((e for e in events if e["kind"] == "run_start"), {})
+    return {"id": run_id, "events": events, "screenshots": shots,
+            "planner_display": planner_display(
+                start_ev.get("planner_mode")),
+            "source": start_ev.get("source", "ui")}
 
 
 @app.get("/api/runs/{run_id}/screenshots/{name}")
@@ -528,6 +730,91 @@ def queue_resume():
 def queue_clear():
     removed = MANAGER.queue.clear()
     return {"ok": True, "removed": removed}
+
+
+# ---------------------------------------------------------------------
+# Companion: MCP status, screen-share session + stream (v3.2)
+# ---------------------------------------------------------------------
+@app.get("/api/mcp")
+def mcp_info():
+    """How an MCP client connects.  Read-only: no credential
+    management is exposed to the companion."""
+    return {
+        "available": shutil.which("deskdora-mcp") is not None,
+        "command": "deskdora-mcp",
+        "transport": "stdio",
+        "config": {"mcpServers": {"deskdora": {
+            "command": "deskdora-mcp",
+            "env": {"DESKDORA_API_KEY": "<your DeskDora API key>"}}}},
+    }
+
+
+def _screen_auth_ok(request):
+    """Screen share is paired-only: DeskDora API key, companion PIN
+    header, or a companion session cookie (from /api/companion/auth).
+    Loopback is NOT exempt — a live screen is not a read endpoint."""
+    if API_KEYS.verify(presented_key(request.headers)):
+        return True
+    pin = load_config().get("companion_pin", "")
+    if pin and request.headers.get("x-companion-pin") == pin:
+        return True
+    token = request.cookies.get("dd_companion_session")
+    return bool(token
+                and MANAGER.companion_sessions.get(token, 0) > time.time())
+
+
+@app.post("/api/companion/auth")
+def companion_auth(request: Request):
+    """Exchange the companion PIN for a session cookie, so the
+    companion page can load the screen stream (an <img> cannot send
+    the PIN header)."""
+    pin = load_config().get("companion_pin", "")
+    if not pin or request.headers.get("x-companion-pin") != pin:
+        raise HTTPException(401, "companion PIN required")
+    token = secrets.token_urlsafe(24)
+    MANAGER.companion_sessions[token] = time.time() + 12 * 3600
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie("dd_companion_session", token, max_age=12 * 3600,
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.get("/api/screen.mjpg")
+def screen_stream(request: Request):
+    """View-only live screen for paired companions (MJPEG).
+
+    Monitoring-grade: ~3 fps when capture is fast, backing off when
+    it is not.  Serves nothing while sharing is off, and stops at
+    the next frame the moment it is toggled off."""
+    if not _screen_auth_ok(request):
+        raise HTTPException(401, "companion authentication required")
+    if not load_config().get("screen_share"):
+        raise HTTPException(403, "screen sharing is off")
+
+    def frames():
+        MANAGER.screen_viewers += 1
+        started = time.time()
+        try:
+            while time.time() - started < 900:
+                if not load_config().get("screen_share"):
+                    break
+                t0 = time.time()
+                try:
+                    data, ctype = MANAGER.frame_provider()
+                except Exception:
+                    time.sleep(0.5)
+                    continue
+                yield (b"--frame\r\nContent-Type: " + ctype.encode()
+                       + b"\r\nContent-Length: "
+                       + str(len(data)).encode() + b"\r\n\r\n"
+                       + data + b"\r\n")
+                took = time.time() - t0
+                time.sleep(max(0.05, max(0.34, took * 1.25) - took))
+        finally:
+            MANAGER.screen_viewers -= 1
+
+    return StreamingResponse(
+        frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.get("/api/routines")

@@ -17,7 +17,7 @@ def _slug(text, limit=40):
 
 
 class RunLog:
-    def __init__(self, root, goal, planner_mode):
+    def __init__(self, root, goal, planner_mode, source="ui"):
         stamp = time.strftime("%Y%m%d-%H%M%S")
         self.dir = os.path.join(root, f"{stamp}-{_slug(goal)}")
         os.makedirs(self.dir, exist_ok=True)
@@ -26,7 +26,8 @@ class RunLog:
         self.planner_mode = planner_mode
         self._fh = open(self.path, "a", buffering=1)
         self._step = 0
-        self.event("run_start", goal=goal, planner_mode=planner_mode)
+        self.event("run_start", goal=goal, planner_mode=planner_mode,
+                   source=source)
 
     def event(self, kind, **fields):
         record = {"ts": time.time(), "kind": kind}
@@ -77,6 +78,7 @@ def list_runs(root):
             out.append({
                 "id": name, "dir": os.path.join(root, name),
                 "goal": start.get("goal", ""), "planner_mode": start.get("planner_mode", ""),
+                "source": start.get("source", "ui"),
                 "status": end.get("status", "running"),
                 "answer": end.get("answer"),
                 "events": events,

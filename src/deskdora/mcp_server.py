@@ -44,7 +44,8 @@ class DeskDoraClient:
         self.api_key = api_key or os.environ.get("DESKDORA_API_KEY", "")
 
     def call(self, method, path, body=None, timeout=30):
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json",
+                   "X-DeskDora-Client": "mcp"}
         if self.api_key:
             headers["X-Api-Key"] = self.api_key
         data = json.dumps(body).encode() if body is not None else None
