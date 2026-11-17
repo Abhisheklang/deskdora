@@ -100,11 +100,11 @@ button{font-family:inherit}
 #pullTab.tripped{background:var(--mustard);color:#040404}
 
 /* ---------- shell / top strip ---------- */
-#shell{margin-left:var(--rail-w);margin-right:var(--tab-w);min-height:100vh;
+#shell{margin-left:var(--rail-w);margin-right:var(--tab-w);height:100vh;
   display:flex;flex-direction:column}
-#topstrip{display:flex;align-items:center;gap:18px;
+#topstrip{display:flex;align-items:center;gap:18px;flex:none;
   padding:13px 30px;border-bottom:1px solid var(--line);
-  position:sticky;top:0;background:var(--void);z-index:50}
+  background:var(--void);z-index:50}
 .ts-name{font-family:var(--disp);font-weight:600;font-size:25px;
   letter-spacing:-.01em;text-transform:uppercase;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:44vw}
@@ -127,7 +127,23 @@ button{font-family:inherit}
 .state-pill.bad{color:var(--bad);border-color:var(--bad)}
 .state-pill.bad i{background:var(--bad)}
 
-main{padding:30px 30px 56px;flex:1;width:100%;max-width:1560px;margin:0 auto}
+main{padding:30px 30px 56px;flex:1;min-height:0;width:100%;max-width:1560px;
+  margin:0 auto;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
+
+/* ---------- slim scrollbars (design system) ---------- */
+*{scrollbar-width:thin;scrollbar-color:#2b2b24 transparent}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2b2b24;border-radius:99px;
+  border:2px solid var(--void)}
+::-webkit-scrollbar-thumb:hover{background:var(--lime-dim)}
+#feed{max-height:46vh;overflow-y:auto;scroll-behavior:smooth}
+#schedFeed{max-height:40vh;overflow-y:auto}
+
+/* ---------- view entrance ---------- */
+.view:not([hidden]){animation:viewIn .32s cubic-bezier(.22,.8,.24,1) both}
+@keyframes viewIn{from{opacity:0;transform:translateY(10px)}
+  to{opacity:1;transform:none}}
 
 /* ---------- grid + section heads ---------- */
 .grid12{display:grid;grid-template-columns:repeat(12,1fr);gap:28px}
@@ -150,11 +166,11 @@ main{padding:30px 30px 56px;flex:1;width:100%;max-width:1560px;margin:0 auto}
 .mega .lime-dot{color:var(--lime)}
 .lede{color:var(--text2);font-size:15.5px;max-width:52ch;margin:18px 0 26px}
 .cmdline{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
-#goalInput{flex:1;min-width:280px;background:var(--panel);color:var(--text);
+#goalInput,#queueInput{flex:1;min-width:280px;background:var(--panel);color:var(--text);
   border:1px solid var(--line);border-radius:4px;padding:16px 18px;
   font-family:var(--ui);font-size:16.5px;transition:border-color .15s ease}
-#goalInput::placeholder{color:var(--text3)}
-#goalInput:focus{outline:none;border-color:var(--lime)}
+#goalInput::placeholder,#queueInput::placeholder{color:var(--text3)}
+#goalInput:focus,#queueInput:focus{outline:none;border-color:var(--lime)}
 .run-btn{background:var(--lime);color:#040404;border:none;border-radius:999px;
   padding:0 30px;font-family:var(--disp);font-weight:600;font-size:19px;
   letter-spacing:.04em;text-transform:uppercase;cursor:pointer;
@@ -261,6 +277,44 @@ select:focus{outline:none;border-color:var(--lime)}
   border-bottom:1px solid var(--line-soft)}
 .feedIn{animation:feedIn .24s ease both}
 @keyframes feedIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.tl-row{transition:background .12s ease}
+.tl-row:not(.live):hover{background:var(--panel)}
+.segbar i{transition:background .3s ease}
+.chip:active{transform:scale(.97)}
+.pill-btn:active{transform:scale(.98)}
+.ghost-btn{transition:border-color .15s ease,color .15s ease,transform .1s ease}
+.ghost-btn:active{transform:scale(.98)}
+.mini-btn{transition:border-color .15s ease,color .15s ease,transform .1s ease}
+.mini-btn:active{transform:scale(.97)}
+.rnav:active{transform:scale(.96)}
+.rnav{transition:color .15s ease,transform .1s ease}
+.q-badge{position:absolute;top:5px;right:13px;background:var(--lime);
+  color:#040404;font-family:var(--mono);font-size:9px;font-weight:700;
+  letter-spacing:0;padding:1.5px 6px;border-radius:999px;line-height:1.35}
+
+/* ---------- history thread ---------- */
+.thread{max-height:560px;overflow-y:auto;padding-right:8px}
+.msg{margin-bottom:16px;animation:feedIn .24s ease both}
+.msg-lab{font-family:var(--mono);font-size:9.5px;font-weight:600;
+  letter-spacing:.18em;color:var(--text3);margin-bottom:6px}
+.msg.user .msg-body{background:var(--panel2);border:1px solid var(--lime-dim);
+  border-radius:4px;padding:12px 15px;font-size:15.5px;overflow-wrap:anywhere}
+.msg.agent .msg-body{font-size:14px;color:var(--text)}
+.msg.final .msg-body{font-family:var(--serif);font-style:italic;
+  font-size:18px;line-height:1.45}
+.msg.final.ok .msg-lab{color:var(--ok)}
+.msg.final.bad .msg-lab{color:var(--bad)}
+.msg-step{display:flex;gap:11px;align-items:baseline;padding:5px 0;
+  border-bottom:1px solid var(--line-soft);font-size:13px}
+.msg-step .tl-pill{flex:none}
+.msg-step .ms-text{overflow-wrap:anywhere}
+.msg-step.ok .ms-res{color:var(--ok)}
+.msg-step.err .ms-res{color:var(--bad)}
+.ms-res{font-family:var(--mono);font-size:10px;font-weight:600;
+  letter-spacing:.1em;margin-left:auto;flex:none}
+.msg.sys .msg-body{font-family:var(--mono);font-size:11px;
+  letter-spacing:.06em;color:var(--mustard)}
+.thread-empty{color:var(--text3);font-size:13.5px;padding:14px 0}
 
 /* ---------- runs list ---------- */
 .runrow{display:grid;grid-template-columns:158px 1fr auto auto 22px;gap:16px;
@@ -297,13 +351,12 @@ select:focus{outline:none;border-color:var(--lime)}
 .fromrun input{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);
   border-radius:4px;color:var(--text);padding:10px 13px;font-size:13.5px}
 .fromrun input:focus{outline:none;border-color:var(--lime)}
-#replayFeed{max-height:560px;overflow:auto}
-#replayFeed::-webkit-scrollbar{width:8px}
-#replayFeed::-webkit-scrollbar-thumb{background:#26261f;border-radius:99px}
 
 /* ---------- routines ---------- */
 .rrow{display:grid;grid-template-columns:52px 1fr auto;gap:18px;align-items:center;
-  padding:16px 10px;border-bottom:1px solid var(--line-soft)}
+  padding:16px 10px;border-bottom:1px solid var(--line-soft);
+  transition:background .12s ease}
+.rrow:hover{background:var(--panel)}
 .rrow:first-child{border-top:1px solid var(--line)}
 .rr-idx{font-family:var(--mono);font-size:11px;color:var(--lime)}
 .rr-name{font-family:var(--disp);font-weight:500;font-size:22px;
@@ -344,7 +397,9 @@ select:focus{outline:none;border-color:var(--lime)}
 .scorebar i{display:block;height:100%;width:0;background:var(--lime);
   transition:width .8s cubic-bezier(.22,.8,.24,1)}
 .brow{display:grid;grid-template-columns:52px 1fr auto auto;gap:18px;
-  align-items:center;padding:15px 10px;border-bottom:1px solid var(--line-soft)}
+  align-items:center;padding:15px 10px;border-bottom:1px solid var(--line-soft);
+  transition:background .12s ease}
+.brow:hover{background:var(--panel)}
 .brow:first-child{border-top:1px solid var(--line)}
 .b-idx{font-family:var(--mono);font-size:11px;color:var(--text3)}
 .b-title{font-size:14.5px;font-weight:600}
@@ -435,9 +490,12 @@ select:focus{outline:none;border-color:var(--lime)}
     <button class="rnav active" data-view="run" data-name="Command">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
       <span>Run</span></button>
-    <button class="rnav" data-view="log" data-name="Action Log">
+    <button class="rnav" data-view="queue" data-name="Queue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="M3.6 12.4 12 16.6l8.4-4.2"/><path d="M3.6 16.9 12 21.1l8.4-4.2"/></svg>
+      <span>Queue</span><span class="q-badge" id="queueBadge" hidden>0</span></button>
+    <button class="rnav" data-view="log" data-name="History">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>
-      <span>Log</span></button>
+      <span>History</span></button>
     <button class="rnav" data-view="routines" data-name="Routines">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M20.5 6H9a5 5 0 0 0-5 5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M3.5 18H15a5 5 0 0 0 5-5"/></svg>
       <span>Routines</span></button>
@@ -494,6 +552,7 @@ select:focus{outline:none;border-color:var(--lime)}
             <input type="text" id="goalInput" autocomplete="off"
               placeholder="e.g. Organise folder /home/you/Downloads by type">
             <button class="run-btn" id="runBtn">Run task <span class="arr">&rarr;</span></button>
+            <button class="ghost-btn" id="queueItBtn" style="margin-top:0;min-height:56px">Queue it</button>
           </div>
           <div class="cmdmeta">
             <span class="mono-lab">Planner</span>
@@ -552,14 +611,39 @@ select:focus{outline:none;border-color:var(--lime)}
     </div>
   </section>
 
-  <!-- ======================= ACTION LOG VIEW ======================= -->
+  <!-- ======================= QUEUE VIEW ======================= -->
+  <section id="view-queue" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">QUEUE</span><span class="rule"></span><span class="sec-note">ONE AT A TIME, IN ORDER</span></div>
+    <h2 class="view-head">Line it up<span class="lime-dot">.</span></h2>
+    <div class="cmdline">
+      <input type="text" id="queueInput" autocomplete="off"
+        placeholder="e.g. Organise folder /home/you/Downloads by type">
+      <select id="queuePlanner" aria-label="Planner for the queued task"></select>
+      <button class="run-btn" id="queueAddBtn">Add <span class="arr">+</span></button>
+    </div>
+    <div class="cmdmeta">
+      <button class="chip" id="queuePauseBtn">PAUSE</button>
+      <button class="chip" id="queueResumeBtn">RESUME</button>
+      <button class="chip" id="queueClearBtn">CLEAR QUEUED</button>
+      <span class="mono-lab" id="queueState">—</span>
+    </div>
+    <div id="queueList" style="margin-top:26px"><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
+  </section>
+
+  <!-- ======================= HISTORY VIEW ======================= -->
   <section id="view-log" class="view" hidden>
-    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ACTION LOG</span><span class="rule"></span></div>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">HISTORY</span><span class="rule"></span></div>
     <h2 class="view-head">Every run,<br>every step<span class="lime-dot">.</span></h2>
+    <div class="cmdline" style="margin-bottom:20px">
+      <input type="text" id="runSearch" autocomplete="off"
+        placeholder="Search past tasks…"
+        style="flex:1;min-width:240px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:12px 16px;font-size:14.5px">
+      <span class="mono-lab" id="runCount"></span>
+    </div>
     <div id="runsList"><div class="skl sklrow"></div><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
 
     <div id="replayWrap" hidden style="margin-top:38px">
-      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">REPLAY</span><span class="rule"></span><span class="sec-note" id="replayTitle">—</span></div>
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">THREAD</span><span class="rule"></span><span class="sec-note" id="replayTitle">—</span></div>
       <div class="replay-grid">
         <div class="replay-shot">
           <img id="replayImg" alt="Run screenshot">
@@ -569,12 +653,17 @@ select:focus{outline:none;border-color:var(--lime)}
             <button class="mini-btn" id="shotNext">NEXT &rarr;</button>
           </div>
           <div class="fromrun">
+            <button class="pill-btn lime" id="runAgainBtn2">RUN AGAIN</button>
+            <button class="pill-btn ghosty" id="runDeleteBtn">DELETE RUN</button>
+            <span class="shot-lab" id="threadMsg"></span>
+          </div>
+          <div class="fromrun">
             <input type="text" id="fromRunName" placeholder="Save this run as a routine — name it">
             <button class="mini-btn" id="fromRunSave">SAVE AS ROUTINE</button>
             <span class="shot-lab" id="fromRunMsg"></span>
           </div>
         </div>
-        <div class="timeline" id="replayFeed"></div>
+        <div class="thread" id="threadFeed"></div>
       </div>
     </div>
   </section>
@@ -830,9 +919,26 @@ const S = {
   dismissed: null,
   routinesCache: [],
 };
-const VIEW_NAMES = {run:"Command", log:"Action Log", routines:"Routines",
-                    memory:"Memory", benchmark:"Benchmark",
-                    settings:"Settings"};
+const VIEW_NAMES = {run:"Command", queue:"Queue", log:"History",
+                    routines:"Routines", memory:"Memory",
+                    benchmark:"Benchmark", settings:"Settings"};
+
+/* animated integer transitions (instrument numerals, KPIs) */
+function tweenNum(el, to, render) {
+  if (!el) return;
+  render = render || (v => { el.textContent = Math.round(v); });
+  if (REDUCED) { el.dataset.numv = to; render(to); return; }
+  const from = parseFloat(el.dataset.numv || "0");
+  if (from === to) { render(to); return; }
+  const t0 = performance.now(), dur = 420;
+  (function frame(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    render(from + (to - from) * e);
+    if (p < 1) requestAnimationFrame(frame);
+    else el.dataset.numv = to;
+  })(t0);
+}
 
 /* ================= clock ================= */
 function tickClock() {
@@ -861,11 +967,12 @@ function activate(name) {
   S.view = name;
   document.querySelectorAll(".rnav").forEach(b =>
     b.classList.toggle("active", b.dataset.view === name));
-  ["run","log","routines","memory","benchmark","settings"].forEach(v => {
+  ["run","queue","log","routines","memory","benchmark","settings"].forEach(v => {
     $("#view-" + v).hidden = v !== name;
   });
   $("#tsName").textContent = name === "run"
     ? (S.goal ? trunc(S.goal, 44) : "Command") : VIEW_NAMES[name];
+  if (name === "queue") loadQueue();
   if (name === "log") loadRuns();
   if (name === "routines") loadRoutines();
   if (name === "memory") loadMemory();
@@ -986,14 +1093,16 @@ function resetRunUI(goal) {
   $("#segPct").textContent = "";
   $("#voiceRun").innerHTML = "&ldquo;Working on it.&rdquo;";
   $("#runAgainBtn").hidden = true;
-  $("#feed").innerHTML = "";
+  $("#feed").innerHTML = "<div id='feedSkl'><div class='skl sklrow'></div>" +
+    "<div class='skl sklrow'></div><div class='skl sklrow'></div></div>";
   $("#insAction").textContent = "Planning";
   $("#insApp").textContent = "—"; $("#insWindow").textContent = "—";
   updateCapacity(); updateNext();
+  $("#nextList").innerHTML = "<li class='dim'>Building the plan…</li>";
   if (S.view === "run") $("#tsName").textContent = trunc(goal, 44);
 }
 function updateCapacity() {
-  $("#capDone").textContent = S.planDone;
+  tweenNum($("#capDone"), S.planDone);
   $("#capTotal").textContent = S.planTotal;
   $("#capFill").style.width =
     S.planTotal ? (S.planDone / S.planTotal * 100) + "%" : "0%";
@@ -1045,6 +1154,8 @@ function handleEvent(ev, fromLog) {
   const feed = $("#feed");
   const addRow = (animate) => {
     if (feed.querySelector(".tl-empty")) feed.innerHTML = "";
+    const skl = feed.querySelector("#feedSkl");
+    if (skl) skl.remove();
     const el = makeRow(ev, animate && !fromLog);
     feed.appendChild(el); feed.scrollTop = feed.scrollHeight;
     return el;
@@ -1299,8 +1410,9 @@ async function answerConfirm(approved) {
   $("#confirmModal").classList.remove("open");
 }
 
-/* ================= action log / replay ================= */
+/* ================= history: runs list + thread ================= */
 let replayShots = [], replayIdx = 0, replayRunId = "";
+let runsCache = [], threadGoal = "", threadPlanner = "";
 function runStamp(id) {
   const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(id || "");
   return m ? `${m[1]}-${m[2]}-${m[3]}<br>${m[4]}:${m[5]}:${m[6]}` : esc(id);
@@ -1308,9 +1420,24 @@ function runStamp(id) {
 async function loadRuns() {
   const el = $("#runsList");
   el.innerHTML = "<div class='skl sklrow'></div><div class='skl sklrow'></div><div class='skl sklrow'></div>";
-  const runs = await (await fetch("/api/runs")).json();
-  if (!runs.length) {
+  runsCache = await (await fetch("/api/runs")).json();
+  renderRuns();
+}
+function renderRuns() {
+  const el = $("#runsList");
+  const q = ($("#runSearch").value || "").trim().toLowerCase();
+  const runs = q ? runsCache.filter(r =>
+    (r.goal || "").toLowerCase().includes(q) ||
+    (r.planner_mode || "").toLowerCase().includes(q) ||
+    (r.status || "").toLowerCase().includes(q)) : runsCache;
+  $("#runCount").textContent = runsCache.length
+    ? runs.length + " / " + runsCache.length + " RUNS" : "";
+  if (!runsCache.length) {
     el.innerHTML = "<div class='tl-empty' style='border-top:1px solid var(--line)'>No runs yet.</div>";
+    return;
+  }
+  if (!runs.length) {
+    el.innerHTML = "<div class='tl-empty' style='border-top:1px solid var(--line)'>No runs match that search.</div>";
     return;
   }
   el.innerHTML = runs.map(r => `
@@ -1322,19 +1449,93 @@ async function loadRuns() {
       <span class="rr-arrow">&rarr;</span>
     </button>`).join("");
 }
+$("#runSearch").addEventListener("input", renderRuns);
+
+function renderThread(data) {
+  const evs = data.events || [];
+  const start = evs.find(e => e.kind === "run_start");
+  const end = [...evs].reverse().find(e => e.kind === "run_end");
+  threadGoal = start ? (start.goal || "") : "";
+  threadPlanner = start ? (start.planner_mode || "") : "";
+  let html = "";
+  if (start)
+    html += `<div class="msg user"><div class="msg-lab">YOU · ` +
+      `${esc(start.planner_mode || "").toUpperCase()}</div>` +
+      `<div class="msg-body">${esc(threadGoal)}</div></div>`;
+  let steps = "";
+  for (const ev of evs) {
+    if (ev.kind === "plan") {
+      html += `<div class="msg agent"><div class="msg-lab">DESKDORA</div>` +
+        `<div class="msg-body">Plan ready — ` +
+        `${countable(ev.steps).length} steps.</div></div>`;
+    } else if (ev.kind === "step_result") {
+      const r = eventRow(ev);
+      steps += `<div class="msg-step ${ev.ok ? "ok" : "err"}">` +
+        `<span class="tl-pill">${esc(r.pill)}</span>` +
+        `<span class="ms-text">${esc(r.text)}</span>` +
+        `<span class="ms-res">${esc(r.res)}</span></div>`;
+    } else if (ev.kind === "confirmation" || ev.kind === "replan" ||
+               ev.kind === "plan_failed" ||
+               (ev.kind === "autonomy" && ev.decision === "deny")) {
+      const r = eventRow(ev);
+      html += steps; steps = "";
+      html += `<div class="msg sys"><div class="msg-body">` +
+        `${esc(r.pill)} — ${esc(r.text)}</div></div>`;
+    }
+  }
+  html += steps;
+  if (end) {
+    const ok = end.status === "success";
+    const tail = end.answer || end.reason || "";
+    html += `<div class="msg agent final ${ok ? "ok" : "bad"}">` +
+      `<div class="msg-lab">DESKDORA · ${esc((end.status || "").toUpperCase())}</div>` +
+      `<div class="msg-body">&ldquo;${esc(ok ? "Done" : "Stopped")}` +
+      `${tail ? " — " + esc(tail) : ""}.&rdquo;</div></div>`;
+  } else if (start) {
+    html += `<div class="msg sys"><div class="msg-body">` +
+      `NO END RECORDED — RUN INTERRUPTED</div></div>`;
+  }
+  $("#threadFeed").innerHTML = html ||
+    "<div class='thread-empty'>Nothing in this thread.</div>";
+}
+
 async function openReplay(id) {
   replayRunId = id;
   const data = await (await fetch("/api/runs/" + id)).json();
   replayShots = data.screenshots || []; replayIdx = 0;
   $("#replayWrap").hidden = false;
   $("#replayTitle").textContent = id.toUpperCase();
-  $("#replayFeed").innerHTML = (data.events || []).map(ev => {
-    const el = makeRow(ev, false);
-    return el.outerHTML;
-  }).join("");
+  $("#threadMsg").textContent = "";
+  renderThread(data);
   showShot();
   $("#replayWrap").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" });
 }
+function mapPlannerLabel(label) {
+  if (!label) return "";
+  if (label === "builtin") return "builtin";
+  if (label.startsWith("ollama")) return "ollama";
+  const head = label.split(":")[0];
+  const sel = $("#plannerSelect");
+  if (sel && [...sel.options].some(o => o.value === head)) return head;
+  return "";
+}
+$("#runAgainBtn2").addEventListener("click", () => {
+  if (!threadGoal) return;
+  switchView("run");
+  startGoal(threadGoal, mapPlannerLabel(threadPlanner));
+});
+$("#runDeleteBtn").addEventListener("click", async () => {
+  if (!replayRunId) return;
+  const res = await fetch("/api/runs/" + replayRunId, { method: "DELETE" });
+  if (res.ok) {
+    $("#replayWrap").hidden = true;
+    replayRunId = "";
+    loadRuns();
+  } else {
+    $("#threadMsg").textContent = "DELETE FAILED — " +
+      (await res.text()).slice(0, 60);
+  }
+});
 function showShot() {
   if (!replayShots.length) {
     $("#replayImg").removeAttribute("src");
@@ -1357,6 +1558,102 @@ $("#fromRunSave").addEventListener("click", async () => {
     "FAILED — " + (await res.text()).slice(0, 60);
   if (res.ok) $("#fromRunName").value = "";
 });
+
+/* ================= task queue ================= */
+let queueJSON = "";
+function queueStatusPill(it) {
+  if (it.status === "queued") return `<span class="pill">QUEUED</span>`;
+  if (it.status === "running") return `<span class="pill st-running">RUNNING</span>`;
+  return `<span class="pill st-${esc(it.status)}">${esc(it.status.toUpperCase())}</span>`;
+}
+function renderQueue(q) {
+  const badge = $("#queueBadge");
+  const waiting = q.queued + (q.running_id ? 1 : 0);
+  badge.hidden = waiting === 0;
+  badge.textContent = waiting;
+  $("#queueState").textContent = q.halted ? "HALTED — KILL SWITCH" :
+    q.paused ? "PAUSED" : q.running_id ? "WORKING" : "IDLE";
+  if (S.view !== "queue") return;
+  const el = $("#queueList");
+  if (!q.items.length) {
+    el.innerHTML = "<div class='tl-empty' style='border-top:1px solid var(--line)'>Queue is empty — add a task above.</div>";
+    return;
+  }
+  el.innerHTML = q.items.map((it, i) => `
+    <div class="rrow">
+      <span class="rr-idx">Q—${pad2(i + 1)}</span>
+      <div>
+        <div class="rr-goal" style="font-family:var(--ui);font-size:14.5px;text-transform:none">${esc(it.goal)}</div>
+        <div class="rr-meta">${esc((it.planner || "auto").toUpperCase())} · QUEUED ${it.queued_at ? new Date(it.queued_at * 1000).toLocaleTimeString("en-GB") : "—"}</div>
+      </div>
+      <div class="rr-actions">
+        ${queueStatusPill(it)}
+        ${it.status === "queued" ? `
+          <button class="mini-btn" onclick="queueMove('${it.id}','up')" aria-label="Move up">&uarr;</button>
+          <button class="mini-btn" onclick="queueMove('${it.id}','down')" aria-label="Move down">&darr;</button>
+          <button class="mini-btn" onclick="queueRemove('${it.id}')" aria-label="Remove">&times;</button>` : ""}
+      </div>
+    </div>`).join("");
+}
+async function syncQueue() {
+  try {
+    const q = await (await fetch("/api/queue")).json();
+    const key = JSON.stringify(q);
+    if (key === queueJSON) return;
+    queueJSON = key;
+    renderQueue(q);
+  } catch (e) { /* older server; queue appears when available */ }
+}
+async function loadQueue() { queueJSON = ""; await syncQueue(); }
+async function queueAddFrom(inputEl, plannerEl) {
+  const goal = inputEl.value.trim();
+  if (!goal) return;
+  const res = await fetch("/api/queue", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ goal, planner: plannerEl.value || null }) });
+  if (res.ok) { inputEl.value = ""; queueJSON = ""; syncQueue(); }
+}
+async function queueMove(id, direction) {
+  await fetch("/api/queue/" + id + "/move", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ direction }) });
+  queueJSON = ""; syncQueue();
+}
+async function queueRemove(id) {
+  await fetch("/api/queue/" + id, { method: "DELETE" });
+  queueJSON = ""; syncQueue();
+}
+$("#queueAddBtn").addEventListener("click", () =>
+  queueAddFrom($("#queueInput"), $("#queuePlanner")));
+$("#queueInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#queueAddBtn").click();
+});
+$("#queuePauseBtn").addEventListener("click", async () => {
+  await fetch("/api/queue/pause", { method: "POST" });
+  queueJSON = ""; syncQueue();
+});
+$("#queueResumeBtn").addEventListener("click", async () => {
+  await fetch("/api/queue/resume", { method: "POST" });
+  queueJSON = ""; syncQueue();
+});
+$("#queueClearBtn").addEventListener("click", async () => {
+  await fetch("/api/queue/clear", { method: "POST" });
+  queueJSON = ""; syncQueue();
+});
+$("#queueItBtn").addEventListener("click", async () => {
+  const goal = $("#goalInput").value.trim();
+  if (!goal) return;
+  const res = await fetch("/api/queue", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ goal, planner: $("#plannerSelect").value || null }) });
+  if (res.ok) {
+    $("#goalInput").value = "";
+    queueJSON = "";
+    switchView("queue");
+    syncQueue();
+  }
+});
+setInterval(syncQueue, 2500);
 
 /* ================= routines ================= */
 async function loadRoutines() {
@@ -1513,9 +1810,13 @@ async function loadBenchmark() {
   }
   const passed = data.filter(r => r.verdict === "PASS").length;
   const failed = data.length - passed;
-  $("#kpiPass").innerHTML = passed + "<span class='kpi-den'>/" + data.length + "</span>";
-  $("#kpiFail").innerHTML = failed + "<span class='kpi-den'>/" + data.length + "</span>";
-  $("#kpiVerified").innerHTML = data.length + "<span class='kpi-den'>/" + data.length + "</span>";
+  const den = "<span class='kpi-den'>/" + data.length + "</span>";
+  tweenNum($("#kpiPass"), passed,
+    v => { $("#kpiPass").innerHTML = Math.round(v) + den; });
+  tweenNum($("#kpiFail"), failed,
+    v => { $("#kpiFail").innerHTML = Math.round(v) + den; });
+  tweenNum($("#kpiVerified"), data.length,
+    v => { $("#kpiVerified").innerHTML = Math.round(v) + den; });
   $("#benchNote").textContent = "REFERENCE RIG — EVERY VERDICT FROM AN EXTERNAL END-STATE ASSERTION";
   el.innerHTML = data.map((r, i) => `
     <div class="brow">
@@ -1605,6 +1906,7 @@ async function loadProviders() {
     PROV.registry.filter(p => !p.local).map(p => p.id.toUpperCase()));
   window.__customIds = new Set(PROV.customs.map(c => c.id.toUpperCase()));
   fillPlannerSelect($("#plannerSelect"), "");
+  fillPlannerSelect($("#queuePlanner"), "");
   fillPlannerSelect($("#cfgPlanner"), "auto");
   const sel = $("#provSelect");
   const cur = sel.value;
