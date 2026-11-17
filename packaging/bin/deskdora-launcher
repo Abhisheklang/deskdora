@@ -1,0 +1,30 @@
+#!/bin/sh
+# DeskDora launcher (used by the applications-menu entry):
+# start the local service if it is not already running, wait until it
+# answers, then open the control UI in the default browser.
+URL="http://127.0.0.1:8765"
+
+probe() {
+  python3 - "$URL" <<'PYEOF' >/dev/null 2>&1
+import sys, urllib.request
+try:
+    urllib.request.urlopen(sys.argv[1] + "/api/status", timeout=2)
+except Exception:
+    sys.exit(1)
+PYEOF
+}
+
+if ! probe; then
+  DATA="$HOME/.local/share/deskdora"
+  mkdir -p "$DATA"
+  nohup /usr/bin/deskdora serve >>"$DATA/server.log" 2>&1 &
+  i=0
+  while [ $i -lt 40 ]; do
+    probe && break
+    i=$((i + 1))
+    sleep 0.5
+  done
+fi
+
+xdg-open "$URL" >/dev/null 2>&1 &
+exit 0

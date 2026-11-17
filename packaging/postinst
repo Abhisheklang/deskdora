@@ -1,0 +1,21 @@
+#!/bin/sh
+# DeskDora post-install: build the private virtualenv from the bundled
+# wheelhouse.  Fully offline — no package index is contacted.
+set -e
+
+APP=/opt/deskdora
+
+case "$1" in
+  configure)
+    if [ ! -x "$APP/venv/bin/python" ]; then
+      python3 -m venv --system-site-packages "$APP/venv"
+    fi
+    "$APP/venv/bin/python" -m pip install --no-index \
+      --find-links="$APP/wheelhouse" --no-cache-dir \
+      -r "$APP/requirements.txt"
+    SP=$("$APP/venv/bin/python" -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+    echo "$APP/app/src" > "$SP/deskdora.pth"
+    ;;
+esac
+
+exit 0

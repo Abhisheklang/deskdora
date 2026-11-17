@@ -1,0 +1,14 @@
+#!/bin/sh
+# DeskDora post-removal: drop the postinst-created virtualenv (the only
+# part of /opt/deskdora that dpkg does not own).  Per-user data under
+# ~/.local/share/deskdora is deliberately left alone.
+set -e
+
+case "$1" in
+  remove|purge)
+    rm -rf /opt/deskdora/venv
+    rmdir /opt/deskdora 2>/dev/null || true
+    ;;
+esac
+
+exit 0

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DeskDora
+GenericName=Desktop Agent
+Comment=Local-first desktop agent — operates your desktop from plain-language tasks
+Exec=/usr/bin/deskdora-launcher
+Icon=deskdora
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=agent;automation;desktop;accessibility;
+StartupNotify=true

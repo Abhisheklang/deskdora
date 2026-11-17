@@ -1,0 +1,3 @@
+#!/bin/sh
+# DeskDora command line — runs the CLI inside DeskDora's private venv.
+exec /opt/deskdora/venv/bin/python -m deskdora.cli "$@"

@@ -1,0 +1,11 @@
+#!/bin/sh
+# DeskDora pre-removal: stop a running service so removal is clean.
+set -e
+
+case "$1" in
+  remove|deconfigure)
+    pkill -f "deskdora.cli serve" 2>/dev/null || true
+    ;;
+esac
+
+exit 0
