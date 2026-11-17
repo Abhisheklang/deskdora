@@ -899,10 +899,12 @@ function handleEvent(ev, fromLog) {
       S.lastAction = describeStep(ev.step);
       $("#insAction").textContent = S.lastAction;
       const pill = $("#stepPill");
-      pill.textContent = "Step " + pad2(ev.index + 1) + " / " + pad2(S.planTotal) +
-        " — " + describeStep(ev.step);
-      pill.className = "step-pill";
-      setVoice("&ldquo;Now — " + esc(lowFirst(describeStep(ev.step))) + ".&rdquo;");
+      if (!S.result) {  // a post-run backfill must not un-finish the header
+        pill.textContent = "Step " + pad2(ev.index + 1) + " / " + pad2(S.planTotal) +
+          " — " + describeStep(ev.step);
+        pill.className = "step-pill";
+        setVoice("&ldquo;Now — " + esc(lowFirst(describeStep(ev.step))) + ".&rdquo;");
+      }
       updateCapacity(); updateNext();
       const srow = addRow(true);
       srow.dataset.stepidx = ev.index;
@@ -912,7 +914,8 @@ function handleEvent(ev, fromLog) {
       if (ev.ok) S.planDone = Math.max(S.planDone, ev.index + 1);
       S.lastAction = ev.ok ? (ev.detail || "Done") : ("Failed — " + (ev.error || ""));
       $("#insAction").textContent = trunc(S.lastAction, 90);
-      if (ev.ok) setVoice("&ldquo;" + esc(capFirst(trunc(ev.detail || "Done", 110))) + ".&rdquo;");
+      if (ev.ok && !S.result)
+        setVoice("&ldquo;" + esc(capFirst(trunc(ev.detail || "Done", 110))) + ".&rdquo;");
       let row = S.liveRows[S.epoch + ":" + ev.index];
       if (!row) {
         // The start row may predate the plan sync (different epoch key);
