@@ -121,3 +121,41 @@ def test_routine_trigger_validation():
     assert res.status_code == 200
     assert res.json()["trigger"]["type"] == "folder_change"
     client.delete("/api/routines/folder-watcher")
+
+
+def test_companion_pin_guard():
+    # Non-loopback mutating calls require the companion PIN; the
+    # TestClient can present an arbitrary client host, which is the
+    # same ASGI-level fact the middleware checks in production.
+    from fastapi.testclient import TestClient
+    from deskdora import server
+    server.save_config({**server.load_config(), "companion_pin": "2468"})
+    try:
+        remote = TestClient(server.app, client=("192.168.1.50", 50000))
+        assert remote.post("/api/kill").status_code == 401
+        assert remote.post(
+            "/api/kill",
+            headers={"X-Companion-Pin": "0000"}).status_code == 401
+        assert remote.post(
+            "/api/kill",
+            headers={"X-Companion-Pin": "2468"}).status_code == 200
+        # reads stay open for the companion's status view
+        assert remote.get("/api/status").status_code == 200
+        # loopback (the owner at the machine) is never challenged
+        local = TestClient(server.app, client=("127.0.0.1", 50000))
+        assert local.post("/api/kill").status_code == 200
+    finally:
+        cfg = server.load_config()
+        cfg["companion_pin"] = ""
+        server.save_config(cfg)
+
+
+def test_config_rejects_money_free():
+    res = client.post("/api/config", json={"autonomy": {"money": "free"}})
+    assert res.status_code == 400
+    res = client.post("/api/config", json={"autonomy": {"money": "never"}})
+    assert res.status_code == 200
+    res = client.post("/api/config", json={"autonomy": {
+        "files": "confirm", "apps": "confirm", "web": "confirm",
+        "messages": "confirm", "money": "confirm"}})
+    assert res.status_code == 200

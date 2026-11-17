@@ -179,18 +179,10 @@ class Agent:
                 self._pin_focus(window=focused.window)
                 return
             # Focus is in another app: try to raise the intended one.
-            if self.focus_window and self.d.activate_window(self.focus_window):
-                time.sleep(0.2)
-                try:
-                    obs = self.d.observe()
-                    focused = self._focused_element(obs)
-                except Exception:
-                    focused = None
-                if focused is not None and focused.app == self.focus_app:
-                    self._pin_focus(window=focused.window)
-                    self._emit("focus_guard", result="refocused",
-                               app=self.focus_app, window=self.focus_window)
-                    return
+            if self._try_refocus():
+                self._emit("focus_guard", result="refocused",
+                           app=self.focus_app, window=self.focus_window)
+                return
             raise StepFailure(
                 f"focus guard: keystrokes would go to "
                 f"'{focused.app}' ({focused.window!r}), but this run is "
@@ -206,16 +198,10 @@ class Agent:
             if owner == self.focus_app:
                 return
             if owner is not None:
-                if self.focus_window and \
-                        self.d.activate_window(self.focus_window):
-                    time.sleep(0.2)
-                    owner = self._window_owner(self.d.observe(),
-                                               self.d.active_window_title())
-                    if owner == self.focus_app:
-                        self._emit("focus_guard", result="refocused",
-                                   app=self.focus_app,
-                                   window=self.focus_window)
-                        return
+                if self._try_refocus():
+                    self._emit("focus_guard", result="refocused",
+                               app=self.focus_app, window=self.focus_window)
+                    return
                 raise StepFailure(
                     f"focus guard: active window {active!r} belongs to "
                     f"'{owner}', but this run is working in "
@@ -223,13 +209,10 @@ class Agent:
         if active and self.focus_window:
             if self._titles_match(active, self.focus_window):
                 return
-            if self.d.activate_window(self.focus_window):
-                time.sleep(0.2)
-                active = self.d.active_window_title()
-                if active and self._titles_match(active, self.focus_window):
-                    self._emit("focus_guard", result="refocused",
-                               window=self.focus_window)
-                    return
+            if self._try_refocus():
+                self._emit("focus_guard", result="refocused",
+                           window=self.focus_window)
+                return
             raise StepFailure(
                 f"focus guard: active window is {active!r}, expected "
                 f"{self.focus_window!r}; refusing to type blind")
@@ -239,6 +222,35 @@ class Agent:
             # trace that this step's focus was not verified.
             self._emit("focus_guard", result="unverified",
                        app=self.focus_app, window=self.focus_window)
+
+    def _try_refocus(self):
+        """Raise the intended window and give the desktop a moment
+        to actually move focus (AT-SPI focus state lags the window
+        manager under load — a single instant recheck produced
+        false refusals in a busy rig).  True only when focus is
+        *seen* in the intended app/window afterwards."""
+        if not self.focus_window:
+            return False
+        if not self.d.activate_window(self.focus_window):
+            return False
+        deadline = time.time() + 1.5
+        while time.time() < deadline:
+            time.sleep(0.25)
+            try:
+                obs = self.d.observe()
+                focused = self._focused_element(obs)
+            except Exception:
+                focused = None
+            if focused is not None and self.focus_app:
+                if focused.app == self.focus_app:
+                    self._pin_focus(window=focused.window)
+                    return True
+            elif focused is None:
+                active = self.d.active_window_title()
+                if active and self._titles_match(active,
+                                                 self.focus_window):
+                    return True
+        return False
 
     @staticmethod
     def _titles_match(a, b):

@@ -157,3 +157,26 @@ glow. Source: `src/deskdora/static/logo.svg`; PNG renders in
 5. **The agent has a narrative and a serif voice.** It says what
    it is doing in plain language, and it asks — in serif — before
    anything irreversible.
+
+## Addendum — v2.0 / v3.0 surfaces (same system, no new language)
+
+The Control Room system above governs every surface added after the
+round-3 redesign; nothing below introduces a new colour, face, or
+rule.
+
+- **Memory view** (rail: database glyph, label MEMORY): places as
+  numbered hairline rows (`P—01`…), the path in JetBrains Mono, the
+  source (`USER` / `LEARNED`) as a mono meta line; apps and habits in
+  the same row system; forgetting is a ghost pill per row and one
+  ghost "clear all" — destructive styling stays the routine-delete
+  pattern (hairline, red on hover), never mustard.
+- **Proposals** live on the Run screen as section `04 · PROACTIVE`:
+  the same row system, the goal as an Oswald row title, `ORGANISE IT`
+  as the one lime pill; auto-executed proposals are badged `AUTO`.
+- **Autonomy settings** are ordinary Settings hairline rows: a mono
+  category label, a pill select, a grey hint. Money's select simply
+  has no free-run option — the floor is visible by absence.
+- **Companion** (`/companion.html`) is the Control Room at phone
+  width: same tokens, same pills, one card per concern, the stop
+  control mustard-outlined. It is a *client of the same service*,
+  not a second design.

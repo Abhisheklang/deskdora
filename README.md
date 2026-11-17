@@ -49,7 +49,7 @@ An agent that can operate your whole PC can also delete your files. So:
 **Easiest — the installable app (Ubuntu 24.04):**
 
 ```bash
-sudo apt install ./deskdora_1.0.0_amd64.deb
+sudo apt install ./deskdora_3.0.0_amd64.deb
 ```
 
 Then launch **DeskDora** from your applications menu: it starts the local
@@ -79,10 +79,16 @@ deskdora run "Organise folder ~/Downloads by type"
 deskdora serve
 ```
 
-> **Session requirement:** v1.0 needs an **Xorg/X11 session** ("Ubuntu on
-> Xorg" on the login screen). Wayland restricts the input injection and
-> screen capture an agent lives on; proper Wayland support via desktop
-> portals is the v1.1 milestone. Inside a VM, Xorg is a one-click choice.
+> **Session support:** the reference session is **Xorg/X11** ("Ubuntu on
+> Xorg" on the login screen), where every feature is verified. A
+> **Wayland driver** (v1.1) works through xdg-desktop-portal —
+> AT-SPI perception, the Screenshot portal (with a ScreenCast/PipeWire
+> fallback), and RemoteDesktop input where the compositor's portal
+> backend implements it (GNOME/KDE do; the wlroots backend does not
+> implement RemoteDesktop at all, and in a headless test rig its
+> screencopy format negotiation also blocks capture — the exact probe
+> results ship in the release report). Set `driver` in the config to
+> `linux-wayland` to use it.
 
 ## Planners
 
@@ -95,31 +101,62 @@ The active planner is **recorded in every run log and shown in the UI** —
 no silent substitution. Free-form goals the built-in planner can't parse
 are refused honestly rather than improvised.
 
-## Features (v1.0)
+## Features
 
-- Chat-style web UI: give the agent a task and follow every step in
-  the activity feed while it works
+- Native desktop app window (GTK/WebKit): give the agent a task and
+  follow every step in the activity feed while it works
 - Whole-desktop control: file manager, settings, browser, office apps,
   terminal — anything exposing an accessibility tree
 - Hybrid grounding: accessibility tree first, vision fallback
-- Safety layer: confirmations, app allow-list, sandbox mode, kill switch
+- **Platform drivers** (v1.1+): Linux/X11 (reference, verified),
+  Linux/Wayland via desktop portals, macOS (Accessibility + Quartz)
+  and Windows (UI Automation + SendInput) — the macOS and Windows
+  drivers are implemented and conformance-tested but **not yet run
+  on real hardware**, and they say so in the UI
+- Safety layer: confirmations, app allow-list, sandbox mode, kill
+  switch, and a **focus guard** (v1.1) that refuses to type into the
+  wrong window instead of following focus blindly
+- **Per-category autonomy** (v3.0): files / apps / web / messages /
+  money, each free-run, confirm-first, or never — enforced on every
+  action, with a hard floor: money can never be set to free-run
 - Audit log with before/after screenshots and step-by-step replay
-- **Routines**: save a successful run and re-run it in one click,
-  optionally on a cron schedule — stored locally, on your machine only
+- **Resident memory** (v2.0): places, apps and habits learned from
+  successful runs, consulted by the planner ("Organise folder my
+  messy by type"), inspectable and deletable in the Memory view
+- **Voice** (v2.0): spoken progress updates via offline TTS (espeak),
+  and voice input through a pluggable offline STT pipeline (Vosk /
+  PocketSphinx)
+- **Routines**: save a successful run and re-run it in one click, on
+  a **cron schedule** or a **folder-change trigger** (v2.0) — stored
+  locally, on your machine only
+- **Proactive proposals** (v3.0): when a watched folder fills with
+  loose files, DeskDora proposes an organise — and only executes it
+  unasked if the files category is set to free-run
+- **Phone companion** (v3.0): a mobile web companion served on your
+  local network — status, confirmations, stop — with a PIN guard
+  for any non-local control
 - **Benchmark**: 25 standard desktop tasks with end-state assertions;
   results published in [BENCHMARK.md](BENCHMARK.md), failures included
 
 ## Honest limits
 
-- Xorg session required (Wayland = v1.1). GNOME is the reference
-  desktop; other AT-SPI desktops (KDE, Cinnamon) are untested.
+- The X11 driver is the verified reference. The Wayland driver's
+  real-world level depends on the compositor's portal backend (see
+  the session note above); the macOS and Windows drivers have never
+  run on real hardware. GNOME is the reference desktop; other AT-SPI
+  desktops (KDE, Cinnamon) are untested.
 - Some widgets expose their rows poorly to the accessibility tree
   (certain icon views); tasks depending on those can fail — the agent
   reports the failure instead of working around it silently.
 - The built-in planner understands a defined grammar, not arbitrary
-  English. The Ollama planner handles free-form goals, but a small
+  English, and its parsing is strict: a goal it cannot consume in
+  full is refused ("I can't parse this goal") rather than partially
+  executed. The Ollama planner handles free-form goals, but a small
   local model will plan imperfectly — plans are validated, and failed
   steps stop the run rather than cascade.
+- Offline speech recognition is only as good as its small local
+  models: in the reference rig, Vosk and PocketSphinx transcribe a
+  real human voice well and synthetic (espeak) speech poorly.
 - Benchmark numbers come from a virtualised XFCE desktop standing in
   for GNOME (the reference rig); see BENCHMARK.md for exactly what ran.
 
