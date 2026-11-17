@@ -6,7 +6,7 @@ DeskDora is local-first, so its voice is too — no cloud speech APIs.
   1. ``espeak-ng`` / ``espeak`` (system binary; tiny, robotic, always
      offline).  Speaking renders through the default audio device;
      ``render()`` writes a WAV file instead, which is how the feature
-     is verified in a headless rig with no sound card.
+     is verified on a headless machine with no sound card.
   2. ``pyttsx3`` (Python library; itself usually backed by espeak).
   3. ``null`` — no engine; ``speak()`` reports False honestly.
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -21,11 +22,14 @@ from pydantic import BaseModel
 
 from . import voice
 from .agent import Agent
+from .apikey import ApiKeyStore, presented_key
 from .audit import RunLog, list_runs, read_log
 from .autonomy import (DEFAULT_POLICY, AutonomyPolicy, PolicyError,
                       validate_policy)
 from .memory import MemoryStore, learn_from_log
-from .planners import OllamaPlanner, get_planner
+from .planners import (PROVIDER_REGISTRY, OllamaPlanner, PlanError,
+                       get_planner, make_provider_planner,
+                       validate_custom_provider)
 from .proactive import ProposalStore, ProactiveWatcher
 from .routines import RoutineStore
 from .safety import AllowList, ConfirmationGate, KillSwitch
@@ -68,6 +72,43 @@ def save_config(cfg):
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w") as fh:
         json.dump(cfg, fh, indent=2)
+
+
+# DeskDora's own API key (v3.1) — hash-only store next to the config.
+API_KEYS = ApiKeyStore(os.path.join(DATA_DIR, "api-key.json"))
+
+
+def public_config(cfg):
+    """Config as the API may show it: provider API keys are masked to
+    a last-4 + has_key flag.  The full keys never leave the config
+    file — not in API responses, logs, or run records."""
+    out = json.loads(json.dumps(cfg))
+    for stored in (out.get("providers") or {}).values():
+        key = stored.pop("api_key", "") or ""
+        stored["has_key"] = bool(key)
+        stored["key_last4"] = key[-4:] if key else ""
+    for custom in out.get("custom_providers") or []:
+        key = custom.pop("api_key", "") or ""
+        custom["has_key"] = bool(key)
+        custom["key_last4"] = key[-4:] if key else ""
+    return out
+
+
+def provider_state(cfg):
+    """Per-preset effective settings (model / base URL / key state),
+    keys masked."""
+    stored = cfg.get("providers") or {}
+    out = {}
+    for pid, spec in PROVIDER_REGISTRY.items():
+        s = stored.get(pid) or {}
+        key = s.get("api_key") or ""
+        out[pid] = {
+            "model": s.get("model") or spec["default_model"],
+            "base_url": s.get("base_url") or spec["base_url"],
+            "has_key": bool(key),
+            "key_last4": key[-4:] if key else "",
+        }
+    return out
 
 
 class RunManager:
@@ -159,7 +200,8 @@ class RunManager:
         def _work():
             planner, mode_label = get_planner(
                 mode, model=cfg["model"], known_apps=base_known_apps(),
-                memory=self.memory)
+                memory=self.memory, providers=cfg.get("providers"),
+                customs=cfg.get("custom_providers"))
             gate = ConfirmationGate(self.ui_policy)
             log = RunLog(RUNS_DIR, goal, mode_label)
             from .drivers import get_driver
@@ -254,21 +296,24 @@ _LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 @app.middleware("http")
 async def _companion_guard(request, call_next):
-    # Phone-companion safety rule: reads (GET) are open, but any
+    # Remote-control safety rule: reads (GET) are open, but any
     # mutating call that does NOT come from this machine itself must
-    # present the companion PIN (config "companion_pin").  Loopback —
-    # the owner at their own desktop — is never challenged.  If no
-    # PIN is configured, non-loopback mutation is refused outright:
-    # serving the app on a LAN without a PIN must not silently hand
+    # authenticate — with the companion PIN (the phone companion) or
+    # with DeskDora's API key (programmatic clients, v3.1).  Loopback
+    # — the owner at their own desktop — is never challenged.  With
+    # neither credential configured, non-loopback mutation is refused
+    # outright: serving the app on a LAN must not silently hand
     # strangers the confirm/kill/run buttons.
     if request.method in ("POST", "DELETE") \
             and request.url.path.startswith("/api/"):
         client = request.client.host if request.client else ""
         if client not in _LOCAL_HOSTS:
+            if API_KEYS.verify(presented_key(request.headers)):
+                return await call_next(request)
             pin = load_config().get("companion_pin", "")
             if not pin or request.headers.get("x-companion-pin") != pin:
                 return JSONResponse(
-                    {"detail": "companion PIN required for "
+                    {"detail": "companion PIN or API key required for "
                                "non-local control"},
                     status_code=401)
     return await call_next(request)
@@ -324,7 +369,7 @@ def status():
         "state": {k: v for k, v in MANAGER.state.items()
                   if k != "last_event"},
         "last_event": MANAGER.state["last_event"],
-        "config": cfg,
+        "config": public_config(cfg),
         "ollama_available": ollama.available(),
         "pending_confirmation": pending,
         "kill_tripped": MANAGER.kill.is_tripped(),
@@ -504,9 +549,11 @@ def routines_delete(name: str):
 
 @app.get("/api/benchmark")
 def benchmark():
-    path = os.path.expanduser(
-        "~/workspace/deskdora-deliverables/evidence/benchmark/"
-        "benchmark-results.json")
+    # Results live in the data directory (copied there when a
+    # benchmark run is published); DESKDORA_BENCHMARK_RESULTS can
+    # point elsewhere.  No developer-machine paths in the product.
+    path = (os.environ.get("DESKDORA_BENCHMARK_RESULTS")
+            or os.path.join(DATA_DIR, "benchmark-results.json"))
     if os.path.isfile(path):
         with open(path) as fh:
             return json.load(fh)
@@ -515,7 +562,7 @@ def benchmark():
 
 @app.get("/api/config")
 def config_get():
-    return load_config()
+    return public_config(load_config())
 
 
 @app.post("/api/config")
@@ -530,7 +577,196 @@ def config_post(cfg: dict):
         except PolicyError as exc:
             raise HTTPException(400, str(exc))
     save_config(merged)
-    return merged
+    return public_config(merged)
+
+
+# ---------------------------------------------------------------------------
+# AI providers (v3.1): registry presets + user-defined custom providers.
+# Keys live only in the local config file; every response masks them.
+# ---------------------------------------------------------------------------
+
+class ProviderSaveRequest(BaseModel):
+    api_key: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+
+
+class CustomProviderRequest(BaseModel):
+    name: str | None = None
+    protocol: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+
+
+def _custom_public(custom):
+    key = custom.get("api_key") or ""
+    return {"id": custom["id"], "name": custom["name"],
+            "protocol": custom["protocol"],
+            "base_url": custom["base_url"], "model": custom["model"],
+            "has_key": bool(key), "key_last4": key[-4:] if key else ""}
+
+
+def _resolve_planner_for(pid, cfg):
+    if pid in PROVIDER_REGISTRY:
+        return make_provider_planner(
+            pid, (cfg.get("providers") or {}).get(pid, {}),
+            customs=cfg.get("custom_providers"))
+    if any(c.get("id") == pid for c in cfg.get("custom_providers") or []):
+        return make_provider_planner(pid, {},
+                                     customs=cfg.get("custom_providers"))
+    raise HTTPException(404, "unknown provider")
+
+
+@app.get("/api/providers")
+def providers_get():
+    cfg = load_config()
+    registry = [{"id": pid,
+                 **{k: v for k, v in spec.items() if k != "env_base"}}
+                for pid, spec in PROVIDER_REGISTRY.items()]
+    return {"registry": registry, "state": provider_state(cfg),
+            "customs": [_custom_public(c)
+                        for c in cfg.get("custom_providers") or []],
+            "planner": cfg.get("planner", "auto")}
+
+
+@app.post("/api/providers/{pid}")
+def providers_save(pid: str, req: ProviderSaveRequest):
+    if pid not in PROVIDER_REGISTRY:
+        raise HTTPException(404, "unknown provider")
+    cfg = load_config()
+    providers = dict(cfg.get("providers") or {})
+    stored = dict(providers.get(pid) or {})
+    if req.api_key is not None:
+        if req.api_key.strip():
+            stored["api_key"] = req.api_key.strip()
+        else:
+            stored.pop("api_key", None)
+    if req.model is not None:
+        if req.model.strip():
+            stored["model"] = req.model.strip()
+        else:
+            stored.pop("model", None)
+    if req.base_url is not None:
+        base = req.base_url.strip().rstrip("/")
+        if base:
+            if not base.startswith(("http://", "https://")):
+                raise HTTPException(
+                    400, "base_url must start with http:// or https://")
+            stored["base_url"] = base
+        else:
+            stored.pop("base_url", None)
+    providers[pid] = stored
+    cfg["providers"] = providers
+    save_config(cfg)
+    return {"provider": pid, **provider_state(cfg)[pid]}
+
+
+@app.post("/api/providers/{pid}/test")
+def providers_test(pid: str):
+    cfg = load_config()
+    if pid in PROVIDER_REGISTRY \
+            and PROVIDER_REGISTRY[pid]["protocol"] == "ollama":
+        stored = (cfg.get("providers") or {}).get("ollama") or {}
+        planner = OllamaPlanner(
+            model=stored.get("model") or cfg["model"])
+        ok = planner.available()
+        return {"ok": ok,
+                "detail": f"Ollama {'reachable' if ok else 'not reachable'}"
+                          f" with model {planner.model}"}
+    planner = _resolve_planner_for(pid, cfg)
+    ok, detail = planner.test_connection()
+    return {"ok": ok, "detail": detail}
+
+
+@app.post("/api/providers/{pid}/models")
+def providers_models(pid: str):
+    cfg = load_config()
+    planner = _resolve_planner_for(pid, cfg)
+    fetch = getattr(planner, "fetch_models", None)
+    if fetch is None:
+        return {"provider": pid, "models": None}
+    try:
+        models = fetch()
+    except PlanError as exc:
+        raise HTTPException(400, str(exc))
+    return {"provider": pid, "models": models}
+
+
+@app.post("/api/custom-providers")
+def customs_create(req: CustomProviderRequest):
+    try:
+        cleaned = validate_custom_provider(req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    slug = re.sub(r"[^a-z0-9]+", "-",
+                  cleaned["name"].lower()).strip("-") or "provider"
+    cid = f"custom-{slug}-{uuid.uuid4().hex[:4]}"
+    cfg = load_config()
+    customs = list(cfg.get("custom_providers") or [])
+    customs.append({"id": cid, **cleaned})
+    cfg["custom_providers"] = customs
+    save_config(cfg)
+    return _custom_public(customs[-1])
+
+
+@app.post("/api/custom-providers/{cid}")
+def customs_update(cid: str, req: CustomProviderRequest):
+    cfg = load_config()
+    customs = list(cfg.get("custom_providers") or [])
+    for custom in customs:
+        if custom.get("id") == cid:
+            merged = dict(custom)
+            for field in ("name", "protocol", "base_url", "model",
+                          "api_key"):
+                value = getattr(req, field)
+                if value is not None:
+                    merged[field] = value
+            try:
+                cleaned = validate_custom_provider(merged)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc))
+            custom.update(cleaned)
+            cfg["custom_providers"] = customs
+            save_config(cfg)
+            return _custom_public(custom)
+    raise HTTPException(404, "unknown custom provider")
+
+
+@app.delete("/api/custom-providers/{cid}")
+def customs_delete(cid: str):
+    cfg = load_config()
+    before = cfg.get("custom_providers") or []
+    customs = [c for c in before if c.get("id") != cid]
+    if len(customs) == len(before):
+        raise HTTPException(404, "unknown custom provider")
+    cfg["custom_providers"] = customs
+    if cfg.get("planner") == cid:
+        cfg["planner"] = "auto"
+    save_config(cfg)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Access (v3.1): DeskDora's own API key + MCP connection info
+# ---------------------------------------------------------------------------
+
+@app.get("/api/access")
+def access_get():
+    return {"api_key": API_KEYS.status(),
+            "mcp": {"command": "deskdora-mcp", "transport": "stdio"}}
+
+
+@app.post("/api/access/key/generate")
+def access_generate():
+    key = API_KEYS.generate()
+    return {"key": key, **API_KEYS.status()}
+
+
+@app.post("/api/access/key/revoke")
+def access_revoke():
+    API_KEYS.revoke()
+    return {"ok": True, **API_KEYS.status()}
 
 
 # ---------------------------------------------------------------------------

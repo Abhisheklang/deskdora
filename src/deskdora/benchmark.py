@@ -1,6 +1,6 @@
 """The DeskDora benchmark: ~25 standard desktop tasks, defined as data
-(setup + goal + end-state assertion), executed in the desktop rig by the
-same runner discipline as the gate.  Results are published exactly as
+(setup + goal + end-state assertion), executed on a real
+desktop session by the same runner discipline as the gate.  Results are published exactly as
 measured — passes, failures, and the reasons — in BENCHMARK.md.
 
 Run with:  deskdora bench [--planner builtin] [--limit N]
@@ -17,7 +17,8 @@ from . import tasks as _t
 from .cli import build_agent
 from .tasks import FIXTURES, Ctx, Task
 
-EVIDENCE = os.path.expanduser("~/workspace/deskdora-deliverables/evidence/benchmark")
+EVIDENCE = os.environ.get("DESKDORA_EVIDENCE_DIR",
+                          os.path.join(os.getcwd(), "evidence", "benchmark"))
 APPS_TO_CLOSE = ["thunar", "gnumeric", "xfce4-appearance-settings",
                  "mousepad", "form_app.py", "xfce4-terminal"]
 

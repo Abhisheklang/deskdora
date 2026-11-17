@@ -18,8 +18,8 @@ class LinuxX11Driver(DesktopDriver):
     display_name = "Linux (X11 / AT-SPI + xdotool)"
     implemented = ALL_METHODS
     verified_on_hardware = True
-    hardware_note = ("Verified end-to-end in the reference rig "
-                     "(XFCE/Xvfb) and on Ubuntu Xorg sessions.")
+    hardware_note = ("Verified end-to-end on Ubuntu Xorg sessions "
+                     "(GNOME and XFCE).")
 
     def observe(self):
         return perception.observe()

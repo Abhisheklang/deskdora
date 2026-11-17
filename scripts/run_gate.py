@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Run the DeskDora v0.1 five-task gate inside the desktop rig.
+"""Run the DeskDora v0.1 five-task gate inside a desktop test session.
 
-Usage (with the rig environment sourced):
+Usage (with the desktop session environment sourced):
   python3 scripts/run_gate.py [--task organise-folder] [--planner builtin]
 
 Writes gate-results.json next to this script's evidence output directory
@@ -22,7 +22,8 @@ from deskdora.cli import build_agent          # noqa: E402
 from deskdora.tasks import (SITE_PORT, FIXTURES, gate_tasks,  # noqa: E402
                             prepare_gate_goals, task_ctx)
 
-EVIDENCE = os.path.expanduser("~/workspace/deskdora-deliverables/evidence/gate")
+EVIDENCE = os.environ.get("DESKDORA_EVIDENCE_DIR",
+                          os.path.join(os.getcwd(), "evidence", "gate"))
 APPS_TO_CLOSE = ["thunar", "gnumeric", "xfce4-appearance-settings",
                  "mousepad", "form_app.py"]
 

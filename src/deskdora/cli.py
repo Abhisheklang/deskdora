@@ -41,9 +41,19 @@ def build_agent(goal, planner_mode="auto", model="qwen2.5:1.5b",
     apps = base_known_apps()
     if known_apps:
         apps.update(known_apps)
+    providers = customs = None
+    try:
+        from .server import load_config as _load_cfg
+        _cfg = _load_cfg()
+        providers = _cfg.get("providers")
+        customs = _cfg.get("custom_providers")
+    except Exception:
+        pass
     planner, mode_label = get_planner(planner_mode, model=model,
                                       known_apps=apps,
-                                      memory=memory or default_memory())
+                                      memory=memory or default_memory(),
+                                      providers=providers,
+                                      customs=customs)
     if autonomy is None:
         # CLI runs honour the same per-category policy the service
         # uses (stored in the shared config file); anything invalid

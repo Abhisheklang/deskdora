@@ -554,7 +554,7 @@ select:focus{outline:none;border-color:var(--lime)}
 
   <!-- ======================= ACTION LOG VIEW ======================= -->
   <section id="view-log" class="view" hidden>
-    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ACTION LOG</span><span class="rule"></span><span class="sec-note">NOTHING THE AGENT DOES IS INVISIBLE</span></div>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ACTION LOG</span><span class="rule"></span></div>
     <h2 class="view-head">Every run,<br>every step<span class="lime-dot">.</span></h2>
     <div id="runsList"><div class="skl sklrow"></div><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
 
@@ -581,7 +581,7 @@ select:focus{outline:none;border-color:var(--lime)}
 
   <!-- ======================= ROUTINES VIEW ======================= -->
   <section id="view-routines" class="view" hidden>
-    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ROUTINES</span><span class="rule"></span><span class="sec-note">STORED ONLY ON THIS MACHINE</span></div>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">ROUTINES</span><span class="rule"></span></div>
     <h2 class="view-head">Saved work,<br>one click<span class="lime-dot">.</span></h2>
     <div id="routineList"><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
 
@@ -594,10 +594,10 @@ select:focus{outline:none;border-color:var(--lime)}
           <input type="text" id="routineGoal" placeholder="The task, in plain words"></div>
         <div class="frow2"><span class="mono-lab">Schedule</span>
           <input type="text" id="routineSchedule" placeholder="Cron — optional, e.g. 0 9 * * 1">
-          <span class="hint">Five-field cron. The scheduler fires it through the same confirmation rules as a manual run.</span></div>
+          <span class="hint">Five-field cron format.</span></div>
         <div class="frow2"><span class="mono-lab">Trigger</span>
           <input type="text" id="routineTriggerPath" placeholder="Watch folder — optional, fires when its contents change">
-          <span class="hint">Folder-change trigger. Leave empty for no trigger. First sighting is a baseline, not a firing.</span></div>
+          <span class="hint">Runs when this folder's contents change.</span></div>
         <div class="frow2"><span class="mono-lab"></span>
           <span><button class="pill-btn lime" id="routineSave">SAVE ROUTINE</button></span></div>
       </div>
@@ -624,13 +624,13 @@ select:focus{outline:none;border-color:var(--lime)}
     </div>
 
     <div style="margin-top:38px">
-      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">APPS &amp; HABITS</span><span class="rule"></span><span class="sec-note">LEARNED FROM SUCCESSFUL RUNS ONLY</span></div>
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">APPS &amp; HABITS</span><span class="rule"></span><span class="sec-note">LEARNED FROM RUNS</span></div>
       <div id="habitList"><div class="skl sklrow"></div></div>
     </div>
 
     <div style="margin-top:38px">
       <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">FORGET</span><span class="rule"></span></div>
-      <p class="set-note" style="margin:0 0 14px">Memory lives in one local file and is never sent anywhere. Delete single entries above, or wipe it all:</p>
+      <p class="set-note" style="margin:0 0 14px">Delete single entries above, or wipe it all:</p>
       <button class="pill-btn ghosty" id="memoryClear">CLEAR ALL MEMORY</button>
       <span class="shot-lab" id="memoryMsg" style="margin-left:12px"></span>
     </div>
@@ -638,7 +638,7 @@ select:focus{outline:none;border-color:var(--lime)}
 
   <!-- ======================= BENCHMARK VIEW ======================= -->
   <section id="view-benchmark" class="view" hidden>
-    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">BENCHMARK</span><span class="rule"></span><span class="sec-note">EXTERNAL END-STATE ASSERTIONS ONLY</span></div>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">BENCHMARK</span><span class="rule"></span><span class="sec-note">END-STATE VERIFIED</span></div>
     <h2 class="view-head">Measured,<br>not promised<span class="lime-dot">.</span></h2>
     <div class="kpi-strip">
       <div class="kpi"><div class="kpi-num lime-n" id="kpiPass">—</div><div class="kpi-lab">Tasks passed</div></div>
@@ -664,25 +664,67 @@ select:focus{outline:none;border-color:var(--lime)}
       <div class="frow2"><span class="mono-lab">Ollama model</span>
         <input type="text" id="cfgModel" placeholder="qwen2.5:1.5b"></div>
       <div class="frow2"><span class="mono-lab">App allow-list</span>
-        <textarea id="cfgAllow" placeholder="One app per line — empty means allow all"></textarea>
-        <span class="hint">The agent may only launch apps on this list. Empty = allow all.</span></div>
+        <textarea id="cfgAllow" placeholder="One app per line — empty means allow all"></textarea></div>
       <div class="frow2"><span class="mono-lab">Sandbox / VM mode</span>
-        <label class="switch"><input type="checkbox" id="cfgSandbox"><i></i></label>
-        <span class="hint">Recommended while you evaluate DeskDora.</span></div>
+        <label class="switch"><input type="checkbox" id="cfgSandbox"><i></i></label></div>
       <div class="frow2"><span class="mono-lab">Voice updates</span>
-        <label class="switch"><input type="checkbox" id="cfgVoice"><i></i></label>
-        <span class="hint">Spoken progress updates via the offline speech engine (espeak). Off by default.</span></div>
+        <label class="switch"><input type="checkbox" id="cfgVoice"><i></i></label></div>
       <div class="frow2"><span class="mono-lab">Driver</span>
-        <span class="set-note" id="cfgDriverNote">Platform driver is chosen automatically (set “driver” in the config file to override).</span></div>
+        <span class="set-note" id="cfgDriverNote">Auto — override with “driver” in the config file.</span></div>
       <div class="frow2"><span class="mono-lab">Confirmations</span>
-        <span class="set-note">Before delete / send / submit / install — always on, cannot be disabled.</span></div>
+        <span class="set-note">Always on for delete / send / submit / install.</span></div>
       <div class="frow2"><span class="mono-lab"></span>
         <span><button class="pill-btn lime" id="cfgSave">SAVE SETTINGS</button>
         <span class="shot-lab" id="cfgMsg" style="margin-left:12px"></span></span></div>
     </div>
 
     <div style="margin-top:38px">
-      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">AUTONOMY</span><span class="rule"></span><span class="sec-note">WHAT THE AGENT MAY DO WITHOUT ASKING</span></div>
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">AI PROVIDERS</span><span class="rule"></span><span class="sec-note">OPT-IN — YOUR OWN KEYS</span></div>
+      <p class="set-note" style="margin:0 0 14px">When a cloud planner is active, your goal and a text summary of your screen are sent to that provider.</p>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Provider</span>
+          <span><select id="provSelect" aria-label="Provider to configure"></select></span>
+          <span class="hint" id="provState"></span></div>
+        <div class="frow2"><span class="mono-lab">Base URL</span>
+          <input type="text" id="provBase" placeholder="https://…">
+          <span class="hint">Preset default — edit to override (Azure, proxies, gateways).</span></div>
+        <div class="frow2"><span class="mono-lab">Model</span>
+          <span><select id="provModel" aria-label="Model"></select></span></div>
+        <div class="frow2"><span class="mono-lab">Custom model ID</span>
+          <input type="text" id="provModelCustom" placeholder="Optional — overrides the list above"></div>
+        <div class="frow2"><span class="mono-lab">API key</span>
+          <input type="password" id="provKey" placeholder="Paste API key" autocomplete="off">
+          <span class="hint" id="provKeyState"></span></div>
+        <div class="frow2"><span class="mono-lab"></span>
+          <span><button class="pill-btn lime" id="provSave">SAVE PROVIDER</button>
+          <button class="pill-btn ghosty" id="provTest">TEST CONNECTION</button>
+          <button class="pill-btn ghosty" id="provFetch">FETCH MODELS</button>
+          <span class="shot-lab" id="provMsg" style="margin-left:12px"></span></span></div>
+      </div>
+      <div class="form-rows" style="margin-top:26px">
+        <div class="frow2"><span class="mono-lab">Custom provider</span>
+          <span style="display:flex;gap:10px;flex-wrap:wrap">
+            <input type="text" id="custName" placeholder="Name" style="flex:1;min-width:140px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:11px 14px">
+            <select id="custProtocol" aria-label="Custom provider protocol">
+              <option value="openai">OpenAI-compatible</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Gemini-style</option>
+            </select>
+          </span></div>
+        <div class="frow2"><span class="mono-lab"></span>
+          <span style="display:flex;gap:10px;flex-wrap:wrap">
+            <input type="text" id="custBase" placeholder="Base URL — https://…" style="flex:2;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:11px 14px">
+            <input type="text" id="custModel" placeholder="Model ID" style="flex:1;min-width:140px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:11px 14px">
+            <input type="password" id="custKey" placeholder="API key (optional)" style="flex:1;min-width:140px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:11px 14px">
+            <button class="pill-btn lime" id="custAdd">ADD CUSTOM</button>
+            <span class="shot-lab" id="custMsg"></span>
+          </span></div>
+        <div id="custList"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">AUTONOMY</span><span class="rule"></span><span class="sec-note">WHAT THE AGENT MAY DO WITHOUT ASKING</span></div>
       <div class="form-rows" id="autonomyRows">
         <div class="frow2"><span class="mono-lab">Files</span>
           <span><select id="cfgAut-files" aria-label="Files autonomy">
@@ -693,34 +735,51 @@ select:focus{outline:none;border-color:var(--lime)}
           <span><select id="cfgAut-apps" aria-label="Apps autonomy">
             <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
           </select></span>
-          <span class="hint">Installing or removing software; launching is never gated.</span></div>
+          <span class="hint">Installing or removing software.</span></div>
         <div class="frow2"><span class="mono-lab">Web</span>
           <span><select id="cfgAut-web" aria-label="Web autonomy">
             <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
           </select></span>
-          <span class="hint">Acting inside a browser. “Never” means no browsing at all.</span></div>
+          <span class="hint">Acting inside a browser.</span></div>
         <div class="frow2"><span class="mono-lab">Messages</span>
           <span><select id="cfgAut-messages" aria-label="Messages autonomy">
             <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
           </select></span>
-          <span class="hint">Sending, submitting, posting — anything that leaves the machine.</span></div>
+          <span class="hint">Sending, submitting, posting.</span></div>
         <div class="frow2"><span class="mono-lab">Money</span>
           <span><select id="cfgAut-money" aria-label="Money autonomy">
             <option value="confirm">Confirm first</option><option value="never">Never</option>
           </select></span>
-          <span class="hint">Payments, purchases, orders. Free-run is not offered — money always needs a human yes. That floor is enforced in code, not just here.</span></div>
+          <span class="hint">Payments, purchases, orders.</span></div>
       </div>
     </div>
 
     <div style="margin-top:38px">
-      <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">PROACTIVE &amp; COMPANION</span><span class="rule"></span></div>
+      <div class="sec-head"><span class="sec-no">04</span><span class="sec-name">ACCESS</span><span class="rule"></span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">API key</span>
+          <span class="set-note" id="apiKeyState">No API key.</span></div>
+        <div class="frow2" id="apiKeyShowRow" hidden><span class="mono-lab"></span>
+          <input type="text" id="apiKeyShow" readonly>
+          <span class="hint">Shown once — copy it now.</span></div>
+        <div class="frow2"><span class="mono-lab"></span>
+          <span><button class="pill-btn lime" id="apiKeyGen">GENERATE KEY</button>
+          <button class="pill-btn ghosty" id="apiKeyRevoke">REVOKE</button>
+          <span class="shot-lab" id="apiKeyMsg" style="margin-left:12px"></span></span></div>
+        <div class="frow2"><span class="mono-lab">MCP server</span>
+          <span class="set-note">Connect an MCP client with the command <span class="mono">deskdora-mcp</span> (stdio) — setup in the README.</span></div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">05</span><span class="sec-name">PROACTIVE &amp; COMPANION</span><span class="rule"></span></div>
       <div class="form-rows">
         <div class="frow2"><span class="mono-lab">Watch folders</span>
           <textarea id="cfgWatch" placeholder="One folder per line — DeskDora proposes an organise when one fills with loose files"></textarea>
-          <span class="hint">Proposals appear on the Run screen. With Files set to free-run, a proposal executes itself; otherwise it waits for your approval.</span></div>
+          <span class="hint">Proposals appear on the Run screen.</span></div>
         <div class="frow2"><span class="mono-lab">Companion PIN</span>
           <input type="text" id="cfgPin" placeholder="PIN for phone control over the local network" autocomplete="off">
-          <span class="hint">Open <span class="mono">/companion.html</span> on a phone browser on the same network (service must be started with a network host). Approving, stopping and starting from any non-local device requires this PIN; without one, remote control is refused.</span></div>
+          <span class="hint">Open <span class="mono">/companion.html</span> on your phone — this PIN unlocks its controls.</span></div>
         <div class="frow2"><span class="mono-lab"></span>
           <span><button class="pill-btn lime" id="cfgSave2">SAVE SETTINGS</button>
           <span class="shot-lab" id="cfgMsg2" style="margin-left:12px"></span></span></div>
@@ -747,7 +806,7 @@ select:focus{outline:none;border-color:var(--lime)}
       <button class="m-confirm" id="confirmYes">Confirm — do it</button>
       <button class="m-cancel" id="confirmNo">CANCEL — STOP THE RUN</button>
     </div>
-    <p class="m-note">DESKDORA PAUSES UNTIL YOU ANSWER — NO ANSWER IN 5 MINUTES MEANS NO</p>
+    <p class="m-note">NO ANSWER IN 5 MINUTES = NO</p>
   </div>
 </div>
 
@@ -1127,9 +1186,14 @@ async function pollStatus() {
     $("#railKill").innerHTML = st.kill_tripped ? "KILL<br>TRIPPED" : "KILL<br>READY";
     $("#pullTab").classList.toggle("tripped", !!st.kill_tripped);
 
-    const suffix = st.config.planner !== "builtin"
-      ? (st.ollama_available ? " · OLLAMA UP" : " · OLLAMA DOWN") : "";
     const pm = (st.state.planner_mode || st.config.planner || "").toUpperCase();
+    const provId = pm.split(":")[0];
+    let suffix = "";
+    if (window.__cloudIds && window.__cloudIds.has(provId)) suffix = " · CLOUD";
+    else if (window.__customIds && window.__customIds.has(provId)) suffix = " · CUSTOM";
+    else if (provId === "LMSTUDIO") suffix = " · LOCAL";
+    else if (provId && provId !== "BUILTIN")
+      suffix = st.ollama_available ? " · OLLAMA UP" : " · OLLAMA DOWN";
     $("#plannerPill").textContent = "PLANNER " + pm + suffix;
     $("#insPlanner").textContent = pm + suffix;
     S.plannerMode = st.state.planner_mode || st.config.planner;
@@ -1483,6 +1547,8 @@ async function loadConfig() {
   AUT_CATS.forEach(c => { $("#cfgAut-" + c).value = aut[c] || "confirm"; });
   $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
   $("#cfgPin").value = cfg.companion_pin || "";
+  loadProviders();
+  loadAccess();
 }
 async function saveConfig(msgEl) {
   const autonomy = {};
@@ -1502,6 +1568,225 @@ async function saveConfig(msgEl) {
 }
 $("#cfgSave").addEventListener("click", () => saveConfig($("#cfgMsg")));
 $("#cfgSave2").addEventListener("click", () => saveConfig($("#cfgMsg2")));
+
+/* ================= AI providers & access (v3.1) ================= */
+let PROV = null;
+const provFetched = {};
+const PROTOCOL_LABEL = { openai: "OpenAI-compatible protocol",
+  gemini: "Gemini protocol", anthropic: "Anthropic protocol",
+  ollama: "Local Ollama server" };
+
+function fillPlannerSelect(el, autoValue) {
+  if (!el || !PROV) return;
+  const current = el.value;
+  const groups = [["Local", [[autoValue, "Auto"], ["builtin", "Built-in"]]],
+                  ["Cloud", []], ["Custom", []]];
+  PROV.registry.forEach(p => groups[p.local ? 0 : 1][1].push(
+    [p.id, p.label.replace(/ \(local\)$/, "")]));
+  PROV.customs.forEach(c => groups[2][1].push([c.id, c.name]));
+  el.innerHTML = "";
+  groups.forEach(([label, opts]) => {
+    if (!opts.length) return;
+    const g = document.createElement("optgroup");
+    g.label = label;
+    opts.forEach(([v, l]) => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = l; g.appendChild(o);
+    });
+    el.appendChild(g);
+  });
+  if ([...el.options].some(o => o.value === current)) el.value = current;
+}
+
+async function loadProviders() {
+  try { PROV = await (await fetch("/api/providers")).json(); }
+  catch (e) { return; }
+  window.__cloudIds = new Set(
+    PROV.registry.filter(p => !p.local).map(p => p.id.toUpperCase()));
+  window.__customIds = new Set(PROV.customs.map(c => c.id.toUpperCase()));
+  fillPlannerSelect($("#plannerSelect"), "");
+  fillPlannerSelect($("#cfgPlanner"), "auto");
+  const sel = $("#provSelect");
+  const cur = sel.value;
+  sel.innerHTML = "";
+  PROV.registry.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.label; sel.appendChild(o);
+  });
+  PROV.customs.forEach(c => {
+    const o = document.createElement("option");
+    o.value = c.id; o.textContent = c.name + " (custom)";
+    sel.appendChild(o);
+  });
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  fillProviderForm(sel.value);
+  renderCustoms();
+}
+
+function fillProviderForm(pid) {
+  if (!PROV || !pid) return;
+  const spec = PROV.registry.find(p => p.id === pid);
+  const custom = PROV.customs.find(c => c.id === pid);
+  let model, base, hasKey, last4, keyOptional, models;
+  if (spec) {
+    const st = PROV.state[pid] || {};
+    model = st.model || spec.default_model;
+    base = st.base_url || spec.base_url;
+    hasKey = !!st.has_key; last4 = st.key_last4 || "";
+    keyOptional = !!spec.key_optional;
+    models = provFetched[pid] || spec.models;
+    $("#provState").textContent = (spec.local ? "Local · " : "") +
+      (PROTOCOL_LABEL[spec.protocol] || spec.protocol);
+  } else if (custom) {
+    model = custom.model; base = custom.base_url;
+    hasKey = !!custom.has_key; last4 = custom.key_last4 || "";
+    keyOptional = true; models = [custom.model];
+    $("#provState").textContent = "Custom · " +
+      (PROTOCOL_LABEL[custom.protocol] || custom.protocol);
+  } else return;
+  $("#provBase").value = base;
+  const sel = $("#provModel");
+  sel.innerHTML = "";
+  models.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m; o.textContent = m; sel.appendChild(o);
+  });
+  if (models.includes(model)) {
+    sel.value = model; $("#provModelCustom").value = "";
+  } else {
+    $("#provModelCustom").value = model;
+  }
+  $("#provKey").value = "";
+  $("#provKeyState").textContent = hasKey ? "Saved ····" + last4 :
+    (keyOptional ? "No key needed" : "No key saved");
+  $("#provMsg").textContent = "";
+}
+
+function effectiveModel() {
+  return $("#provModelCustom").value.trim() || $("#provModel").value;
+}
+
+async function saveProvider() {
+  const pid = $("#provSelect").value;
+  if (!pid) return;
+  const body = { model: effectiveModel(),
+                 base_url: $("#provBase").value.trim() };
+  const key = $("#provKey").value;
+  if (key) body.api_key = key;
+  const url = pid.startsWith("custom-") ?
+    "/api/custom-providers/" + pid : "/api/providers/" + pid;
+  const res = await fetch(url, { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  $("#provMsg").textContent = res.ok ? "SAVED" :
+    "REFUSED — " + (await res.text()).slice(0, 80);
+  if (res.ok) { $("#provKey").value = ""; await loadProviders(); }
+}
+
+async function testProvider() {
+  const pid = $("#provSelect").value;
+  if (!pid) return;
+  $("#provMsg").textContent = "TESTING…";
+  try {
+    const res = await fetch("/api/providers/" + pid + "/test",
+                             { method: "POST" });
+    const body = await res.json();
+    $("#provMsg").textContent = body.ok ? "CONNECTED" :
+      "FAILED — " + (body.detail || "").slice(0, 110);
+  } catch (e) { $("#provMsg").textContent = "FAILED — no response"; }
+}
+
+async function fetchModels() {
+  const pid = $("#provSelect").value;
+  if (!pid) return;
+  $("#provMsg").textContent = "FETCHING…";
+  try {
+    const res = await fetch("/api/providers/" + pid + "/models",
+                             { method: "POST" });
+    if (!res.ok) {
+      $("#provMsg").textContent = "FAILED — " +
+        (await res.text()).slice(0, 100);
+      return;
+    }
+    const body = await res.json();
+    if (body.models && body.models.length) {
+      provFetched[pid] = body.models;
+      fillProviderForm(pid);
+      $("#provMsg").textContent = body.models.length + " MODELS";
+    } else {
+      $("#provMsg").textContent = "NO MODELS ENDPOINT — TYPE ANY MODEL ID";
+    }
+  } catch (e) { $("#provMsg").textContent = "FAILED — no response"; }
+}
+
+function renderCustoms() {
+  const el = $("#custList");
+  if (!PROV || !PROV.customs.length) { el.innerHTML = ""; return; }
+  el.innerHTML = PROV.customs.map(c => `
+    <div class="frow2"><span class="mono-lab"></span>
+      <span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span>${esc(c.name)}</span>
+        <span class="hint">${esc(c.protocol)} · ${esc(c.model)} · ${esc(c.base_url)}</span>
+        <button class="mini-btn" data-del-custom="${esc(c.id)}">DELETE</button>
+      </span></div>`).join("");
+  el.querySelectorAll("[data-del-custom]").forEach(btn =>
+    btn.addEventListener("click", async () => {
+      await fetch("/api/custom-providers/" + btn.dataset.delCustom,
+                  { method: "DELETE" });
+      loadProviders();
+    }));
+}
+
+async function addCustom() {
+  const body = { name: $("#custName").value.trim(),
+    protocol: $("#custProtocol").value,
+    base_url: $("#custBase").value.trim(),
+    model: $("#custModel").value.trim(),
+    api_key: $("#custKey").value };
+  const res = await fetch("/api/custom-providers", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  if (res.ok) {
+    $("#custMsg").textContent = "ADDED";
+    ["custName", "custBase", "custModel", "custKey"].forEach(
+      id => { $("#" + id).value = ""; });
+    loadProviders();
+  } else {
+    $("#custMsg").textContent = "REFUSED — " +
+      (await res.text()).slice(0, 80);
+  }
+}
+
+async function loadAccess() {
+  try {
+    const acc = await (await fetch("/api/access")).json();
+    $("#apiKeyState").textContent = acc.api_key.configured ?
+      "Active ····" + acc.api_key.last4 : "No API key.";
+  } catch (e) { /* older server */ }
+}
+
+$("#provSelect").addEventListener("change",
+  () => fillProviderForm($("#provSelect").value));
+$("#provSave").addEventListener("click", saveProvider);
+$("#provTest").addEventListener("click", testProvider);
+$("#provFetch").addEventListener("click", fetchModels);
+$("#custAdd").addEventListener("click", addCustom);
+$("#apiKeyGen").addEventListener("click", async () => {
+  const res = await fetch("/api/access/key/generate", { method: "POST" });
+  const body = await res.json();
+  $("#apiKeyShowRow").hidden = false;
+  $("#apiKeyShow").value = body.key;
+  $("#apiKeyShow").select();
+  $("#apiKeyMsg").textContent = "GENERATED";
+  loadAccess();
+});
+$("#apiKeyRevoke").addEventListener("click", async () => {
+  await fetch("/api/access/key/revoke", { method: "POST" });
+  $("#apiKeyShowRow").hidden = true;
+  $("#apiKeyMsg").textContent = "REVOKED";
+  loadAccess();
+});
+loadProviders();
 
 /* ================= proactive proposals ================= */
 let proposalJSON = "";

@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deskdora"
-version = "3.0.0"
+version = "3.1.0"
 description = "Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding with vision fallback, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Pulselytics" }]
+authors = [{ name = "DeskDora Contributors" }]
 keywords = ["desktop-agent", "automation", "accessibility", "at-spi", "ollama", "linux"]
 dependencies = [
     "fastapi>=0.110",
@@ -23,6 +23,7 @@ dev = ["pytest>=8", "httpx>=0.27"]
 
 [project.scripts]
 deskdora = "deskdora.cli:main"
+deskdora-mcp = "deskdora.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

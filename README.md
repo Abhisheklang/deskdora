@@ -9,9 +9,12 @@ DeskDora operates your desktop for you. You type a task in plain words —
 city=… and submit"* — and DeskDora does the clicking and typing itself:
 opening apps, pressing buttons, filling fields, reading pages back to you.
 
-It is **local-first**: planning runs on your machine (a local model via
-Ollama, or a built-in deterministic planner that needs no model at all).
-Your screen never streams to a cloud service, because there isn't one.
+It is **local-first**: by default, planning runs on your machine (a
+local model via Ollama, or a built-in deterministic planner that needs
+no model at all), and nothing leaves the machine. Cloud planners are
+**opt-in** (v3.1): if you add your own API key for a provider and
+select it, your goal and a text summary of your screen go to that
+provider — never otherwise, and never by default.
 
 ![DeskDora app window](docs/screenshots/ui-run.png)
 
@@ -49,7 +52,7 @@ An agent that can operate your whole PC can also delete your files. So:
 **Easiest — the installable app (Ubuntu 24.04):**
 
 ```bash
-sudo apt install ./deskdora_3.0.0_amd64.deb
+sudo apt install ./deskdora_3.1.0_amd64.deb
 ```
 
 Then launch **DeskDora** from your applications menu: it starts the local
@@ -85,7 +88,7 @@ deskdora serve
 > AT-SPI perception, the Screenshot portal (with a ScreenCast/PipeWire
 > fallback), and RemoteDesktop input where the compositor's portal
 > backend implements it (GNOME/KDE do; the wlroots backend does not
-> implement RemoteDesktop at all, and in a headless test rig its
+> implement RemoteDesktop at all, and in a headless test session its
 > screencopy format negotiation also blocks capture — the exact probe
 > results ship in the release report). Set `driver` in the config to
 > `linux-wayland` to use it.
@@ -96,6 +99,14 @@ deskdora serve
 |---|---|---|
 | `ollama` | A local LLM (default `qwen2.5:1.5b`) writes a JSON step plan; every plan is validated against an action allow-list before anything runs | `deskdora run --planner ollama`, or auto mode when a server is reachable |
 | `builtin` | A deterministic, rule-based planner with a small documented grammar (organise folders, settings toggles, form fills, article fact-finding, PDF→spreadsheet, open/click/type/press chains) | Offline, modest hardware, tests & benchmark |
+| cloud providers | 20+ named providers (OpenAI, Google Gemini, Anthropic Claude, DeepSeek, Groq, Mistral, OpenRouter, xAI, Cohere, Azure OpenAI, LM Studio, …) over three wire protocols, using **your own API key** | Settings → AI Providers; select the provider as the planner |
+| custom | Your own endpoint: a name, a base URL, a protocol (OpenAI-compatible / Anthropic / Gemini-style) and a model ID | Settings → AI Providers → Custom provider |
+
+Cloud and custom planners are off by default and entirely optional —
+they exist for machines without a local model. Keys are stored only in
+the local config file, are masked everywhere in the UI and API, and
+the active planner — local, cloud or custom — is badged in the UI and
+recorded in the run log.
 
 The active planner is **recorded in every run log and shown in the UI** —
 no silent substitution. Free-form goals the built-in planner can't parse
@@ -135,8 +146,41 @@ are refused honestly rather than improvised.
 - **Phone companion** (v3.0): a mobile web companion served on your
   local network — status, confirmations, stop — with a PIN guard
   for any non-local control
+- **API key** (v3.1): DeskDora can issue its own revocable API key
+  (Settings → Access) for programmatic control of its HTTP API
+- **MCP server** (v3.1): `deskdora-mcp` exposes DeskDora to MCP
+  clients (run tasks, read status and logs, approve confirmations,
+  stop) — through the same safety layer, with no bypass (below)
 - **Benchmark**: 25 standard desktop tasks with end-state assertions;
   results published in [BENCHMARK.md](BENCHMARK.md), failures included
+
+## Programmatic access: API key & MCP
+
+**API key.** Settings → Access → *Generate key* shows a key once;
+only its hash is kept. Present it as `X-Api-Key: <key>` (or an
+`Authorization: Bearer <key>` header) to call the HTTP API from
+scripts and other tools — start runs, read status and run logs,
+answer confirmations. Revoking it takes effect immediately.
+
+**MCP server.** `deskdora-mcp` is a stdio MCP server. It talks to the
+running DeskDora service, so an MCP client gets exactly the powers
+of the UI — and the same limits: a run it starts still pauses for
+confirmation, still obeys the autonomy policy, and still dies on the
+kill switch. To connect Claude Desktop (or any MCP client), add:
+
+```json
+{
+  "mcpServers": {
+    "deskdora": {
+      "command": "deskdora-mcp",
+      "env": { "DESKDORA_URL": "http://127.0.0.1:8765" }
+    }
+  }
+}
+```
+
+Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
+`approve_confirmation`, `deny_confirmation`, `stop`.
 
 ## Honest limits
 
@@ -155,10 +199,13 @@ are refused honestly rather than improvised.
   local model will plan imperfectly — plans are validated, and failed
   steps stop the run rather than cascade.
 - Offline speech recognition is only as good as its small local
-  models: in the reference rig, Vosk and PocketSphinx transcribe a
+  models: in our reference test setup, Vosk and PocketSphinx transcribe a
   real human voice well and synthetic (espeak) speech poorly.
 - Benchmark numbers come from a virtualised XFCE desktop standing in
-  for GNOME (the reference rig); see BENCHMARK.md for exactly what ran.
+  for GNOME (the reference test setup); see BENCHMARK.md for exactly what ran.
+- The cloud provider integrations are verified against local mock
+  servers implementing each provider's documented protocol; the
+  per-release verification record ships with the release report.
 
 ## Development
 

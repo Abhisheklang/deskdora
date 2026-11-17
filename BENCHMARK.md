@@ -17,7 +17,7 @@ release FINAL-REPORT.md.)
 | 2 | Enable event sounds in Settings | PASS | success | 7 | 9.5s | xfconf xsettings /Net/EnableEventSounds == true |
 | 3 | Fill and submit form (Ada) | PASS | success | 10 | 13.0s | submission matches: {'name': 'Ada Lovelace', 'email': 'ada@example.org', 'city': 'Pune'} |
 | 4 | Web: Zorania capital | PASS | success | 5 | 11.0s | extracted capital == 'Velport' |
-| 5 | Spreadsheet from PDF (invoice) | PASS | success | 31 | 26.1s | sheet at /home/hatch/deskdora-tasks/bench-b05-pdf-sheet/deskdora-report.gnumeric contains all 6 expected rows |
+| 5 | Spreadsheet from PDF (invoice) | PASS | success | 31 | 26.1s | sheet at ~/deskdora-tasks/bench-b05-pdf-sheet/deskdora-report.gnumeric contains all 6 expected rows |
 | 6 | Organise folder (photos only) | PASS | success | 77 | 69.8s | all 5 files organised |
 | 7 | Organise folder (16 files) | PASS | success | 181 | 163.1s | all 16 files organised |
 | 8 | Fill and submit form (Grace) | PASS | success | 10 | 13.0s | submission {'name': 'Grace Hopper', 'email': 'grace@example.net', 'city': 'New York'} vs expected {'name': 'Grace Hopper', 'email': 'grace@example.net', 'city': 'New York'} |

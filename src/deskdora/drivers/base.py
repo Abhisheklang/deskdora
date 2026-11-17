@@ -8,10 +8,10 @@ capture screenshots, and read the clipboard on one platform.
 
 Drivers shipped:
 
-* ``linux-x11``     — AT-SPI + xdotool on X11.  Verified in the rig.
+* ``linux-x11``     — AT-SPI + xdotool on X11.  Verified end-to-end.
 * ``linux-wayland`` — AT-SPI + xdg-desktop-portal (Screenshot and
   RemoteDesktop).  Implemented; the level actually achieved in the
-  test rig is probed and reported, never assumed.
+  test session is probed and reported, never assumed.
 * ``macos``         — Accessibility (AX) + Quartz events.
   Implemented, **not yet run on real hardware**.
 * ``windows``       — UI Automation + SendInput.

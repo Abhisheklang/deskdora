@@ -222,7 +222,7 @@ class Agent:
         # keystrokes actually land; an AT-SPI "focused" element can
         # be stale — WebKitGTK keeps reporting its web view as
         # focused long after the window loses activation (measured
-        # in the rig with DeskDora's own window: the WM active
+        # with DeskDora's own window: the WM active
         # window was Thunar while AT-SPI still claimed DeskDora).
         # So when the active window belongs to the intended app,
         # focus is right, whatever a stale element says.
@@ -288,7 +288,7 @@ class Agent:
         """Raise the intended window and give the desktop a moment
         to actually move focus (AT-SPI focus state lags the window
         manager under load — a single instant recheck produced
-        false refusals in a busy rig).  True only when focus is
+        false refusals on a busy desktop).  True only when focus is
         *seen* in the intended app/window afterwards."""
         if not self.focus_window:
             return False
@@ -449,8 +449,8 @@ class Agent:
         save_as = step["save_as"]
         # Re-verify focus immediately before saving: another app can
         # raise itself during the long cell-entry phase (a browser
-        # finishing its first-run startup did exactly this in the
-        # rig, and the save keystroke opened the *browser's* save
+        # finishing its first-run startup did exactly this
+        # once, and the save keystroke opened the *browser's* save
         # dialog instead of the spreadsheet's).
         self._guard_focus()
         save_started = time.time()
@@ -469,7 +469,7 @@ class Agent:
             # type the filename, confirm.  GTK save dialogs append the
             # format extension themselves, so type the bare stem —
             # typing "name.gnumeric" produces "name.gnumeric.gnumeric"
-            # (observed with Gnumeric in the rig).
+            # (observed with Gnumeric).
             stem = save_as
             if stem.lower().endswith(".gnumeric"):
                 stem = stem[: -len(".gnumeric")]

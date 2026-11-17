@@ -78,8 +78,7 @@ pre{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
   <input type="password" id="pinInput" inputmode="numeric" autocomplete="off"
          placeholder="••••">
   <button class="approve" id="pinSave">Unlock controls</button>
-  <p class="note">The PIN is set in DeskDora's Settings on the computer.
-    Viewing status needs no PIN; approving, stopping and starting do.</p>
+  <p class="note">PIN is set in DeskDora Settings on the computer.</p>
 </div>
 
 <div class="card">
@@ -164,12 +163,28 @@ function describeEvent(ev) {
   }
 }
 
+let cloudIds = null;
+async function loadCloudIds() {
+  try {
+    const data = await (await fetch("/api/providers")).json();
+    cloudIds = new Set(data.registry.filter(p => !p.local)
+      .map(p => p.id.toUpperCase()));
+  } catch (e) { cloudIds = new Set(); }
+}
+loadCloudIds();
+
 async function poll() {
   try {
     const st = await (await fetch("/api/status")).json();
-    $("#connNote").textContent = "CONNECTED · PLANNER " +
-      (st.state.planner_mode || st.config.planner || "—").toString().toUpperCase() +
-      (st.ollama_available ? " · OLLAMA UP" : " · OLLAMA DOWN");
+    const pm = (st.state.planner_mode || st.config.planner || "—")
+      .toString().toUpperCase();
+    const provId = pm.split(":")[0];
+    let suffix = "";
+    if (cloudIds && cloudIds.has(provId)) suffix = " · CLOUD";
+    else if (provId === "LMSTUDIO") suffix = " · LOCAL";
+    else if (provId && provId !== "BUILTIN" && provId !== "—")
+      suffix = st.ollama_available ? " · OLLAMA UP" : " · OLLAMA DOWN";
+    $("#connNote").textContent = "CONNECTED · PLANNER " + pm + suffix;
     const pill = $("#statePill"), txt = $("#stateTxt");
     let cls = "", label = "IDLE";
     if (st.pending_confirmation) { cls = "wait"; label = "AWAITING CONFIRMATION"; }

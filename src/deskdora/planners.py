@@ -1,10 +1,14 @@
 """Planners: turn a goal + observation into a validated list of steps.
 
-Two implementations share one step schema and one validator:
+The implementations share one step schema and one validator:
 
 * ``OllamaPlanner`` — a local LLM (via Ollama) writes the plan as JSON.
   Output is never trusted: every plan passes the same allow-list
   validation before a single action runs.
+* Cloud planners (v3.1) — ``OpenAICompatiblePlanner`` (OpenAI and
+  DeepSeek) and ``GeminiPlanner`` use the user's own API key, only
+  when the user opts in and selects one.  Off by default; DeskDora
+  stays local-first.  Same prompts, same validator, same badging.
 * ``BuiltinPlanner`` — a deterministic, rule-based planner with a small
   documented command grammar plus task skills.  It needs no model at
   all, which keeps DeskDora fully testable offline and on modest
@@ -35,6 +39,7 @@ known at plan time, so the expansion has to happen in the executor.
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.request
 import urllib.error
@@ -175,17 +180,7 @@ class OllamaPlanner:
             return False
 
     def plan(self, goal, observation, history=None):
-        user = f"Goal: {goal}\n\nOn-screen elements:\n{observation.summary_for_planner()}"
-        if self.memory is not None:
-            places = self.memory.snapshot()["places"]
-            if places:
-                listing = ", ".join(
-                    f"{alias}={entry['path']}"
-                    for alias, entry in places.items())
-                user += (f"\n\nPlaces the user has taught DeskDora "
-                         f"(name=path): {listing}")
-        if history:
-            user += f"\n\nPrevious attempt notes: {history}"
+        user = _user_prompt(goal, observation, self.memory, history)
         body = {
             "model": self.model,
             "messages": [
@@ -211,6 +206,422 @@ class OllamaPlanner:
         content = data.get("message", {}).get("content", "")
         plan = _extract_json_plan(content)
         return validate_plan(plan, element_count=len(observation.elements))
+
+
+def _user_prompt(goal, observation, memory=None, history=None):
+    """The user message every LLM planner (local or cloud) sends:
+    the goal, the numbered on-screen elements, any taught places,
+    and notes from a previous attempt."""
+    user = (f"Goal: {goal}\n\nOn-screen elements:\n"
+            f"{observation.summary_for_planner()}")
+    if memory is not None:
+        places = memory.snapshot()["places"]
+        if places:
+            listing = ", ".join(
+                f"{alias}={entry['path']}"
+                for alias, entry in places.items())
+            user += (f"\n\nPlaces the user has taught DeskDora "
+                     f"(name=path): {listing}")
+    if history:
+        user += f"\n\nPrevious attempt notes: {history}"
+    return user
+
+
+# --------------------------------------------------------------------------
+# Cloud planners (v3.1) — opt-in, the user's own API key
+# --------------------------------------------------------------------------
+
+def _preset(label, protocol, base_url, default_model, models,
+            key_optional=False, local=False):
+    return {"label": label, "protocol": protocol, "base_url": base_url,
+            "default_model": default_model, "models": list(models),
+            "key_optional": key_optional, "local": local,
+            "env_base": None}
+
+
+# The provider registry (v3.1): named presets over three wire
+# protocols — OpenAI-compatible chat completions, Gemini
+# generateContent, Anthropic messages — plus the two local servers.
+# Model lists are curated starting points only: the user can always
+# type any model ID, and providers with a models endpoint can refresh
+# the list live.  A preset's base URL can be overridden per user
+# (Azure deployments, proxies, self-hosted gateways).
+PROVIDER_REGISTRY = {
+    "ollama": _preset(
+        "Ollama (local)", "ollama", "http://127.0.0.1:11434",
+        "qwen2.5:1.5b",
+        ["qwen2.5:1.5b", "qwen2.5:7b", "llama3.1:8b", "mistral:7b"],
+        key_optional=True, local=True),
+    "lmstudio": _preset(
+        "LM Studio (local)", "openai", "http://127.0.0.1:1234/v1",
+        "qwen2.5-7b-instruct",
+        ["qwen2.5-7b-instruct", "llama-3.1-8b-instruct"],
+        key_optional=True, local=True),
+    "openai": _preset(
+        "OpenAI", "openai", "https://api.openai.com/v1",
+        "gpt-4o-mini",
+        ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o4-mini"]),
+    "gemini": _preset(
+        "Google Gemini", "gemini",
+        "https://generativelanguage.googleapis.com/v1beta",
+        "gemini-2.0-flash",
+        ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro",
+         "gemini-2.0-flash-lite"]),
+    "anthropic": _preset(
+        "Anthropic Claude", "anthropic", "https://api.anthropic.com/v1",
+        "claude-sonnet-4-5",
+        ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-5"]),
+    "deepseek": _preset(
+        "DeepSeek", "openai", "https://api.deepseek.com/v1",
+        "deepseek-chat", ["deepseek-chat", "deepseek-reasoner"]),
+    "qwen": _preset(
+        "Qwen (Alibaba)", "openai",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "qwen-plus", ["qwen-plus", "qwen-max", "qwen-turbo"]),
+    "moonshot": _preset(
+        "Moonshot Kimi", "openai", "https://api.moonshot.ai/v1",
+        "moonshot-v1-8k",
+        ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k",
+         "kimi-k2-0711-preview"]),
+    "mistral": _preset(
+        "Mistral AI", "openai", "https://api.mistral.ai/v1",
+        "mistral-small-latest",
+        ["mistral-small-latest", "mistral-medium-latest",
+         "mistral-large-latest", "codestral-latest"]),
+    "groq": _preset(
+        "Groq", "openai", "https://api.groq.com/openai/v1",
+        "llama-3.3-70b-versatile",
+        ["llama-3.3-70b-versatile", "llama-3.1-8b-instant",
+         "openai/gpt-oss-120b"]),
+    "together": _preset(
+        "Together AI", "openai", "https://api.together.xyz/v1",
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        ["meta-llama/Llama-3.3-70B-Instruct-Turbo",
+         "Qwen/Qwen2.5-72B-Instruct-Turbo", "deepseek-ai/DeepSeek-V3"]),
+    "openrouter": _preset(
+        "OpenRouter", "openai", "https://openrouter.ai/api/v1",
+        "openai/gpt-4o-mini",
+        ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5",
+         "google/gemini-2.5-flash", "deepseek/deepseek-chat"]),
+    "xai": _preset(
+        "xAI Grok", "openai", "https://api.x.ai/v1",
+        "grok-4", ["grok-4", "grok-3", "grok-3-mini"]),
+    "cohere": _preset(
+        "Cohere", "openai", "https://api.cohere.ai/compatibility/v1",
+        "command-a-03-2025",
+        ["command-a-03-2025", "command-r-plus", "command-r"]),
+    "perplexity": _preset(
+        "Perplexity", "openai", "https://api.perplexity.ai",
+        "sonar", ["sonar", "sonar-pro", "sonar-reasoning-pro"]),
+    "fireworks": _preset(
+        "Fireworks AI", "openai", "https://api.fireworks.ai/inference/v1",
+        "accounts/fireworks/models/llama-v3p3-70b-instruct",
+        ["accounts/fireworks/models/llama-v3p3-70b-instruct",
+         "accounts/fireworks/models/qwen2p5-72b-instruct",
+         "accounts/fireworks/models/deepseek-v3"]),
+    "cerebras": _preset(
+        "Cerebras", "openai", "https://api.cerebras.ai/v1",
+        "llama-3.3-70b", ["llama-3.3-70b", "llama3.1-8b", "qwen-3-32b"]),
+    "sambanova": _preset(
+        "SambaNova", "openai", "https://api.sambanova.ai/v1",
+        "Meta-Llama-3.3-70B-Instruct",
+        ["Meta-Llama-3.3-70B-Instruct", "DeepSeek-V3.1", "Qwen3-32B"]),
+    "nvidia": _preset(
+        "NVIDIA NIM", "openai", "https://integrate.api.nvidia.com/v1",
+        "meta/llama-3.3-70b-instruct",
+        ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1",
+         "qwen/qwen2.5-72b-instruct"]),
+    "github": _preset(
+        "GitHub Models", "openai", "https://models.github.ai/inference",
+        "openai/gpt-4o-mini",
+        ["openai/gpt-4o-mini", "openai/gpt-4o",
+         "meta/Llama-3.3-70B-Instruct"]),
+    "azure": _preset(
+        "Azure OpenAI", "openai",
+        "https://YOUR-RESOURCE.openai.azure.com/openai/v1",
+        "gpt-4o-mini", ["gpt-4o-mini", "gpt-4o"]),
+}
+
+# Base-URL override env vars (used by the test-suite's mock servers,
+# and handy for proxies): DESKDORA_<PRESET_ID>_BASE_URL.
+for _pid, _spec in PROVIDER_REGISTRY.items():
+    _spec["env_base"] = f"DESKDORA_{_pid.upper()}_BASE_URL"
+
+# Backwards-compatible alias: the cloud presets are the registry
+# minus the local servers.
+PROVIDERS = {pid: spec for pid, spec in PROVIDER_REGISTRY.items()
+             if not spec["local"]}
+
+
+def _http_json(url, body, headers, timeout, provider_label):
+    """POST JSON and parse the JSON reply, raising PlanError with the
+    provider's own error message on failure.  The API key travels in
+    a header and is never included in any error text."""
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", **headers})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            payload = json.loads(exc.read().decode("utf-8", "replace"))
+            err = payload.get("error") or {}
+            detail = err.get("message") or payload.get("message") or ""
+        except Exception:
+            pass
+        raise PlanError(
+            f"{provider_label} request failed (HTTP {exc.code})"
+            + (f": {detail}" if detail else ""))
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise PlanError(f"{provider_label} unreachable or timed out: {exc}")
+
+
+def _http_get_json(url, headers, timeout, provider_label):
+    """GET JSON with the same error semantics as ``_http_json``."""
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            payload = json.loads(exc.read().decode("utf-8", "replace"))
+            err = payload.get("error") or {}
+            detail = err.get("message") or payload.get("message") or ""
+        except Exception:
+            pass
+        raise PlanError(
+            f"{provider_label} request failed (HTTP {exc.code})"
+            + (f": {detail}" if detail else ""))
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise PlanError(f"{provider_label} unreachable or timed out: {exc}")
+
+
+class _CloudPlannerBase:
+    """Shared behaviour for the opt-in cloud planners: same system
+    prompt, same user prompt, same plan extraction + validation as
+    the local Ollama planner.  Subclasses implement ``_complete``
+    (and optionally ``fetch_models``) for one wire protocol."""
+
+    cloud = True
+
+    def __init__(self, provider, label, api_key="", model="",
+                 base_url="", default_model="", key_optional=False,
+                 timeout=120, memory=None):
+        self.provider = provider
+        self.label = label
+        self.name = provider
+        self.api_key = api_key or ""
+        self.model = model or default_model
+        self.base_url = (base_url or "").rstrip("/")
+        self.key_optional = key_optional
+        self.timeout = timeout
+        self.memory = memory
+
+    def available(self):
+        """A cloud planner is 'available' when a key is configured
+        (or none is needed); reachability is what the Test-connection
+        button checks."""
+        return bool(self.api_key) or self.key_optional
+
+    def _require_key(self):
+        if not self.api_key and not self.key_optional:
+            raise PlanError(
+                f"no API key configured for {self.label} — add one in "
+                "Settings → AI Providers, or pick a local planner.")
+
+    def fetch_models(self):
+        """Live model list from the provider's models endpoint, or
+        None when the protocol has none.  Bonus, never required: the
+        curated registry list and free-text model IDs always work."""
+        return None
+
+    def plan(self, goal, observation, history=None):
+        self._require_key()
+        user = _user_prompt(goal, observation, self.memory, history)
+        content = self._complete(SYSTEM_PROMPT, user)
+        plan = _extract_json_plan(content)
+        return validate_plan(plan, element_count=len(observation.elements))
+
+    def test_connection(self):
+        """One minimal completion to prove key + endpoint + model.
+        Returns (ok, detail).  Costs a handful of tokens."""
+        try:
+            self._require_key()
+            text = self._complete(
+                "You are a connection test. Reply with exactly: OK",
+                "ping", max_tokens=16)
+        except PlanError as exc:
+            return False, str(exc)
+        return True, f"{self.label} answered via {self.model}: {text[:60]!r}"
+
+    def _complete(self, system, user, max_tokens=1024):
+        raise NotImplementedError
+
+
+class OpenAICompatiblePlanner(_CloudPlannerBase):
+    """The OpenAI chat-completions protocol.  Most providers speak it
+    on their own base URL (DeepSeek, Groq, Mistral, OpenRouter, …),
+    and local servers like LM Studio do too — one class serves all."""
+
+    def _auth_headers(self):
+        return ({"Authorization": f"Bearer {self.api_key}"}
+                if self.api_key else {})
+
+    def _complete(self, system, user, max_tokens=1024):
+        data = _http_json(
+            self.base_url + "/chat/completions",
+            {"model": self.model,
+             "messages": [{"role": "system", "content": system},
+                          {"role": "user", "content": user}],
+             "temperature": 0.1, "max_tokens": max_tokens},
+            self._auth_headers(), self.timeout, self.label)
+        try:
+            return data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            raise PlanError(
+                f"{self.label} returned an unexpected response shape")
+
+    def fetch_models(self):
+        data = _http_get_json(self.base_url + "/models",
+                              self._auth_headers(), 30, self.label)
+        ids = [m.get("id") for m in data.get("data", []) if m.get("id")]
+        return sorted(ids) or None
+
+
+class GeminiPlanner(_CloudPlannerBase):
+    """Google Gemini generateContent protocol."""
+
+    def _complete(self, system, user, max_tokens=1024):
+        data = _http_json(
+            f"{self.base_url}/models/{self.model}:generateContent",
+            {"system_instruction": {"parts": [{"text": system}]},
+             "contents": [{"role": "user", "parts": [{"text": user}]}],
+             "generationConfig": {"temperature": 0.1,
+                                  "maxOutputTokens": max_tokens,
+                                  "responseMimeType": "application/json"}},
+            {"x-goog-api-key": self.api_key},
+            self.timeout, self.label)
+        candidates = data.get("candidates") or []
+        if not candidates:
+            feedback = data.get("promptFeedback") or {}
+            raise PlanError(
+                f"{self.label} returned no candidates"
+                + (f": {feedback.get('blockReason')}" if feedback else ""))
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts)
+        if not text:
+            raise PlanError(f"{self.label} returned an empty response")
+        return text
+
+    def fetch_models(self):
+        data = _http_get_json(
+            self.base_url + "/models",
+            {"x-goog-api-key": self.api_key}, 30, self.label)
+        names = []
+        for entry in data.get("models", []):
+            name = entry.get("name") or ""
+            names.append(name.removeprefix("models/"))
+        return sorted(n for n in names if n) or None
+
+
+class AnthropicPlanner(_CloudPlannerBase):
+    """Anthropic's messages protocol."""
+
+    def _headers(self):
+        return {"x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01"}
+
+    def _complete(self, system, user, max_tokens=1024):
+        data = _http_json(
+            self.base_url + "/messages",
+            {"model": self.model, "max_tokens": max_tokens,
+             "system": system, "temperature": 0.1,
+             "messages": [{"role": "user", "content": user}]},
+            self._headers(), self.timeout, self.label)
+        blocks = data.get("content") or []
+        text = "".join(b.get("text", "") for b in blocks
+                       if b.get("type") == "text")
+        if not text:
+            raise PlanError(f"{self.label} returned an empty response")
+        return text
+
+    def fetch_models(self):
+        data = _http_get_json(self.base_url + "/models",
+                              self._headers(), 30, self.label)
+        ids = [m.get("id") for m in data.get("data", []) if m.get("id")]
+        return sorted(ids) or None
+
+
+_PROTOCOL_CLASSES = {"openai": OpenAICompatiblePlanner,
+                     "gemini": GeminiPlanner,
+                     "anthropic": AnthropicPlanner}
+
+CUSTOM_PROTOCOLS = tuple(_PROTOCOL_CLASSES)
+
+
+def validate_custom_provider(data):
+    """Validate a user-defined provider definition (Settings → AI
+    Providers → Custom).  This is endpoint *configuration* only —
+    a name, a base URL, a protocol, a model, a key.  DeskDora never
+    executes user-supplied code to reach a provider."""
+    name = str(data.get("name") or "").strip()
+    protocol = str(data.get("protocol") or "").strip()
+    base_url = str(data.get("base_url") or "").strip().rstrip("/")
+    model = str(data.get("model") or "").strip()
+    if not name:
+        raise ValueError("custom provider needs a name")
+    if protocol not in CUSTOM_PROTOCOLS:
+        raise ValueError(
+            f"protocol must be one of {sorted(CUSTOM_PROTOCOLS)}")
+    if not base_url.startswith(("http://", "https://")):
+        raise ValueError("base_url must start with http:// or https://")
+    if not model:
+        raise ValueError("custom provider needs a model ID")
+    return {"name": name, "protocol": protocol, "base_url": base_url,
+            "model": model, "api_key": str(data.get("api_key") or "")}
+
+
+def make_provider_planner(provider_id, settings=None, memory=None,
+                          customs=None):
+    """Build the planner for a registry preset id or a user-defined
+    custom provider id, from stored settings.  A preset's base URL
+    may be overridden by its stored setting or by the
+    DESKDORA_<ID>_BASE_URL env var (used by the test-suite's local
+    mock servers)."""
+    settings = settings or {}
+    if provider_id in PROVIDER_REGISTRY:
+        spec = PROVIDER_REGISTRY[provider_id]
+        if spec["protocol"] == "ollama":
+            return OllamaPlanner(
+                model=settings.get("model") or spec["default_model"],
+                memory=memory)
+        base_url = (os.environ.get(spec["env_base"])
+                    or settings.get("base_url") or spec["base_url"])
+        cls = _PROTOCOL_CLASSES[spec["protocol"]]
+        return cls(provider_id, spec["label"],
+                   api_key=settings.get("api_key", ""),
+                   model=settings.get("model", ""),
+                   base_url=base_url,
+                   default_model=spec["default_model"],
+                   key_optional=spec["key_optional"], memory=memory)
+    for custom in customs or []:
+        if custom.get("id") == provider_id:
+            cls = _PROTOCOL_CLASSES[custom["protocol"]]
+            return cls(provider_id, custom.get("name") or provider_id,
+                       api_key=custom.get("api_key", ""),
+                       model=custom.get("model", ""),
+                       base_url=custom.get("base_url", ""),
+                       default_model="", key_optional=True,
+                       memory=memory)
+    raise PlanError(f"unknown planner provider: {provider_id!r}")
+
+
+def make_cloud_planner(provider, settings=None, memory=None):
+    """Alias kept for the original three-provider call sites."""
+    return make_provider_planner(provider, settings, memory=memory)
 
 
 def _extract_json_plan(content):
@@ -610,14 +1021,26 @@ def _clean_goal(goal):
 
 
 def get_planner(mode="auto", model="qwen2.5:1.5b", known_apps=None,
-                memory=None):
+                memory=None, providers=None, customs=None):
     """Resolve a planner by mode.  'auto' prefers Ollama when a server
     with the model is actually reachable, else the built-in planner.
+    A registry preset id ('openai', 'gemini', 'groq', …) or a custom
+    provider id builds that provider's planner from stored settings.
     Returns (planner, mode_label)."""
     if mode == "builtin":
         return BuiltinPlanner(known_apps, memory=memory), "builtin"
-    if mode == "ollama":
-        return OllamaPlanner(model=model, memory=memory), f"ollama:{model}"
+    if mode == "ollama" or (mode in PROVIDER_REGISTRY
+                            and PROVIDER_REGISTRY[mode]["protocol"]
+                            == "ollama"):
+        omodel = (providers or {}).get("ollama", {}).get("model") or model
+        return (OllamaPlanner(model=omodel, memory=memory),
+                f"ollama:{omodel}")
+    if mode in PROVIDER_REGISTRY or any(
+            c.get("id") == mode for c in customs or []):
+        planner = make_provider_planner(
+            mode, (providers or {}).get(mode, {}), memory=memory,
+            customs=customs)
+        return planner, f"{mode}:{planner.model}"
     ollama = OllamaPlanner(model=model, memory=memory)
     if ollama.available():
         return ollama, f"ollama:{model}"
