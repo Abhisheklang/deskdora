@@ -892,7 +892,7 @@ function handleEvent(ev, fromLog) {
       addRow(true); break;
     case "plan":
       S.epoch++; S.plan = countable(ev.steps); S.planTotal = S.plan.length;
-      S.planDone = 0; S.curIdx = -1; S.liveRows = {};
+      S.planDone = 0; S.curIdx = -1;
       buildSegbar(); updateNext(); addRow(true); break;
     case "step_start": {
       S.curIdx = ev.index;
@@ -904,17 +904,26 @@ function handleEvent(ev, fromLog) {
       pill.className = "step-pill";
       setVoice("&ldquo;Now — " + esc(lowFirst(describeStep(ev.step))) + ".&rdquo;");
       updateCapacity(); updateNext();
-      S.liveRows[S.epoch + ":" + ev.index] = addRow(true);
+      const srow = addRow(true);
+      srow.dataset.stepidx = ev.index;
+      S.liveRows[S.epoch + ":" + ev.index] = srow;
       break; }
     case "step_result": {
       if (ev.ok) S.planDone = Math.max(S.planDone, ev.index + 1);
       S.lastAction = ev.ok ? (ev.detail || "Done") : ("Failed — " + (ev.error || ""));
       $("#insAction").textContent = trunc(S.lastAction, 90);
       if (ev.ok) setVoice("&ldquo;" + esc(capFirst(trunc(ev.detail || "Done", 110))) + ".&rdquo;");
-      const row = S.liveRows[S.epoch + ":" + ev.index];
+      let row = S.liveRows[S.epoch + ":" + ev.index];
+      if (!row) {
+        // The start row may predate the plan sync (different epoch key);
+        // find the still-live row for this step in the DOM instead of
+        // appending a duplicate result row.
+        const cand = feed.querySelectorAll(
+          '.tl-row.live[data-stepidx="' + ev.index + '"]');
+        row = cand[cand.length - 1] || null;
+      }
       if (row) { row.className = "tl-row " + (ev.ok ? "ok" : "err");
         row.innerHTML = rowHTML(ev); }
-      else addRow(true);
       updateCapacity();
       break; }
     case "target":
