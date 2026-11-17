@@ -6,16 +6,12 @@ accessibility-tree snapshot in the shared ``perception`` data model)
 and how to perform input (click, type, key, scroll), launch apps,
 capture screenshots, and read the clipboard on one platform.
 
-Drivers shipped:
+Drivers shipped (DeskDora is Linux-only):
 
 * ``linux-x11``     — AT-SPI + xdotool on X11.  Verified end-to-end.
 * ``linux-wayland`` — AT-SPI + xdg-desktop-portal (Screenshot and
   RemoteDesktop).  Implemented; the level actually achieved in the
   test session is probed and reported, never assumed.
-* ``macos``         — Accessibility (AX) + Quartz events.
-  Implemented, **not yet run on real hardware**.
-* ``windows``       — UI Automation + SendInput.
-  Implemented, **not yet run on real hardware**.
 
 Honesty rule: ``implemented`` lists the methods a driver *contains
 code for*; ``verified_on_hardware`` says whether that code has ever

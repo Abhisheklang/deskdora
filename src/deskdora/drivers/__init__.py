@@ -1,21 +1,19 @@
-"""Driver registry and platform detection.
+"""Driver registry — Linux sessions only.
 
-``get_driver()`` with no argument picks the driver for the current
-machine/session:
+DeskDora is a Linux desktop agent; these are the only drivers that
+exist:
 
-* macOS → ``macos``; Windows → ``windows``
 * Linux with a Wayland session (``WAYLAND_DISPLAY`` set and
   ``XDG_SESSION_TYPE=wayland``) → ``linux-wayland``
-* Linux otherwise → ``linux-x11``
+* Linux otherwise (Xorg/X11) → ``linux-x11``
 
 ``DESKDORA_DRIVER`` (or the server's ``driver`` config) overrides the
-choice by id.  Platform driver modules are imported lazily so that,
-e.g., importing the registry on Linux never touches the macOS driver.
+choice by id.  Driver modules are imported lazily so importing the
+registry never pulls a session backend in early.
 """
 from __future__ import annotations
 
 import os
-import sys
 
 from .base import (ACTION_REQUIREMENTS, CapabilityError, DesktopDriver,
                    DriverError)
@@ -28,8 +26,6 @@ __all__ = [
 _LOADERS = {
     "linux-x11": ("linux_x11", "LinuxX11Driver"),
     "linux-wayland": ("linux_wayland", "LinuxWaylandDriver"),
-    "macos": ("macos", "MacOSDriver"),
-    "windows": ("windows", "WindowsDriver"),
 }
 
 
@@ -47,10 +43,6 @@ def detect_driver_id():
     override = os.environ.get("DESKDORA_DRIVER", "").strip()
     if override:
         return override
-    if sys.platform == "darwin":
-        return "macos"
-    if sys.platform.startswith("win"):
-        return "windows"
     if (os.environ.get("XDG_SESSION_TYPE") == "wayland"
             or (os.environ.get("WAYLAND_DISPLAY")
                 and not os.environ.get("DISPLAY"))):
