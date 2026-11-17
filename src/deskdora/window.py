@@ -456,7 +456,7 @@ class EdgeLight(Gtk.Window):
             overlay.add_overlay(assembly)
             overlay.set_overlay_pass_through(assembly, True)
         self.add(overlay)
-        self.connect("map-event", self._make_click_through)
+        self.connect("map-event", self._apply_click_through)
         GLib.timeout_add(60, self._tick)
 
     def _build_edge(self, edge):
@@ -496,12 +496,18 @@ class EdgeLight(Gtk.Window):
         self.strips[edge] = (core, glow, core2)
         return box
 
-    def _make_click_through(self, *_args):
+    def _apply_click_through(self, *_args):
         # Empty X11 input shape (ShapeInput, 0 rectangles): every
         # click and key passes straight through to the window
         # beneath.  This is the whole safety story of the edge
         # light — it is paint, not a surface.  X11-only; on a
         # non-X11 backend the window still never requests focus.
+        # GTK re-applies its own (full-window) input shape after
+        # map/configure, which silently undid a one-shot call —
+        # measured live: the mapped window reported 1 full-screen
+        # input rectangle and swallowed every desktop click.  So
+        # the shape is re-applied on EVERY tick while visible:
+        # any reset is healed within one tick (60 ms).
         try:
             import ctypes
             from gi.repository import GdkX11
@@ -548,6 +554,7 @@ class EdgeLight(Gtk.Window):
             self.show_all()
             self.move(0, 0)
             changed = True
+        self._apply_click_through()
         if st["animated"]:
             speed = 2.3 if st["mode"] == "amber-fast" else 1.0
             self._phase = (self._phase + 0.004 * speed) % 1.0
