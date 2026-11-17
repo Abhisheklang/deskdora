@@ -37,6 +37,12 @@ def overlay_state(status):
         paused = bool(progress.get("paused"))
         total = progress.get("step_total") or 0
         done = progress.get("steps_done") or 0
+        status_text = ("PAUSED — AT A STEP BOUNDARY" if paused
+                       else (progress.get("current_action")
+                             or "WORKING"))
+        eta = progress.get("eta_seconds")
+        if eta and not paused:
+            status_text += f" · ~{max(1, round(eta / 60))} MIN LEFT (EST.)"
         return {
             "visible": True,
             "mode": "paused" if paused else "running",
@@ -44,9 +50,7 @@ def overlay_state(status):
             "percent": progress.get("percent") or 0,
             "steps_text": (f"STEP {done}/{total}" if total
                            else "PLANNING"),
-            "status_text": ("PAUSED — AT A STEP BOUNDARY" if paused
-                            else (progress.get("current_action")
-                                  or "WORKING")),
+            "status_text": status_text,
             "planner_display": disp,
             "can_stop": True,
             "can_freeze": not paused,

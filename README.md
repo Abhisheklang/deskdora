@@ -166,6 +166,72 @@ are refused honestly rather than improvised.
   animations. Off stops the machinery, not just the UI. The safety
   layer is not a feature: confirmations and the money floor have
   no off switch
+- **Sound tones** (v3.3): short tones for run completed / failed,
+  confirmation waiting, queue finished and more — synthesised
+  locally as WAVs (no sound files ship with DeskDora), played
+  fire-and-forget through PulseAudio. Master switch, volume and
+  per-event toggles with test buttons in Settings → Sounds
+- **Connection pop-ups** (v3.3): if an Ollama or cloud planner
+  can't be reached, the run stops before it starts and the app
+  says why in plain language — invalid key, rate limited, model
+  not found, Ollama isn't running — with Retry, *Use the built-in
+  planner instead*, and *Open provider settings*. The planner is
+  never switched silently; the badge always names the planner
+  that actually did the work. The companion shows the same state
+- **Undo for file actions** (v3.3): file moves the agent makes are
+  journaled with hashes; History → *Undo file changes* puts
+  everything back. Files that changed or were replaced since the
+  run are reported as conflicts, never overwritten
+- **Dry-run plan approval** (v3.3): tick *Review plan first* (or
+  set it as the default) and the plan is shown as readable steps
+  before anything runs. Untick steps and the engine skips them —
+  the log records them as skipped by you
+- **Per-app permissions** (v3.3): a deny list in Settings → App
+  permissions. The agent refuses any step that targets a denied
+  app, at the action layer, with the reason in the log. Password
+  managers are offered as suggestions, never imposed
+- **Teach a routine** (v3.3): save a finished run as a routine and
+  its folder paths become parameters with the original values as
+  defaults — the routine works for the next folder, not just the
+  recorded one
+- **Routines in plain words** (v3.3): describe it — "every morning
+  organise my Downloads" — and DeskDora drafts the goal and the
+  schedule for your confirmation. Descriptions it can't read are
+  refused honestly, not guessed at
+- **Failure self-recovery** (v3.3): when a step fails, the agent
+  re-observes and tries one alternative approach (a fresh element
+  match, a focus retry, a scroll into view), logging the failure,
+  the alternative and the outcome. One attempt only — a second
+  failure ends the step as failed
+- **Ask about my screen** (v3.3): a read-only question box on the
+  Run view. Answers come from the accessibility tree, labelled
+  with the provider/model that produced them; the built-in
+  planner answers with simple on-screen text lookups and says so
+- **Run report export** (v3.3): any run in History exports as one
+  self-contained HTML report — goal, planner, steps, screenshots,
+  timings — viewable offline, printable to PDF
+- **Diagnostics** (v3.4): a dedicated view that measures this
+  machine live — session type (Xorg/Wayland), compositor, the
+  accessibility tree's health per app, portal availability,
+  provider connectivity, overlay capability — with a one-click
+  plain-text summary for support. Nothing is hard-coded
+- **Template gallery** (v3.4): ready tasks (organise Downloads,
+  rename photos by date, PDF table → spreadsheet, tidy the
+  Desktop, empty the trash) that load as editable goals and run
+  through the normal planner and safety layers — plus your own
+  templates saved from history runs
+- **New task from the phone** (v3.4): the companion can start or
+  queue a goal, with the same planner, confirmations and
+  autonomy as a desktop-typed task
+- **Desktop notifications** (v3.4): one system notification per
+  event — run completed / failed, confirmation waiting, queue
+  finished (a single summary), connection problems — with a
+  master switch and per-event toggles
+- **Time estimates** (v3.4): before a run, an estimate from your
+  own history ("~2 min · ~140 steps, based on 3 previous runs")
+  — or "no estimate yet" when there is nothing to base one on.
+  During a run, the floating window and companion show a
+  labelled remaining-time estimate
 - Safety layer: confirmations, app allow-list, sandbox mode, kill
   switch, and a **focus guard** (v1.1) that refuses to type into the
   wrong window instead of following focus blindly

@@ -23,9 +23,11 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import voice
-from .agent import Agent
+from . import connfail, diagnostics, estimates, filejournal, notify, sounds, voice
+from .templates import TemplateStore, builtin_templates
+from .agent import Agent, describe_step
 from .apikey import ApiKeyStore, presented_key
+from .ask import answer_question
 from .audit import RunLog, list_runs, read_log
 from .autonomy import (DEFAULT_POLICY, AutonomyPolicy, PolicyError,
                       validate_policy)
@@ -35,7 +37,9 @@ from .planners import (PROVIDER_REGISTRY, OllamaPlanner, PlanError,
                        validate_custom_provider)
 from .proactive import ProposalStore, ProactiveWatcher
 from .queue import BusyError, TaskQueue
-from .routines import RoutineStore
+from .report import render_report
+from .routines import (RoutineStore, describe_routine,
+                       record_parameterized, render_goal)
 from .safety import AllowList, ConfirmationGate, KillSwitch, PauseGate
 from .scheduler import Scheduler
 from .tasks import base_known_apps
@@ -75,6 +79,19 @@ DEFAULT_CONFIG = {
     "feature_api": True,         # API-key authentication refused when off
     "feature_animations": True,  # UI motion (complements reduced-motion)
     "proposals_enabled": True,   # proactive watcher scanning
+    # v3.3 features
+    "sounds": json.loads(json.dumps(sounds.DEFAULT_SOUNDS)),
+    "dry_run_default": False,    # plan approval before runs, by default
+    "app_deny_list": [],         # per-app permissions: denied app names
+    "feature_app_permissions": True,  # master switch for the deny list
+    "self_recovery": True,       # one alternative attempt per failed step
+    "feature_ask_screen": True,  # ask-about-my-screen Q&A
+    "feature_undo": True,        # undo for file actions
+    # v3.4 features
+    "feature_notifications": True,  # desktop notifications master
+    "notifications": json.loads(json.dumps(
+        notify.DEFAULT_NOTIFICATIONS)),  # per-event toggles
+    "feature_estimates": True,   # time-estimate display
 }
 
 
@@ -228,6 +245,11 @@ class RunManager:
         self.state = {
             "running": False, "goal": "", "planner_mode": "",
             "last_event": None, "run_dir": None, "result": None,
+            # Connection-failure pop-up payload (v3.3) + the dry-run
+            # plan awaiting approval.  Both ride /api/status, which
+            # is how the companion mirrors them.
+            "connection_error": None, "pending_plan": None,
+            "source": "ui",
         }
         self.kill = KillSwitch()
         self.pause_gate = PauseGate()
@@ -241,7 +263,15 @@ class RunManager:
         self.queue = TaskQueue(
             _ManagerRunner(self),
             os.path.join(DATA_DIR, "queue.json"))
+        # Queue fully drained: sound tone + ONE summary
+        # notification for the whole queue (v3.3/v3.4).
+        self.queue.on_drained = self._queue_drained
+        self.templates = TemplateStore(
+            os.path.join(DATA_DIR, "templates.json"))
         self.pending = None          # dict with an Event + verdict
+        # Dry-run plan approval (v3.3): the pending plan + decision.
+        self._plan_event = threading.Event()
+        self._plan_decision = None   # {"approved": bool, "skip": set}
         self.routines = RoutineStore()
         self.memory = MemoryStore(os.path.join(DATA_DIR, "memory.json"))
         self.scheduler = Scheduler(
@@ -252,6 +282,22 @@ class RunManager:
         self.watcher = ProactiveWatcher(
             self.proposals, self._run_goal,
             policy=AutonomyPolicy(load_config()["autonomy"]))
+
+    def _queue_drained(self):
+        cfg = load_config()
+        sounds.play("queue_finished", cfg,
+                    os.path.join(DATA_DIR, "sounds"))
+        snap = self.queue.snapshot()
+        finished = [it for it in snap["items"]
+                    if it["status"] in ("success", "failed", "blocked",
+                                        "killed", "interrupted")]
+        if finished:
+            ok = sum(1 for it in finished
+                     if it["status"] == "success")
+            notify.notify(
+                "queue_finished", cfg,
+                body=f"{len(finished)} tasks finished "
+                     f"({ok} succeeded)")
 
     def _run_goal(self, goal):
         """Proactive/scheduler entry point: the normal run path."""
@@ -265,7 +311,7 @@ class RunManager:
     def _run_routine(self, routine):
         try:
             self.routines.mark_run(routine["name"])
-            self.start_run(routine["goal"],
+            self.start_run(render_goal(routine),
                            routine.get("planner_mode") or None,
                            routine_name=routine["name"])
             return True, "run started"
@@ -281,6 +327,11 @@ class RunManager:
                   "approved": None}
         with self.lock:
             self.pending = record
+        sounds.play("confirmation_waiting", load_config(),
+                    os.path.join(DATA_DIR, "sounds"))
+        notify.notify("confirmation_waiting", load_config(),
+                      body=(description or "DeskDora needs a "
+                            "confirmation to continue.")[:140])
         if load_config().get("voice_updates"):
             voice.speak("DeskDora needs your confirmation to continue.")
         # 300s timeout -> deny (fail closed).
@@ -300,18 +351,45 @@ class RunManager:
         return {"ok": True}
 
     def start_run(self, goal, planner_mode=None, routine_name=None,
-                  source="ui"):
+                  source="ui", dry_run=None):
+        cfg = load_config()
+        mode = planner_mode or cfg["planner"]
         with self.lock:
             if self.state["running"]:
                 raise HTTPException(409, "a run is already in progress")
+        # Connection pre-flight (v3.3): an Ollama/cloud planner that
+        # can't be reached fails HERE, in seconds, with a plain-
+        # language payload for the pop-up — never as a cryptic log
+        # line mid-task, and never via a silent planner switch.
+        failure = connfail.preflight(mode, cfg)
+        if failure is not None:
+            with self.lock:
+                self.state.update({
+                    "goal": goal, "source": source,
+                    "connection_error": {**failure, "goal": goal,
+                                         "planner": mode}})
+            notify.notify("connection_failed", cfg,
+                          body=failure["headline"])
+            return {"ok": False, "connection_error": failure}
+        with self.lock:
             self.state.update({"running": True, "goal": goal,
-                               "result": None, "source": source})
+                               "result": None, "source": source,
+                               "connection_error": None,
+                               "pending_plan": None})
             self.progress = {"step_index": 0, "step_total": 0,
-                             "done": 0, "current_action": "Planning"}
-        cfg = load_config()
-        mode = planner_mode or cfg["planner"]
+                             "done": 0, "current_action": "Planning",
+                             "started_at": time.time()}
         self.kill.reset()
         self.pause_gate.clear()
+        # Sound tones (v3.3): fire-and-forget, never blocking.
+        if source == "ui":
+            sounds.play("command_sent", cfg,
+                        os.path.join(DATA_DIR, "sounds"))
+        elif source == "companion":
+            sounds.play("command_received", cfg,
+                        os.path.join(DATA_DIR, "sounds"))
+        if dry_run is None:
+            dry_run = bool(cfg.get("dry_run_default"))
 
         def _on_event(kind, **fields):
             with self.lock:
@@ -358,18 +436,53 @@ class RunManager:
             except PolicyError:
                 # A hand-edited config must fail safe, never open.
                 policy = AutonomyPolicy()
+            denied = (cfg.get("app_deny_list") or None) \
+                if cfg.get("feature_app_permissions", True) else None
             agent = Agent(planner, mode_label, gate, self.kill,
                           AllowList(cfg["allow_apps"]), log,
                           on_event=_on_event, driver=driver,
-                          autonomy=policy, pause_gate=self.pause_gate)
+                          autonomy=policy, pause_gate=self.pause_gate,
+                          denied_apps=denied,
+                          recovery_enabled=bool(
+                              cfg.get("self_recovery", True)))
             with self.lock:
                 self.agent = agent
                 self.state["planner_mode"] = mode_label
                 self.state["run_dir"] = log.dir
             try:
-                result = agent.run(goal)
+                if dry_run:
+                    result = self._dry_run(agent, goal, log)
+                else:
+                    result = agent.run(goal)
             except Exception as exc:  # agent.run already logs; be safe
                 result = {"status": "failed", "reason": str(exc)}
+            # A planning/connection failure surfaces as the pop-up
+            # payload too (mid-run failures land here after the
+            # engine's one bounded replan retry).
+            if result.get("status") == "failed" and \
+                    connfail.planner_kind(mode, cfg) != "builtin":
+                payload = connfail.classify(
+                    result.get("reason", ""), mode, cfg)
+                if payload["cause"] != "unknown":
+                    with self.lock:
+                        self.state["connection_error"] = {
+                            **payload, "goal": goal, "planner": mode}
+                    notify.notify("connection_failed", cfg,
+                                  body=payload["headline"])
+            sounds.play(
+                "run_completed" if result.get("status") == "success"
+                else "run_failed" if result.get("status") == "failed"
+                else "", cfg, os.path.join(DATA_DIR, "sounds"))
+            if result.get("status") == "success":
+                notify.notify("run_completed", cfg,
+                              body=(goal[:80] + " — "
+                                    + (result.get("answer")
+                                       or ""))[:140])
+            elif result.get("status") == "failed":
+                notify.notify("run_failed", cfg,
+                              body=(goal[:80] + " — "
+                                    + (result.get("reason")
+                                       or ""))[:140])
             # Resident memory learns from finished runs (success only,
             # inside learn_from_log) and habits count routine runs.
             try:
@@ -391,6 +504,54 @@ class RunManager:
         self.thread = threading.Thread(target=_work, daemon=True)
         self.thread.start()
         return {"ok": True, "goal": goal}
+
+    def _dry_run(self, agent, goal, log):
+        """Dry-run plan approval (v3.3): build the plan, park it in
+        state for the UI, and wait for the user's decision.  The
+        ENGINE executes with the user's skip set — unticked steps
+        are never performed, and the audit log records them as
+        skipped by the user."""
+        try:
+            plan = agent.build_plan(goal)
+        except PlanError as exc:
+            log.finish("failed", reason=f"planning failed: {exc}",
+                       steps_executed=0)
+            return {"status": "failed",
+                    "reason": f"planning failed: {exc}",
+                    "steps_executed": 0}
+        self._plan_decision = None
+        self._plan_event.clear()
+        with self.lock:
+            self.state["pending_plan"] = {
+                "goal": goal, "planner": agent.planner_mode,
+                "steps": [describe_step(s) for s in plan],
+                "count": len(plan)}
+        deadline = time.time() + 600  # fail closed, like confirmations
+        while not self._plan_event.wait(timeout=0.25):
+            if self.kill.is_tripped() or time.time() > deadline:
+                break
+        decision = self._plan_decision or {"approved": False,
+                                           "skip": set()}
+        with self.lock:
+            self.state["pending_plan"] = None
+        if self.kill.is_tripped() or not decision["approved"]:
+            log.finish("killed", reason="plan not approved",
+                       steps_executed=0)
+            return {"status": "killed",
+                    "reason": "plan not approved by user",
+                    "steps_executed": 0}
+        return agent.execute_plan(goal, plan,
+                                  skip=decision["skip"])
+
+    def approve_plan(self, approved, skip=()):
+        with self.lock:
+            pending = self.state.get("pending_plan")
+        if not pending:
+            raise HTTPException(404, "no plan is waiting for approval")
+        self._plan_decision = {"approved": bool(approved),
+                               "skip": {int(i) for i in skip}}
+        self._plan_event.set()
+        return {"ok": True}
 
     def trip_kill(self):
         self.kill.trip()
@@ -448,6 +609,12 @@ class RunManager:
             ids = [it["id"] for it in active]
             if q["running_id"] in ids:
                 qpos = ids.index(q["running_id"]) + 1
+        eta = None
+        started = self.progress.get("started_at")
+        if self.state["running"] and started and \
+                load_config().get("feature_estimates", True):
+            eta = estimates.eta_seconds(time.time() - started,
+                                        done, total)
         return {
             "goal": self.state["goal"],
             "planner_mode": self.state["planner_mode"],
@@ -461,6 +628,7 @@ class RunManager:
             "step_total": total,
             "steps_done": done,
             "percent": percent,
+            "eta_seconds": eta,
             "current_action": self.progress["current_action"],
             "queue_position": qpos,
             "queue_total": len(active),
@@ -563,6 +731,28 @@ async def _companion_guard(request, call_next):
 class RunRequest(BaseModel):
     goal: str
     planner: str | None = None
+    dry_run: bool | None = None
+
+
+class SoundRequest(BaseModel):
+    event: str
+
+
+class ApprovePlanRequest(BaseModel):
+    approved: bool
+    skip: list[int] = []
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+class DescribeRequest(BaseModel):
+    text: str
+
+
+class RoutineRunRequest(BaseModel):
+    params: dict = {}
 
 
 class ConfirmRequest(BaseModel):
@@ -622,7 +812,7 @@ def status():
 @app.post("/api/run")
 def run(req: RunRequest, request: Request):
     source = request.headers.get("x-deskdora-client", "api")
-    if source not in ("ui", "mcp", "api"):
+    if source not in ("ui", "mcp", "api", "companion"):
         source = "api"
     # Features panel: with the MCP server switched off, runs that
     # arrive through it are refused at the service — the MCP process
@@ -633,7 +823,7 @@ def run(req: RunRequest, request: Request):
     if not req.goal.strip():
         raise HTTPException(400, "goal is empty")
     return MANAGER.start_run(req.goal.strip(), req.planner,
-                             source=source)
+                             source=source, dry_run=req.dry_run)
 
 
 @app.post("/api/kill")
@@ -708,6 +898,206 @@ def run_delete(run_id: str):
             and MANAGER.state.get("run_dir") == path:
         raise HTTPException(409, "that run is still in progress")
     shutil.rmtree(path)
+
+
+# ---------------------------------------------------------------------------
+# v3.3 endpoints: sounds, plan approval, undo, report export, ask
+# ---------------------------------------------------------------------------
+
+@app.post("/api/sound")
+def sound_test(req: SoundRequest):
+    """Play one event tone (the Settings test buttons, and the
+    app window's app-opened tone)."""
+    cfg = load_config()
+    played = sounds.play(req.event, cfg,
+                         os.path.join(DATA_DIR, "sounds"),
+                         force=True)
+    return {"ok": played, "event": req.event}
+
+
+@app.post("/api/runs/approve-plan")
+def approve_plan(req: ApprovePlanRequest):
+    return MANAGER.approve_plan(req.approved, req.skip)
+
+
+@app.post("/api/runs/{run_id}/undo")
+def run_undo(run_id: str):
+    """Undo a run's journaled file changes (moves only).  Conflicts
+    are reported, never silently overwritten."""
+    cfg = load_config()
+    if not cfg.get("feature_undo", True):
+        raise HTTPException(403, "Undo is switched off in "
+                                 "Settings > Features")
+    name = os.path.basename(run_id)
+    path = os.path.join(RUNS_DIR, name)
+    if not name or not os.path.isdir(path):
+        raise HTTPException(404, "run not found")
+    return filejournal.undo_run(path)
+
+
+@app.get("/api/runs/{run_id}/report")
+def run_report(run_id: str):
+    """Self-contained HTML report for one run (offline-viewable)."""
+    name = os.path.basename(run_id)
+    path = os.path.join(RUNS_DIR, name)
+    if not name or not os.path.isdir(path):
+        raise HTTPException(404, "run not found")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(render_report(path))
+
+
+@app.post("/api/ask")
+def ask(req: AskRequest):
+    """Ask about my screen: read-only Q&A over the accessibility
+    tree.  Built-in mode answers extractively and says so; an LLM
+    planner's answer is labelled with its provider/model."""
+    cfg = load_config()
+    if not cfg.get("feature_ask_screen", True):
+        raise HTTPException(403, "Ask about screen is switched off "
+                                 "in Settings > Features")
+    if not req.question.strip():
+        raise HTTPException(400, "question is empty")
+    from .drivers import get_driver
+    driver = get_driver(None if cfg.get("driver", "auto") == "auto"
+                        else cfg["driver"])
+    observation = driver.observe()
+    mode = cfg["planner"]
+    planner, mode_label = get_planner(
+        mode, model=cfg["model"], known_apps=base_known_apps(),
+        memory=MANAGER.memory, providers=cfg.get("providers"),
+        customs=cfg.get("custom_providers"))
+    completer = None
+    complete = getattr(planner, "complete_text", None)
+    if callable(complete):
+        completer = complete
+    return answer_question(req.question.strip(), observation,
+                           planner_display(mode_label),
+                           completer=completer)
+
+
+@app.post("/api/routines/describe")
+def routines_describe(req: DescribeRequest):
+    """Plain-words routine draft.  The built-in parser handles the
+    common shapes; with an LLM planner configured, its JSON draft
+    is tried first and the parser is the fallback.  Either way the
+    draft is shown for confirmation before anything is saved."""
+    cfg = load_config()
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(400, "description is empty")
+    planner, mode_label = get_planner(
+        cfg["planner"], model=cfg["model"],
+        known_apps=base_known_apps(), memory=MANAGER.memory,
+        providers=cfg.get("providers"),
+        customs=cfg.get("custom_providers"))
+    complete = getattr(planner, "complete_text", None)
+    if callable(complete):
+        try:
+            raw = complete(
+                "Turn the user's sentence into a routine draft. "
+                "Reply with ONLY a JSON object: {\"goal\": str, "
+                "\"schedule\": cron string or null, \"trigger\": "
+                "{\"folder\": path} or null}.  Schedules: 'every "
+                "morning' = '0 9 * * *'.  If you cannot, reply "
+                "{\"error\": \"reason\"}.",
+                text)
+            draft = json.loads(raw)
+            if draft.get("goal") and not draft.get("error"):
+                return {"draft": {"goal": draft["goal"],
+                                  "schedule": draft.get("schedule"),
+                                  "trigger": draft.get("trigger")},
+                        "via": planner_display(mode_label)}
+        except Exception:
+            pass  # fall through to the built-in parser
+    try:
+        return {"draft": describe_routine(text), "via": "Built-in"}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+# ---------------------------------------------------------------------------
+# v3.4 endpoints: diagnostics, templates, estimates
+# ---------------------------------------------------------------------------
+
+class TemplateRequest(BaseModel):
+    name: str
+    goal: str
+
+
+@app.get("/api/diagnostics")
+def diagnostics_get():
+    """Measured live, never hard-coded (diagnostics.py)."""
+    cfg = load_config()
+    from .drivers import get_driver
+    driver = get_driver(None if cfg.get("driver", "auto") == "auto"
+                        else cfg["driver"])
+    diag = diagnostics.collect(driver, cfg)
+    return {**diag, "summary": diagnostics.summary_text(diag)}
+
+
+@app.get("/api/templates")
+def templates_list():
+    return {"builtin": builtin_templates(),
+            "personal": MANAGER.templates.list()}
+
+
+@app.post("/api/templates")
+def templates_create(req: TemplateRequest):
+    try:
+        return MANAGER.templates.add(req.name, req.goal)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.delete("/api/templates/{template_id}")
+def templates_delete(template_id: str):
+    if not MANAGER.templates.delete(template_id):
+        raise HTTPException(404, "template not found")
+    return {"ok": True}
+
+
+@app.post("/api/templates/from-run")
+def templates_from_run(req: FromRunRequest):
+    """Save a history run as a personal template (its goal,
+    verbatim — running it goes through the normal path)."""
+    run_dir = os.path.join(RUNS_DIR, req.run_id)
+    if not os.path.isdir(run_dir):
+        raise HTTPException(404, "run not found")
+    events = read_log(os.path.join(run_dir, "log.jsonl"))
+    start = next((e for e in events if e["kind"] == "run_start"),
+                 None)
+    if not start:
+        raise HTTPException(400, "run has no goal recorded")
+    try:
+        return MANAGER.templates.add(req.name, start["goal"])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/estimate")
+def estimate_get(goal: str = ""):
+    """History-derived estimate, or null — never invented."""
+    cfg = load_config()
+    if not cfg.get("feature_estimates", True) or not goal.strip():
+        return {"estimate": None}
+    est = estimates.estimate_for_goal(goal.strip(), RUNS_DIR)
+    return {"estimate": est,
+            "text": estimates.format_estimate(est) if est else None}
+
+
+@app.post("/api/routines/from-run-parameterized")
+def routines_from_run_parameterized(req: FromRunRequest):
+    """Teach a routine from history (v3.3): like from-run, but the
+    goal's path literals become parameters with the original
+    values as defaults."""
+    run_dir = os.path.join(RUNS_DIR, req.run_id)
+    if not os.path.isdir(run_dir):
+        raise HTTPException(404, "run not found")
+    try:
+        return record_parameterized(MANAGER.routines, req.name,
+                                    run_dir, schedule=req.schedule)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     return {"ok": True, "deleted": name}
 
 
@@ -817,6 +1207,8 @@ def companion_auth(request: Request):
         raise HTTPException(401, "companion PIN required")
     token = secrets.token_urlsafe(24)
     MANAGER.companion_sessions[token] = time.time() + 12 * 3600
+    sounds.play("companion_connected", load_config(),
+                os.path.join(DATA_DIR, "sounds"))
     resp = JSONResponse({"ok": True})
     resp.set_cookie("dd_companion_session", token, max_age=12 * 3600,
                     httponly=True, samesite="lax")
@@ -891,12 +1283,13 @@ def routines_from_run(req: FromRunRequest):
 
 
 @app.post("/api/routines/{name}/run")
-def routines_run(name: str):
+def routines_run(name: str, req: RoutineRunRequest | None = None):
     routine = MANAGER.routines.get(name)
     if not routine:
         raise HTTPException(404, "routine not found")
     MANAGER.routines.mark_run(name)
-    return MANAGER.start_run(routine["goal"],
+    goal = render_goal(routine, (req.params if req else None))
+    return MANAGER.start_run(goal,
                              routine.get("planner_mode") or None,
                              routine_name=routine["name"])
 
@@ -1015,6 +1408,18 @@ def config_post(cfg: dict):
     for key in DEFAULT_CONFIG:
         if key in cfg:
             merged[key] = cfg[key]
+    if isinstance(cfg.get("sounds"), dict):
+        # Sounds merge field-wise so a partial update can't drop
+        # event toggles it didn't mention.
+        current = sounds.sounds_config(merged)
+        update = cfg["sounds"]
+        if "enabled" in update:
+            current["enabled"] = bool(update["enabled"])
+        if "volume" in update:
+            current["volume"] = update["volume"]
+        if isinstance(update.get("events"), dict):
+            current["events"].update(update["events"])
+        merged["sounds"] = current
     if "autonomy" in cfg:
         try:
             merged["autonomy"] = validate_policy(cfg["autonomy"])

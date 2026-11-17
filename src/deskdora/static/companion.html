@@ -119,6 +119,23 @@ button:disabled{opacity:.35;cursor:default}
   <button class="stop" id="stopBtn">■ STOP THE AGENT</button>
 </div>
 
+<div class="card">
+  <div class="lab">New task</div>
+  <input type="text" id="goalInput" placeholder="Describe the task"
+    style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:6px;color:#eee;padding:12px;font-size:15px">
+  <div class="ctlrow">
+    <button class="resume" id="startBtn">START TASK</button>
+    <button class="ghostbtn" id="queueBtn">QUEUE IT</button>
+  </div>
+  <div class="meta" id="goalMsg">Same planner, confirmations and autonomy as the desktop.</div>
+</div>
+
+<div class="card" id="connCard" hidden>
+  <div class="lab">Connection problem</div>
+  <div class="goal" id="connTitle">Couldn’t connect</div>
+  <div class="event" id="connBody">—</div>
+</div>
+
 <div class="card" id="screenCard">
   <div class="lab">Live screen</div>
   <div id="screenOff" class="event">Screen sharing is off — turn it on in DeskDora Settings → Access.</div>
@@ -201,6 +218,40 @@ $("#resetBtn").addEventListener("click", async () => {
   try { await post("/api/reset"); } catch (e) { /* pin card shown */ }
   poll();
 });
+
+/* New task from the phone (v3.4): enters the same run/queue flow
+   as a desktop goal — same planner resolution, confirmations and
+   autonomy.  The X-DeskDora-Client header marks the source so the
+   run is badged "companion" everywhere it appears. */
+async function submitGoal(queueIt) {
+  const goal = $("#goalInput").value.trim();
+  if (!goal) return;
+  const h = headers();
+  h["X-DeskDora-Client"] = "companion";
+  try {
+    const res = await fetch(queueIt ? "/api/queue" : "/api/run", {
+      method: "POST", headers: h,
+      body: JSON.stringify({ goal, planner: null }) });
+    if (res.status === 401) { $("#pinCard").hidden = false; return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      $("#goalMsg").textContent = "REFUSED — " +
+        ((data && data.detail) || res.status);
+      return;
+    }
+    if (data && data.ok === false) {
+      $("#goalMsg").textContent = "COULDN'T START — CONNECTION PROBLEM (SEE ABOVE)";
+      return;
+    }
+    $("#goalMsg").textContent = queueIt ? "QUEUED" : "STARTED";
+    $("#goalInput").value = "";
+  } catch (e) {
+    $("#goalMsg").textContent = "FAILED — " + e.message;
+  }
+  poll();
+}
+$("#startBtn").addEventListener("click", () => submitGoal(false));
+$("#queueBtn").addEventListener("click", () => submitGoal(true));
 
 let screenOn = false;
 function updateScreen(share) {
@@ -323,6 +374,13 @@ async function poll() {
       cls = s === "success" ? "ok" : (s === "blocked" || s === "killed") ? "wait" : "bad";
     }
     pill.className = "pill " + cls; txt.textContent = label;
+    const ce = st.state.connection_error;
+    $("#connCard").hidden = !ce;
+    if (ce) {
+      $("#connTitle").textContent =
+        "Couldn’t connect to " + (ce.provider_display || ce.provider);
+      $("#connBody").textContent = (ce.detail || "") + " " + (ce.suggestion || "");
+    }
     $("#goalText").textContent = st.state.goal || "No run yet";
     $("#lastEvent").textContent = describeEvent(st.last_event) +
       (st.kill_tripped ? " · KILL SWITCH TRIPPED" : "");
@@ -349,6 +407,8 @@ async function poll() {
         (prog.queue_halted ? " · HALTED" : prog.queue_paused
           ? " · PAUSED" : "");
     }
+    if (prog.running && prog.eta_seconds)
+      progTxt += ` · ~${Math.max(1, Math.round(prog.eta_seconds / 60))} MIN LEFT (ESTIMATE)`;
     $("#progLine").textContent = progTxt;
 
     const fz = $("#freezeBtn"), rs = $("#resumeBtn"), rx = $("#resetBtn");

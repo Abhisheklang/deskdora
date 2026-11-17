@@ -510,6 +510,12 @@ select:focus{outline:none;border-color:var(--lime)}
     <button class="rnav" data-view="benchmark" data-name="Benchmark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
       <span>Bench</span></button>
+    <button class="rnav" data-view="templates" data-name="Templates">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+      <span>Templates</span></button>
+    <button class="rnav" data-view="diagnostics" data-name="Diagnostics">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12L16 12h5"/></svg>
+      <span>Diagnose</span></button>
     <button class="rnav" data-view="settings" data-name="Settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1 1.55.61.26 1.31.13 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01c.26.6.87 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.51 1z"/></svg>
       <span>Settings</span></button>
@@ -560,6 +566,7 @@ select:focus{outline:none;border-color:var(--lime)}
             <button class="run-btn" id="runBtn">Run task <span class="arr">&rarr;</span></button>
             <button class="ghost-btn" id="queueItBtn" style="margin-top:0;min-height:56px">Queue it</button>
           </div>
+          <p class="hint" id="estLine" style="margin-top:8px"></p>
           <div class="cmdmeta">
             <span class="mono-lab">Planner</span>
             <select id="plannerSelect" aria-label="Planner">
@@ -567,6 +574,7 @@ select:focus{outline:none;border-color:var(--lime)}
               <option value="builtin">Built-in</option>
               <option value="ollama">Ollama (local LLM)</option>
             </select>
+            <label class="mono-lab" style="margin-left:10px;cursor:pointer"><input type="checkbox" id="dryRunChk" style="accent-color:var(--lime)"> Review plan first</label>
             <span class="mono-lab" style="margin-left:10px">Try</span>
             <button class="chip" data-goal="Organise folder ~/Downloads by type">Tidy a folder</button>
             <button class="chip" data-goal="Fill the form: name=Ada Lovelace, email=ada@example.org, city=Pune and submit">Fill a form</button>
@@ -583,6 +591,17 @@ select:focus{outline:none;border-color:var(--lime)}
           <div class="seg-meta"><span id="segText">STEPS 0 / 0</span><span id="segPct"></span></div>
           <p class="voice" id="voiceRun">&ldquo;Working on it.&rdquo;</p>
           <button class="ghost-btn" id="runAgainBtn" hidden>Run another task</button>
+        </div>
+
+        <div id="planCard" hidden style="margin-top:26px">
+          <div class="sec-head"><span class="sec-no">P</span><span class="sec-name">PLAN — REVIEW BEFORE IT RUNS</span><span class="rule"></span></div>
+          <p class="hint" id="planMeta" style="margin:8px 0"></p>
+          <div id="planSteps"></div>
+          <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+            <button class="pill-btn lime" id="planApprove">RUN THE TICKED STEPS</button>
+            <button class="pill-btn ghosty" id="planDiscard">DISCARD PLAN</button>
+          </div>
+          <p class="hint">Unticked steps are skipped by the engine and logged as skipped by you.</p>
         </div>
       </div>
 
@@ -608,6 +627,16 @@ select:focus{outline:none;border-color:var(--lime)}
       <div class="col12">
         <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">LIVE LOG</span><span class="rule"></span><span class="sec-note">EVERY STEP, AS IT HAPPENS</span></div>
         <div class="timeline" id="feed"><div class="tl-empty">No run yet — give DeskDora a task above.</div></div>
+      </div>
+
+      <div class="col12" id="askSection">
+        <div class="sec-head"><span class="sec-no">05</span><span class="sec-name">ASK ABOUT MY SCREEN</span><span class="rule"></span><span class="sec-note">READ-ONLY — NO ACTIONS</span></div>
+        <div class="cmdline">
+          <input type="text" id="askInput" autocomplete="off"
+            placeholder="e.g. What windows are open?">
+          <button class="ghost-btn" id="askBtn" style="margin-top:0;min-height:56px">Ask</button>
+        </div>
+        <div id="askAnswer" style="margin-top:12px"></div>
       </div>
 
       <div class="col12" id="proposalSection" hidden>
@@ -664,9 +693,19 @@ select:focus{outline:none;border-color:var(--lime)}
             <span class="shot-lab" id="threadMsg"></span>
           </div>
           <div class="fromrun">
+            <button class="mini-btn" id="runUndoBtn">UNDO FILE CHANGES</button>
+            <a class="mini-btn" id="runReportLink" href="#" target="_blank" style="text-decoration:none;display:inline-block">EXPORT REPORT</a>
+            <span class="shot-lab" id="undoMsg"></span>
+          </div>
+          <div class="fromrun">
             <input type="text" id="fromRunName" placeholder="Save this run as a routine — name it">
             <button class="mini-btn" id="fromRunSave">SAVE AS ROUTINE</button>
             <span class="shot-lab" id="fromRunMsg"></span>
+          </div>
+          <div class="fromrun">
+            <input type="text" id="fromTplName" placeholder="…or as a template — name it">
+            <button class="mini-btn" id="fromTplSave">SAVE AS TEMPLATE</button>
+            <span class="shot-lab" id="fromTplMsg"></span>
           </div>
         </div>
         <div class="thread" id="threadFeed"></div>
@@ -683,6 +722,20 @@ select:focus{outline:none;border-color:var(--lime)}
     <div style="margin-top:38px">
       <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">NEW ROUTINE</span><span class="rule"></span></div>
       <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Describe it</span>
+          <input type="text" id="describeInput" placeholder="e.g. every morning organise my Downloads">
+          <span><button class="pill-btn" id="describeBtn">DRAFT IT</button></span></div>
+        <div class="frow2" id="describeDraft" hidden><span class="mono-lab">Draft</span>
+          <span>
+            <span class="shot-lab" id="describeMeta"></span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <input type="text" id="draftName" placeholder="Routine name" style="flex:1;min-width:140px">
+              <input type="text" id="draftGoal" placeholder="Goal" style="flex:2;min-width:220px">
+              <input type="text" id="draftSchedule" placeholder="Cron — optional" style="flex:1;min-width:130px">
+              <button class="pill-btn lime" id="draftSave">SAVE DRAFT</button>
+            </div>
+            <span class="shot-lab" id="describeMsg"></span>
+          </span></div>
         <div class="frow2"><span class="mono-lab">Name</span>
           <input type="text" id="routineName" placeholder="e.g. Morning tidy"></div>
         <div class="frow2"><span class="mono-lab">Goal</span>
@@ -746,6 +799,29 @@ select:focus{outline:none;border-color:var(--lime)}
   </section>
 
   <!-- ======================= SETTINGS VIEW ======================= -->
+  <!-- ======================= TEMPLATES VIEW (v3.4) ======================= -->
+  <section id="view-templates" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">TEMPLATES</span><span class="rule"></span><span class="sec-note">READY TASKS — LOADED AS EDITABLE GOALS</span></div>
+    <h2 class="view-head">Start from<br>a template<span class="lime-dot">.</span></h2>
+    <div id="templateList"><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">YOUR TEMPLATES</span><span class="rule"></span></div>
+      <div id="personalTemplateList"><div class="tl-empty" style="border-top:1px solid var(--line)">None yet — open a run in History and save it as a template.</div></div>
+    </div>
+  </section>
+
+  <!-- ======================= DIAGNOSTICS VIEW (v3.4) ======================= -->
+  <section id="view-diagnostics" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">DIAGNOSTICS</span><span class="rule"></span><span class="sec-note">MEASURED LIVE ON THIS MACHINE</span></div>
+    <h2 class="view-head">What this<br>machine says<span class="lime-dot">.</span></h2>
+    <div style="margin-bottom:16px">
+      <button class="pill-btn lime" id="diagRefresh">RE-MEASURE</button>
+      <button class="pill-btn ghosty" id="diagCopy">COPY SUMMARY</button>
+      <span class="shot-lab" id="diagMsg"></span>
+    </div>
+    <div id="diagBody"><div class="skl sklrow"></div><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
+  </section>
+
   <section id="view-settings" class="view" hidden>
     <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">SETTINGS</span><span class="rule"></span></div>
     <h2 class="view-head">Configuration<span class="lime-dot">.</span></h2>
@@ -928,7 +1004,64 @@ select:focus{outline:none;border-color:var(--lime)}
         <div class="frow2"><span class="mono-lab">UI animations</span>
           <label class="switch"><input type="checkbox" id="featAnim"><i></i></label>
           <span class="hint">Motion in this window and the desktop overlays. Off holds everything steady.</span></div>
+        <div class="frow2"><span class="mono-lab">Plan review</span>
+          <label class="switch"><input type="checkbox" id="featDryRun"><i></i></label>
+          <span class="hint">Review and untick plan steps before every run (dry-run by default).</span></div>
+        <div class="frow2"><span class="mono-lab">Self-recovery</span>
+          <label class="switch"><input type="checkbox" id="featRecovery"><i></i></label>
+          <span class="hint">One alternative attempt when a step fails, logged in the run.</span></div>
+        <div class="frow2"><span class="mono-lab">Ask about screen</span>
+          <label class="switch"><input type="checkbox" id="featAsk"><i></i></label>
+          <span class="hint">The read-only screen Q&amp;A box on the Run view.</span></div>
+        <div class="frow2"><span class="mono-lab">App permissions</span>
+          <label class="switch"><input type="checkbox" id="featAppPerms"><i></i></label>
+          <span class="hint">The per-app deny list below. Off means the list is not enforced.</span></div>
+        <div class="frow2"><span class="mono-lab">Undo</span>
+          <label class="switch"><input type="checkbox" id="featUndo"><i></i></label>
+          <span class="hint">Undo for a run's file changes, in History.</span></div>
+        <div class="frow2"><span class="mono-lab">Notifications</span>
+          <label class="switch"><input type="checkbox" id="featNotify"><i></i></label>
+          <span class="hint">Desktop notifications. Per-event toggles in Notifications below.</span></div>
+        <div class="frow2"><span class="mono-lab">Time estimates</span>
+          <label class="switch"><input type="checkbox" id="featEstimates"><i></i></label>
+          <span class="hint">History-based time estimates before and during runs.</span></div>
       </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">07</span><span class="sec-name">APP PERMISSIONS</span><span class="rule"></span><span class="sec-note">DENIED APPS ARE UNTOUCHABLE</span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Deny list</span>
+          <textarea id="cfgDenyApps" rows="3" placeholder="One app name per line — matched against the app's identity in the accessibility tree"></textarea>
+          <span class="hint">The agent refuses any step targeting a denied app, with the reason stated in the log.</span></div>
+        <div class="frow2"><span class="mono-lab">Suggestions</span>
+          <span>
+            <button class="chip" data-deny-suggest="1Password">+ 1Password</button>
+            <button class="chip" data-deny-suggest="KeePassXC">+ KeePassXC</button>
+            <button class="chip" data-deny-suggest="Bitwarden">+ Bitwarden</button>
+            <button class="chip" data-deny-suggest="GNOME Keyring">+ GNOME Keyring</button>
+          </span>
+          <span class="hint">Password managers, offered — not imposed. Saved with SAVE SETTINGS.</span></div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">08</span><span class="sec-name">SOUNDS</span><span class="rule"></span><span class="sec-note">SHORT TONES, MADE LOCALLY</span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Sound tones</span>
+          <label class="switch"><input type="checkbox" id="sndMaster"><i></i></label>
+          <span class="hint">Master switch for the event tones below.</span></div>
+        <div class="frow2"><span class="mono-lab">Volume</span>
+          <input type="range" id="sndVolume" min="0" max="100" step="5" style="max-width:220px">
+          <span class="hint">Saved with SAVE SETTINGS.</span></div>
+        <div id="sndRows"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">09</span><span class="sec-name">NOTIFICATIONS</span><span class="rule"></span><span class="sec-note">DESKTOP — ONE PER EVENT</span></div>
+      <div class="form-rows" id="ntfRows"></div>
+      <p class="hint" style="margin-top:10px">Saved with SAVE SETTINGS. The master switch is Features → Notifications above.</p>
     </div>
   </section>
   </main>
@@ -939,6 +1072,22 @@ select:focus{outline:none;border-color:var(--lime)}
   <div class="ld-word">PREPARING</div>
   <div class="ld-num" id="ldNum">00</div>
   <div class="ld-sub">READING THE DESKTOP — BUILDING THE PLAN</div>
+</div>
+
+<!-- ======================= CONNECTION MODAL (v3.3) ======================= -->
+<div class="modal" id="connModal" role="dialog" aria-modal="true">
+  <div class="modal-panel">
+    <div class="m-eyebrow">CONNECTION PROBLEM</div>
+    <p class="m-question" id="connTitle">Couldn&rsquo;t connect</p>
+    <p class="m-step" id="connBody" style="white-space:pre-wrap"></p>
+    <div class="m-actions" style="flex-wrap:wrap">
+      <button class="m-confirm" id="connRetry">Retry</button>
+      <button class="pill-btn ghosty" id="connBuiltin">Use the built-in planner instead</button>
+      <button class="pill-btn ghosty" id="connSettings">Open provider settings</button>
+      <button class="pill-btn ghosty" id="connDismiss">Dismiss</button>
+    </div>
+    <p class="m-note">THE PLANNER BADGE ALWAYS NAMES THE PLANNER THAT DID THE WORK</p>
+  </div>
 </div>
 
 <!-- ======================= CONFIRMATION MODAL ======================= -->
@@ -977,7 +1126,8 @@ const S = {
 };
 const VIEW_NAMES = {run:"Command", queue:"Queue", log:"History",
                     routines:"Routines", memory:"Memory",
-                    benchmark:"Benchmark", settings:"Settings"};
+                    benchmark:"Benchmark", settings:"Settings",
+                    templates:"Templates", diagnostics:"Diagnostics"};
 
 /* animated integer transitions (instrument numerals, KPIs) */
 function tweenNum(el, to, render) {
@@ -1023,7 +1173,7 @@ function activate(name) {
   S.view = name;
   document.querySelectorAll(".rnav").forEach(b =>
     b.classList.toggle("active", b.dataset.view === name));
-  ["run","queue","log","routines","memory","benchmark","settings"].forEach(v => {
+  ["run","queue","log","routines","memory","benchmark","settings","templates","diagnostics"].forEach(v => {
     $("#view-" + v).hidden = v !== name;
   });
   $("#tsName").textContent = name === "run"
@@ -1034,6 +1184,8 @@ function activate(name) {
   if (name === "memory") loadMemory();
   if (name === "benchmark") loadBenchmark();
   if (name === "settings") loadConfig();
+  if (name === "templates") loadTemplates();
+  if (name === "diagnostics") loadDiagnostics();
 }
 document.querySelectorAll(".rnav").forEach(btn =>
   btn.addEventListener("click", () => switchView(btn.dataset.view)));
@@ -1356,6 +1508,26 @@ async function pollStatus() {
     $("#railKill").className = "rail-kill" + (st.kill_tripped ? " tripped" : "");
     $("#railKill").innerHTML = st.kill_tripped ? "KILL<br>TRIPPED" : "KILL<br>READY";
     $("#pullTab").classList.toggle("tripped", !!st.kill_tripped);
+    // Connection-failure pop-up (v3.3): shown once per failure;
+    // the companion mirrors the same state.
+    const ce = st.state.connection_error;
+    const ceKey = ce ? ce.provider + "|" + ce.cause + "|" + (ce.goal || "") : "";
+    if (ce && S.connShown !== ceKey) {
+      S.connShown = ceKey; S.connPayload = ce;
+      $("#connTitle").textContent =
+        "Couldn’t connect to " + (ce.provider_display || ce.provider);
+      $("#connBody").textContent = (ce.detail || "") + "\n" + (ce.suggestion || "");
+      $("#connModal").classList.add("open");
+    }
+    if (!ce) { $("#connModal").classList.remove("open"); S.connShown = ""; }
+    // Dry-run plan card (v3.3)
+    const pp = st.state.pending_plan;
+    if (pp && S.planShown !== pp.goal + "|" + pp.count) {
+      S.planShown = pp.goal + "|" + pp.count;
+      renderPlanCard(pp);
+    }
+    if (!pp) { $("#planCard").hidden = true; S.planShown = ""; }
+
     const share = st.screen_share || { enabled: false, viewers: 0 };
     $("#shareChip").hidden = !(share.enabled && share.viewers > 0);
     const shareSw = $("#shareToggle");
@@ -1438,10 +1610,14 @@ function playLoader() {
 async function startGoal(goal, planner) {
   const body = { goal };
   if (planner) body.planner = planner;
+  const chk = $("#dryRunChk");
+  if (chk) body.dry_run = chk.checked;
   const res = await fetch("/api/run", { method: "POST",
     headers: {"Content-Type": "application/json",
               "X-DeskDora-Client": "ui"}, body: JSON.stringify(body) });
   if (!res.ok) { alert("Could not start: " + (await res.text())); return; }
+  const data = await res.json().catch(() => ({}));
+  if (data && data.ok === false) { pollStatus(); return; }  // pop-up explains
   S.backfilledFor = null;
   resetRunUI(goal);
   playLoader();
@@ -1573,6 +1749,10 @@ async function openReplay(id) {
   replayRunId = id;
   const data = await (await fetch("/api/runs/" + id)).json();
   replayShots = data.screenshots || []; replayIdx = 0;
+  $("#runReportLink").href = "/api/runs/" + id + "/report";
+  $("#undoMsg").textContent = "";
+  $("#runUndoBtn").disabled =
+    !(data.events || []).some(e => e.kind === "file_op");
   $("#replayWrap").hidden = false;
   $("#replayTitle").textContent = id.toUpperCase();
   $("#threadMsg").textContent = "";
@@ -1621,12 +1801,286 @@ $("#shotNext").addEventListener("click", () => { replayIdx++; showShot(); });
 $("#fromRunSave").addEventListener("click", async () => {
   const name = $("#fromRunName").value.trim();
   if (!name || !replayRunId) return;
-  const res = await fetch("/api/routines/from-run", { method: "POST",
+  const res = await fetch("/api/routines/from-run-parameterized", { method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ name, run_id: replayRunId }) });
   $("#fromRunMsg").textContent = res.ok ? "SAVED" :
     "FAILED — " + (await res.text()).slice(0, 60);
   if (res.ok) $("#fromRunName").value = "";
+});
+
+/* ================= v3.3: plan review, connection pop-up, ask,
+   undo, sounds, plain-words routines ================= */
+function renderPlanCard(pp) {
+  $("#planCard").hidden = false;
+  $("#planMeta").textContent =
+    `${pp.count} steps · planned by ${pp.planner} · untick any step to skip it`;
+  $("#planSteps").innerHTML = pp.steps.map((s, i) => `
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type="checkbox" class="plan-step" data-idx="${i}" checked style="accent-color:var(--lime);margin-top:3px">
+      <span style="font-size:14px">${esc(s)}</span>
+    </label>`).join("");
+  switchView("run");
+}
+async function decidePlan(approved) {
+  const skip = [...document.querySelectorAll(".plan-step")]
+    .filter(c => !c.checked).map(c => Number(c.dataset.idx));
+  await fetch("/api/runs/approve-plan", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ approved, skip }) });
+  $("#planCard").hidden = true;
+  pollStatus();
+}
+$("#planApprove").addEventListener("click", () => decidePlan(true));
+$("#planDiscard").addEventListener("click", () => decidePlan(false));
+
+$("#connDismiss").addEventListener("click", () =>
+  $("#connModal").classList.remove("open"));
+$("#connRetry").addEventListener("click", () => {
+  const ce = S.connPayload; if (!ce) return;
+  $("#connModal").classList.remove("open");
+  startGoal(ce.goal, ce.planner);
+});
+$("#connBuiltin").addEventListener("click", () => {
+  const ce = S.connPayload; if (!ce) return;
+  $("#connModal").classList.remove("open");
+  startGoal(ce.goal, "builtin");
+});
+$("#connSettings").addEventListener("click", () => {
+  $("#connModal").classList.remove("open");
+  switchView("settings");
+});
+
+$("#askBtn").addEventListener("click", async () => {
+  const q = $("#askInput").value.trim();
+  if (!q) return;
+  const box = $("#askAnswer");
+  box.innerHTML = "<div class='tl-empty'>Reading the screen…</div>";
+  const res = await fetch("/api/ask", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ question: q }) });
+  if (!res.ok) {
+    box.innerHTML = `<div class='tl-empty'>${esc((await res.text()).slice(0, 120))}</div>`;
+    return;
+  }
+  const data = await res.json();
+  box.innerHTML = `<div class="panel" style="padding:16px 18px">
+    <div class="mono-lab" style="margin-bottom:8px">ANSWER · ${esc(data.provider || "")}</div>
+    <div style="white-space:pre-wrap;font-size:15px">${esc(data.answer || "")}</div></div>`;
+});
+$("#askInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#askBtn").click();
+});
+
+$("#runUndoBtn").addEventListener("click", async () => {
+  if (!replayRunId) return;
+  const res = await fetch(`/api/runs/${replayRunId}/undo`, { method: "POST" });
+  const msg = $("#undoMsg");
+  if (!res.ok) { msg.textContent = "UNDO REFUSED — " + (await res.text()).slice(0, 60); return; }
+  const r = await res.json();
+  msg.textContent = `UNDONE ${r.undone.length}/${r.total}` +
+    (r.conflicts.length ? ` · ${r.conflicts.length} CONFLICTS` : "") +
+    (r.missing.length ? ` · ${r.missing.length} MISSING` : "");
+});
+
+/* sounds settings */
+const SOUND_EVENTS_UI = [
+  ["app_opened", "App opened"], ["run_completed", "Run completed"],
+  ["run_failed", "Run failed"], ["confirmation_waiting", "Confirmation waiting"],
+  ["companion_connected", "Companion connected"],
+  ["command_received", "Command from phone"],
+  ["command_sent", "Command sent from desktop"],
+  ["queue_finished", "Queue finished"]];
+function buildSoundRows(snd) {
+  $("#sndMaster").checked = snd.enabled !== false;
+  $("#sndVolume").value = snd.volume ?? 70;
+  const events = snd.events || {};
+  $("#sndRows").innerHTML = SOUND_EVENTS_UI.map(([ev, label]) => `
+    <div class="frow2"><span class="mono-lab">${label}</span>
+      <span><label class="switch"><input type="checkbox" class="snd-ev" data-ev="${ev}" ${events[ev] ? "checked" : ""}><i></i></label>
+      <button class="mini-btn snd-test" data-ev="${ev}" style="margin-left:10px">PLAY</button></span>
+      <span class="hint"></span></div>`).join("");
+}
+function collectSounds() {
+  const events = {};
+  document.querySelectorAll(".snd-ev").forEach(c => { events[c.dataset.ev] = c.checked; });
+  return { enabled: $("#sndMaster").checked,
+           volume: Number($("#sndVolume").value || 70), events };
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest(".snd-test");
+  if (t) fetch("/api/sound", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ event: t.dataset.ev }) });
+  const chip = e.target.closest("[data-deny-suggest]");
+  if (chip) {
+    const ta = $("#cfgDenyApps");
+    const lines = ta.value.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!lines.includes(chip.dataset.denySuggest)) {
+      lines.push(chip.dataset.denySuggest);
+      ta.value = lines.join("\n");
+    }
+  }
+});
+
+/* routines in plain words */
+let draftTrigger = null;
+$("#describeBtn").addEventListener("click", async () => {
+  const text = $("#describeInput").value.trim();
+  if (!text) return;
+  const msg = $("#describeMsg");
+  msg.textContent = "DRAFTING…";
+  const res = await fetch("/api/routines/describe", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ text }) });
+  if (!res.ok) {
+    msg.textContent = "COULDN'T — " + (await res.text()).slice(0, 140);
+    $("#describeDraft").hidden = true;
+    return;
+  }
+  const data = await res.json();
+  draftTrigger = data.draft.trigger || null;
+  $("#draftGoal").value = data.draft.goal || "";
+  $("#draftSchedule").value = data.draft.schedule || "";
+  $("#describeMeta").textContent = "DRAFT VIA " + (data.via || "").toUpperCase() +
+    (draftTrigger ? " · TRIGGER: FILES IN " + (draftTrigger.folder || draftTrigger.path || "") : "");
+  $("#describeDraft").hidden = false;
+  msg.textContent = "";
+});
+$("#draftSave").addEventListener("click", async () => {
+  const name = $("#draftName").value.trim();
+  const goal = $("#draftGoal").value.trim();
+  if (!name || !goal) { $("#describeMsg").textContent = "NAME AND GOAL NEEDED"; return; }
+  const body = { name, goal, planner_mode: "",
+    schedule: $("#draftSchedule").value.trim() || null };
+  if (draftTrigger) {
+    const path = draftTrigger.folder || draftTrigger.path;
+    if (path) body.trigger = { type: "folder_change", path };
+  }
+  const res = await fetch("/api/routines", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body) });
+  $("#describeMsg").textContent = res.ok ? "SAVED" :
+    "FAILED — " + (await res.text()).slice(0, 80);
+  if (res.ok) { $("#describeDraft").hidden = true; loadRoutines(); }
+});
+
+/* ================= v3.4: templates, diagnostics, estimates,
+   notifications settings ================= */
+const NOTIFY_EVENTS_UI = [
+  ["run_completed", "Run completed"], ["run_failed", "Run failed"],
+  ["confirmation_waiting", "Confirmation waiting"],
+  ["queue_finished", "Queue finished"],
+  ["connection_failed", "Connection failed"]];
+function buildNotifyRows(ntf) {
+  const events = (ntf && ntf.events) || {};
+  $("#ntfRows").innerHTML = NOTIFY_EVENTS_UI.map(([ev, label]) => `
+    <div class="frow2"><span class="mono-lab">${label}</span>
+      <label class="switch"><input type="checkbox" class="ntf-ev" data-ev="${ev}" ${events[ev] !== false ? "checked" : ""}><i></i></label>
+      <span class="hint"></span></div>`).join("");
+}
+function collectNotifyEvents() {
+  const events = {};
+  document.querySelectorAll(".ntf-ev").forEach(c => { events[c.dataset.ev] = c.checked; });
+  return events;
+}
+
+async function loadTemplates() {
+  const data = await (await fetch("/api/templates")).json();
+  const card = (t, personal) => `
+    <div class="rrow">
+      <span class="rr-idx">${personal ? "YOURS" : "READY"}</span>
+      <div>
+        <div class="rr-name">${esc(t.name)}</div>
+        <div class="rr-goal">${esc(t.goal)}</div>
+        <div class="rr-meta">${esc(t.note || "")}</div>
+      </div>
+      <div class="rr-actions">
+        <button class="pill-btn lime" onclick="useTemplate('${esc(t.id)}')">USE</button>
+        ${personal ? `<button class="pill-btn ghosty" onclick="deleteTemplate('${esc(t.id)}')">DELETE</button>` : ""}
+      </div>
+    </div>`;
+  S.templatesCache = [...(data.builtin || []), ...(data.personal || [])];
+  $("#templateList").innerHTML = (data.builtin || []).map(t => card(t, false)).join("")
+    || "<div class='tl-empty'>No built-in templates.</div>";
+  $("#personalTemplateList").innerHTML = (data.personal || []).length
+    ? (data.personal || []).map(t => card(t, true)).join("")
+    : "<div class='tl-empty' style='border-top:1px solid var(--line)'>None yet — open a run in History and save it as a template.</div>";
+}
+function useTemplate(id) {
+  const t = (S.templatesCache || []).find(x => x.id === id);
+  if (!t) return;
+  switchView("run");
+  $("#goalInput").value = t.goal;
+  $("#goalInput").focus();
+  updateEstimate();
+}
+async function deleteTemplate(id) {
+  await fetch("/api/templates/" + encodeURIComponent(id), { method: "DELETE" });
+  loadTemplates();
+}
+$("#fromTplSave").addEventListener("click", async () => {
+  const name = $("#fromTplName").value.trim();
+  if (!name || !replayRunId) return;
+  const res = await fetch("/api/templates/from-run", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ name, run_id: replayRunId }) });
+  $("#fromTplMsg").textContent = res.ok ? "SAVED" :
+    "FAILED — " + (await res.text()).slice(0, 60);
+  if (res.ok) $("#fromTplName").value = "";
+});
+
+async function loadDiagnostics() {
+  const body = $("#diagBody");
+  body.innerHTML = "<div class='skl sklrow'></div><div class='skl sklrow'></div>";
+  $("#diagMsg").textContent = "MEASURING…";
+  const d = await (await fetch("/api/diagnostics")).json();
+  S.diagSummary = d.summary || "";
+  const row = (k, v) => `<div class="irow"><span class="ilab">${esc(k)}</span><span class="ival">${esc(v)}</span></div>`;
+  const healthPill = h => h === "rich" ? "RICH" : h === "sparse" ? "SPARSE" : "EMPTY";
+  body.innerHTML = `
+    <div class="panel instrument" style="margin-bottom:18px">
+      ${row("Session", d.session.type + (d.session.declared ? " (" + d.session.declared + ")" : "") + " · " + (d.session.desktop || "—"))}
+      ${row("Compositor", (d.compositor.name || "none found") + " — " + (d.compositor.present ? "present" : "absent"))}
+      ${row("Portals", (d.portals.responding ? "service responding" : "service not responding") + " · screenshot " + (d.portals.interfaces.screenshot ? "yes" : "no") + " · remotedesktop " + (d.portals.interfaces.remotedesktop ? "yes" : "no"))}
+      ${row("Edge light", "setting " + d.overlay.edge_light_setting + " · capable " + (d.overlay.capable ? "yes" : "no"))}
+    </div>
+    <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">ACCESSIBILITY TREE</span><span class="rule"></span><span class="sec-note">${d.atspi.reachable ? d.atspi.total_elements + " ELEMENTS · " + d.atspi.windows.length + " WINDOWS" : "NOT REACHABLE"}</span></div>
+    <div class="panel instrument" style="margin-bottom:18px">
+      ${(d.atspi.apps || []).map(a => row(a.app, a.elements + " elements · " + healthPill(a.health))).join("") || row("Apps", "none visible")}
+    </div>
+    <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">PROVIDERS</span><span class="rule"></span></div>
+    <div class="panel instrument">
+      ${(d.providers || []).map(p => row(p.display, (p.ok ? "OK" : "FAIL") + " — " + p.detail)).join("")}
+    </div>`;
+  $("#diagMsg").textContent = "MEASURED JUST NOW";
+}
+$("#diagRefresh").addEventListener("click", loadDiagnostics);
+$("#diagCopy").addEventListener("click", async () => {
+  if (!S.diagSummary) await loadDiagnostics();
+  try {
+    await navigator.clipboard.writeText(S.diagSummary);
+    $("#diagMsg").textContent = "SUMMARY COPIED";
+  } catch (e) {
+    $("#diagMsg").textContent = "COPY FAILED — " + e.message;
+  }
+});
+
+/* time estimates on the Run view */
+let estTimer = null;
+async function updateEstimate() {
+  const goal = $("#goalInput").value.trim();
+  const line = $("#estLine");
+  if (!goal) { line.textContent = ""; return; }
+  try {
+    const data = await (await fetch(
+      "/api/estimate?goal=" + encodeURIComponent(goal))).json();
+    line.textContent = data.text || (data.estimate ? "" : "no estimate yet");
+  } catch (e) { line.textContent = ""; }
+}
+$("#goalInput").addEventListener("input", () => {
+  clearTimeout(estTimer);
+  estTimer = setTimeout(updateEstimate, 450);
 });
 
 /* ================= task queue ================= */
@@ -1715,7 +2169,8 @@ $("#queueItBtn").addEventListener("click", async () => {
   if (!goal) return;
   const res = await fetch("/api/queue", { method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ goal, planner: $("#plannerSelect").value || null }) });
+    body: JSON.stringify({ goal, planner: $("#plannerSelect").value || null,
+      dry_run: $("#dryRunChk") ? $("#dryRunChk").checked : null }) });
   if (res.ok) {
     $("#goalInput").value = "";
     queueJSON = "";
@@ -1736,8 +2191,11 @@ async function loadRoutines() {
       <span class="rr-idx">R—${pad2(i + 1)}</span>
       <div>
         <div class="rr-name">${esc(r.name)}</div>
-        <div class="rr-goal">${esc(r.goal)}</div>
+        <div class="rr-goal">${esc(r.goal_template || r.goal)}</div>
         <div class="rr-meta">${r.schedule ? "CRON " + esc(r.schedule) + " · " : ""}${r.trigger ? "WATCHES " + esc(r.trigger.path) + " · " : ""}RAN ${r.run_count || 0}&times;</div>
+        ${(r.params || []).map(p => `
+          <div style="margin-top:6px"><span class="mono-lab">${esc(p.name)}</span>
+          <input type="text" class="rparam" data-routine="${esc(r.name)}" data-param="${esc(p.name)}" value="${esc(p.default)}" style="width:100%;margin-top:4px"></div>`).join("")}
       </div>
       <div class="rr-actions">
         <button class="pill-btn lime" onclick="runRoutine('${esc(r.name)}')">RUN NOW</button>
@@ -1767,7 +2225,12 @@ async function loadSchedulerEvents() {
   } catch (e) { /* scheduler not started in this process */ }
 }
 async function runRoutine(name) {
-  const res = await fetch(`/api/routines/${encodeURIComponent(name)}/run`, { method: "POST" });
+  const params = {};
+  document.querySelectorAll(`.rparam[data-routine="${CSS.escape(name)}"]`)
+    .forEach(inp => { params[inp.dataset.param] = inp.value; });
+  const res = await fetch(`/api/routines/${encodeURIComponent(name)}/run`, { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ params }) });
   if (!res.ok) { alert("Could not start routine: " + (await res.text())); return; }
   const r = S.routinesCache.find(x => x.name === name);
   S.backfilledFor = null;
@@ -1929,6 +2392,18 @@ async function loadConfig() {
   $("#featMcp").checked = cfg.feature_mcp !== false;
   $("#featApi").checked = cfg.feature_api !== false;
   $("#featAnim").checked = cfg.feature_animations !== false;
+  // v3.3 settings
+  $("#featDryRun").checked = !!cfg.dry_run_default;
+  $("#featRecovery").checked = cfg.self_recovery !== false;
+  $("#featAsk").checked = cfg.feature_ask_screen !== false;
+  $("#featAppPerms").checked = cfg.feature_app_permissions !== false;
+  $("#featUndo").checked = cfg.feature_undo !== false;
+  $("#cfgDenyApps").value = (cfg.app_deny_list || []).join("\n");
+  $("#featNotify").checked = cfg.feature_notifications !== false;
+  $("#featEstimates").checked = cfg.feature_estimates !== false;
+  buildNotifyRows(cfg.notifications || {});
+  buildSoundRows(cfg.sounds || {});
+  $("#askSection").hidden = cfg.feature_ask_screen === false;
   loadProviders();
   loadAccess();
 }
@@ -1941,6 +2416,9 @@ async function saveConfig(msgEl) {
     voice_updates: $("#cfgVoice").checked,
     autonomy,
     watch_folders: $("#cfgWatch").value.split("\n").map(s => s.trim()).filter(Boolean),
+    app_deny_list: $("#cfgDenyApps").value.split("\n").map(s => s.trim()).filter(Boolean),
+    notifications: { events: collectNotifyEvents() },
+    sounds: collectSounds(),
     companion_pin: $("#cfgPin").value.trim() };
   const res = await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
@@ -2183,6 +2661,13 @@ featWire("#featProposals", "proposals_enabled");
 featWire("#featMcp", "feature_mcp");
 featWire("#featApi", "feature_api");
 featWire("#featAnim", "feature_animations");
+featWire("#featDryRun", "dry_run_default");
+featWire("#featRecovery", "self_recovery");
+featWire("#featAsk", "feature_ask_screen");
+featWire("#featAppPerms", "feature_app_permissions");
+featWire("#featUndo", "feature_undo");
+featWire("#featNotify", "feature_notifications");
+featWire("#featEstimates", "feature_estimates");
 $("#shareToggle").addEventListener("change", async (e) => {
   await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"},
