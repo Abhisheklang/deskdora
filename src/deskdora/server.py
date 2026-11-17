@@ -63,6 +63,9 @@ DEFAULT_CONFIG = {
     # paired companions.  OFF by default; the app shows an indicator
     # while anyone is watching.  Never shown inside the app itself.
     "screen_share": False,
+    # Edge light (v3.2): click-through neon border while the agent
+    # works.  off | single | double | flow.
+    "edge_light": "single",
 }
 
 

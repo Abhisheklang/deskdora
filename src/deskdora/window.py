@@ -24,16 +24,20 @@ if not os.path.exists("/dev/dri/renderD128"):
     os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
 
 import json  # noqa: E402
+import math  # noqa: E402
 import threading  # noqa: E402
+import time  # noqa: E402
 import urllib.request  # noqa: E402
 
+import cairo  # noqa: E402
 import gi  # noqa: E402
 
+gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
 
-from deskdora.overlay import overlay_state  # noqa: E402
+from deskdora.overlay import edge_state, overlay_state  # noqa: E402
 
 DEFAULT_URL = "http://127.0.0.1:8765/"
 APP_TITLE = "DeskDora"
@@ -139,13 +143,32 @@ OVERLAY_POS_PATH = os.path.expanduser(
     "~/.local/share/deskdora/overlay.json")
 
 
+class StatusHub:
+    """One poller for /api/status, shared by the desktop overlays."""
+
+    def __init__(self, base_url):
+        self.base = base_url.rstrip("/")
+        self.status = None
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while True:
+            try:
+                with urllib.request.urlopen(
+                        self.base + "/api/status", timeout=2) as resp:
+                    self.status = json.load(resp)
+            except Exception:
+                self.status = None
+            time.sleep(0.8)
+
+
 class ControlOverlay(Gtk.Window):
     WIDTH = 308
 
-    def __init__(self, base_url):
+    def __init__(self, hub):
         super().__init__(title="DeskDora Control")
-        self.base = base_url.rstrip("/")
-        self._status = None
+        self.base = hub.base
+        self._hub = hub
         self._positioned = False
         self._save_source = None
         self.set_decorated(False)
@@ -229,10 +252,6 @@ class ControlOverlay(Gtk.Window):
         self.connect("button-press-event", self._on_press)
         self.connect("configure-event", self._on_configure)
         self._load_position()
-
-        self._poll_thread = threading.Thread(target=self._poll_loop,
-                                             daemon=True)
-        self._poll_thread.start()
         GLib.timeout_add(350, self._apply)
 
     # -- plumbing ------------------------------------------------------
@@ -257,20 +276,9 @@ class ControlOverlay(Gtk.Window):
                 pass
         threading.Thread(target=send, daemon=True).start()
 
-    def _poll_loop(self):
-        import time
-        while True:
-            try:
-                with urllib.request.urlopen(
-                        self.base + "/api/status", timeout=2) as resp:
-                    self._status = json.load(resp)
-            except Exception:
-                self._status = None
-            time.sleep(0.8)
-
     # -- view ------------------------------------------------------------
     def _apply(self):
-        st = overlay_state(self._status)
+        st = overlay_state(self._hub.status)
         if not st["visible"]:
             if self.get_visible():
                 self.hide()
@@ -349,11 +357,224 @@ class ControlOverlay(Gtk.Window):
         return False
 
 
+# --- edge light (v3.2) ------------------------------------------------------
+# A neon border around the screen edges while the agent works, in
+# the spirit of phone edge-notification lighting.  The window is
+# fullscreen, transparent and CLICK-THROUGH: its input shape is an
+# empty region, so it can never intercept a click or a key, never
+# takes focus, and the agent's own work is unaffected by it.  (Like
+# any transparency effect it needs a compositor — XFCE's or GNOME's;
+# without one the border still draws, just without the soft glow
+# falloff over other windows.)
+#
+# State mapping (deskora.overlay.edge_state, shared with the
+# floating window): running = lime, awaiting confirmation = amber
+# fast pulse, paused = amber steady, finished/idle = off.  The
+# style (off|single|double|flow) is the user's Settings choice;
+# "off" keeps the window hidden at all times — no animation runs.
+LIME = (0.808, 0.871, 0.384)        # #CEDE62
+LIME_HOT = (0.855, 0.965, 0.298)    # #DAF64C
+GREEN = (0.45, 0.83, 0.32)
+TEAL = (0.22, 0.78, 0.60)
+AMBER = (0.925, 0.816, 0.435)       # #ECD06F
+AMBER_DEEP = (0.93, 0.60, 0.22)
+LIME_CYCLE = (LIME, GREEN, TEAL, LIME_HOT)
+AMBER_CYCLE = (AMBER, AMBER_DEEP, (0.90, 0.72, 0.30), AMBER)
+
+
+def _cycle_color(cycle, t):
+    n = len(cycle)
+    pos = (t % 1.0) * n
+    a = cycle[int(pos) % n]
+    b = cycle[(int(pos) + 1) % n]
+    f = pos - int(pos)
+    return tuple(a[i] + (b[i] - a[i]) * f for i in range(3))
+
+
+def _rounded_rect_points(w, h, inset, radius, step=16):
+    """Sampled points around a rounded rectangle (for the flowing
+    gradient, which Cairo cannot run along a path directly)."""
+    pts = []
+    corners = [
+        (w - inset - radius, inset + radius, -math.pi / 2, 0),
+        (w - inset - radius, h - inset - radius, 0, math.pi / 2),
+        (inset + radius, h - inset - radius, math.pi / 2, math.pi),
+        (inset + radius, inset + radius, math.pi, math.pi * 1.5),
+    ]
+    # straights + arcs, walked clockwise from the top-left
+    def line(x0, y0, x1, y1):
+        dist = math.hypot(x1 - x0, y1 - y0)
+        n = max(1, int(dist / step))
+        for i in range(n):
+            pts.append((x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n))
+
+    def arc(cx, cy, a0, a1):
+        n = max(2, int(abs(a1 - a0) * radius / step))
+        for i in range(n):
+            a = a0 + (a1 - a0) * i / n
+            pts.append((cx + radius * math.cos(a),
+                        cy + radius * math.sin(a)))
+
+    line(inset + radius, inset, w - inset - radius, inset)
+    arc(*corners[0])
+    line(w - inset, inset + radius, w - inset, h - inset - radius)
+    arc(*corners[1])
+    line(w - inset - radius, h - inset, inset + radius, h - inset)
+    arc(*corners[2])
+    line(inset, h - inset - radius, inset, inset + radius)
+    arc(*corners[3])
+    return pts
+
+
+def _rounded_rect_path(ctx, w, h, inset, radius):
+    ctx.new_path()
+    ctx.arc(w - inset - radius, inset + radius, radius,
+            -math.pi / 2, 0)
+    ctx.arc(w - inset - radius, h - inset - radius, radius,
+            0, math.pi / 2)
+    ctx.arc(inset + radius, h - inset - radius, radius,
+            math.pi / 2, math.pi)
+    ctx.arc(inset + radius, inset + radius, radius,
+            math.pi, math.pi * 1.5)
+    ctx.close_path()
+
+
+class EdgeLight(Gtk.Window):
+    def __init__(self, hub):
+        super().__init__(title="DeskDora Edge")
+        self._hub = hub
+        self._state = {"visible": False, "mode": "off",
+                       "style": "single", "animated": False}
+        self._phase = 0.0
+        self._pulse_t = 0.0
+        self.set_decorated(False)
+        self.set_resizable(False)
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_accept_focus(False)
+        self.set_focus_on_map(False)
+        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        screen = self.get_screen()
+        self.set_default_size(screen.get_width(), screen.get_height())
+        visual = screen.get_rgba_visual()
+        if visual is not None:
+            self.set_visual(visual)
+        self.set_app_paintable(True)
+        self.area = Gtk.DrawingArea()
+        self.area.connect("draw", self._draw)
+        self.add(self.area)
+        self.connect("map-event", self._make_click_through)
+        GLib.timeout_add(60, self._tick)
+
+    def _make_click_through(self, *_args):
+        # Empty input shape: every click and key passes straight
+        # through to the window beneath.  This is the whole safety
+        # story of the edge light — it is paint, not a surface.
+        gdk_win = self.get_window()
+        if gdk_win is not None:
+            gdk_win.input_shape_combine_region(cairo.Region(), 0, 0)
+        return False
+
+    def _tick(self):
+        status = self._hub.status
+        setting = "single"
+        if status:
+            setting = (status.get("config") or {}).get(
+                "edge_light", "single")
+        st = edge_state(status, setting)
+        changed = (st["visible"] != self._state["visible"]
+                   or st["mode"] != self._state["mode"]
+                   or st["style"] != self._state["style"])
+        self._state = st
+        if not st["visible"]:
+            if self.get_visible():
+                self.hide()
+            return True
+        if not self.get_visible():
+            self.show_all()
+            self.move(0, 0)
+        if st["animated"]:
+            speed = 2.3 if st["mode"] == "amber-fast" else 1.0
+            self._phase = (self._phase + 0.0035 * speed) % 1.0
+            self._pulse_t += 0.06 * speed
+            self.area.queue_draw()
+        elif changed:
+            self.area.queue_draw()
+        return True
+
+    # -- drawing ---------------------------------------------------------
+    def _draw(self, _area, ctx):
+        st = self._state
+        w = self.area.get_allocated_width()
+        h = self.area.get_allocated_height()
+        ctx.set_operator(cairo.OPERATOR_SOURCE)
+        ctx.set_source_rgba(0, 0, 0, 0)
+        ctx.paint()
+        ctx.set_operator(cairo.OPERATOR_OVER)
+        if not st["visible"] or w < 50 or h < 50:
+            return False
+        amber = st["mode"].startswith("amber")
+        base = AMBER if amber else LIME
+        if st["mode"] == "amber-steady":
+            alpha = 0.95
+        elif st["animated"]:
+            speed = 2.3 if st["mode"] == "amber-fast" else 1.0
+            alpha = 0.74 + 0.26 * math.sin(self._pulse_t * speed)
+        else:
+            alpha = 0.95
+
+        if st["style"] == "flow":
+            self._draw_flow(ctx, w, h, amber, alpha)
+        elif st["style"] == "double":
+            self._stroke_glow(ctx, w, h, 6, base, 2.6, alpha)
+            self._stroke_glow(ctx, w, h, 14, base, 1.5, alpha * 0.7,
+                              halo=False)
+        else:  # single
+            self._stroke_glow(ctx, w, h, 7, base, 3.0, alpha)
+        return False
+
+    def _stroke_glow(self, ctx, w, h, inset, color, width, alpha,
+                     halo=True):
+        if halo:
+            for mult, a in ((3.6, 0.10), (2.0, 0.22)):
+                ctx.set_source_rgba(*color, alpha * a)
+                ctx.set_line_width(width * mult)
+                _rounded_rect_path(ctx, w, h, inset, 26)
+                ctx.stroke()
+        ctx.set_source_rgba(*color, alpha)
+        ctx.set_line_width(width)
+        _rounded_rect_path(ctx, w, h, inset, 26)
+        ctx.stroke()
+
+    def _draw_flow(self, ctx, w, h, amber, alpha):
+        cycle = AMBER_CYCLE if amber else LIME_CYCLE
+        # soft halo under the flow
+        ctx.set_source_rgba(*(AMBER if amber else LIME), 0.10 * alpha)
+        ctx.set_line_width(10)
+        _rounded_rect_path(ctx, w, h, 7, 26)
+        ctx.stroke()
+        pts = _rounded_rect_points(w, h, 7, 26)
+        n = len(pts)
+        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+        ctx.set_line_width(3.2)
+        for i in range(n):
+            x0, y0 = pts[i]
+            x1, y1 = pts[(i + 1) % n]
+            col = _cycle_color(cycle, i / n + self._phase)
+            ctx.set_source_rgba(*col, alpha)
+            ctx.move_to(x0, y0)
+            ctx.line_to(x1, y1)
+            ctx.stroke()
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     url = argv[0] if argv else DEFAULT_URL
+    hub = StatusHub(url)
     DeskDoraWindow(url)
-    ControlOverlay(url)
+    ControlOverlay(hub)
+    EdgeLight(hub)
     Gtk.main()
     return 0
 

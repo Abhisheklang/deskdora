@@ -874,6 +874,14 @@ select:focus{outline:none;border-color:var(--lime)}
         <div class="frow2"><span class="mono-lab">Companion PIN</span>
           <input type="text" id="cfgPin" placeholder="PIN for phone control over the local network" autocomplete="off">
           <span class="hint">Open <span class="mono">/companion.html</span> on your phone — this PIN unlocks its controls.</span></div>
+        <div class="frow2"><span class="mono-lab">Edge light</span>
+          <select id="cfgEdge">
+            <option value="off">Off</option>
+            <option value="single">Single line</option>
+            <option value="double">Double lines</option>
+            <option value="flow">Flowing gradient</option>
+          </select>
+          <span class="hint">A border of light around the screen while the agent works. Click-through — it never takes a click or the focus.</span></div>
         <div class="frow2"><span class="mono-lab"></span>
           <span><button class="pill-btn lime" id="cfgSave2">SAVE SETTINGS</button>
           <span class="shot-lab" id="cfgMsg2" style="margin-left:12px"></span></span></div>
@@ -1865,6 +1873,7 @@ async function loadConfig() {
   AUT_CATS.forEach(c => { $("#cfgAut-" + c).value = aut[c] || "confirm"; });
   $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
   $("#cfgPin").value = cfg.companion_pin || "";
+  $("#cfgEdge").value = cfg.edge_light || "single";
   loadProviders();
   loadAccess();
 }
@@ -2090,6 +2099,11 @@ $("#provSave").addEventListener("click", saveProvider);
 $("#provTest").addEventListener("click", testProvider);
 $("#provFetch").addEventListener("click", fetchModels);
 $("#custAdd").addEventListener("click", addCustom);
+$("#cfgEdge").addEventListener("change", async (e) => {
+  await fetch("/api/config", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ edge_light: e.target.value }) });
+});
 $("#shareToggle").addEventListener("change", async (e) => {
   await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"},

@@ -224,3 +224,40 @@ def test_overlay_stopped_offers_reset_not_resume():
     assert st["mode"] == "finished"
     assert st["can_reset"] and not st["can_resume"]
     assert st["status_text"] == "KILLED"
+
+
+# -- edge light ------------------------------------------------------------
+from deskdora.overlay import edge_state  # noqa: E402
+
+
+def test_edge_light_mapping():
+    running = _status(state={"running": True})
+    assert edge_state(running, "single")["mode"] == "lime"
+    assert edge_state(running, "flow")["visible"] is True
+    assert edge_state(running, "off")["visible"] is False
+    assert edge_state(running, "bogus")["visible"] is False
+
+    confirming = _status(state={"running": True})
+    confirming["pending_confirmation"] = {"id": "x"}
+    st = edge_state(confirming, "single")
+    assert st["mode"] == "amber-fast" and st["animated"] is True
+
+    paused = _status(state={"running": True},
+                     progress={"paused": True})
+    st = edge_state(paused, "double")
+    assert st["mode"] == "amber-steady" and st["animated"] is False
+
+    finished = _status(state={"result": {"status": "success"}})
+    assert edge_state(finished, "single")["visible"] is False
+    assert edge_state(_status(), "single")["visible"] is False
+    assert edge_state(None, "single")["visible"] is False
+
+
+def test_edge_light_setting_persists(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "config.json"
+    monkeypatch.setattr(server, "CONFIG_PATH", str(cfg_file))
+    assert server.load_config()["edge_light"] == "single"  # default
+    body = client.post("/api/config",
+                       json={"edge_light": "flow"}).json()
+    assert body["edge_light"] == "flow"
+    assert server.load_config()["edge_light"] == "flow"

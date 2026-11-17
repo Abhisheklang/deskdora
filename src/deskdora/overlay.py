@@ -93,3 +93,42 @@ def overlay_state(status):
         }
 
     return dict(HIDDEN)
+
+
+# ---------------------------------------------------------------------
+# Edge light: a click-through neon border around the screen edges.
+# Same state signal as the floating window:
+#   running               -> lime (flowing / gently pulsing)
+#   awaiting confirmation -> amber, pulsing faster
+#   paused / frozen       -> amber, steady
+#   finished / idle       -> off
+# The user's style setting (off|single|double|flow) gates everything:
+# "off" disables the overlay completely.
+# ---------------------------------------------------------------------
+EDGE_STYLES = ("off", "single", "double", "flow")
+
+
+def edge_state(status, setting="single"):
+    """Map a /api/status payload + the edge-light setting to the
+    edge overlay's view state."""
+    hidden = {"visible": False, "mode": "off", "style": setting,
+              "animated": False}
+    if setting not in EDGE_STYLES or setting == "off":
+        return hidden
+    status = status or {}
+    state = status.get("state") or {}
+    progress = status.get("progress") or {}
+
+    if status.get("pending_confirmation"):
+        return {"visible": True, "mode": "amber-fast",
+                "style": setting, "animated": True}
+    if state.get("running"):
+        if progress.get("paused"):
+            return {"visible": True, "mode": "amber-steady",
+                    "style": setting, "animated": False}
+        return {"visible": True, "mode": "lime",
+                "style": setting, "animated": True}
+    if progress.get("queue_paused") and progress.get("queue_total"):
+        return {"visible": True, "mode": "amber-steady",
+                "style": setting, "animated": False}
+    return hidden
