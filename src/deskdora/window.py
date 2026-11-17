@@ -554,7 +554,6 @@ class EdgeLight(Gtk.Window):
             self.show_all()
             self.move(0, 0)
             changed = True
-        self._apply_click_through()
         if st["animated"]:
             speed = 2.3 if st["mode"] == "amber-fast" else 1.0
             self._phase = (self._phase + 0.004 * speed) % 1.0
@@ -562,6 +561,10 @@ class EdgeLight(Gtk.Window):
             self._restyle()
         elif changed:
             self._restyle()
+        # LAST in the tick, after any restyle: GTK syncs its own
+        # input shape over ours when the window is styled/mapped,
+        # so the empty shape must be (re)asserted after styling.
+        self._apply_click_through()
         return True
 
     def _restyle(self):
