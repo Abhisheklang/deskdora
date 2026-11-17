@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deskdora"
-version = "1.2.0"
+version = "2.0.0"
 description = "Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding with vision fallback, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,6 +14,7 @@ keywords = ["desktop-agent", "automation", "accessibility", "at-spi", "ollama", 
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

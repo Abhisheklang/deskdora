@@ -14,16 +14,22 @@ import threading
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import voice
 from .agent import Agent
 from .audit import RunLog, list_runs, read_log
+from .autonomy import (DEFAULT_POLICY, AutonomyPolicy, PolicyError,
+                      validate_policy)
+from .memory import MemoryStore, learn_from_log
 from .planners import OllamaPlanner, get_planner
+from .proactive import ProposalStore, ProactiveWatcher
 from .routines import RoutineStore
 from .safety import AllowList, ConfirmationGate, KillSwitch
+from .scheduler import Scheduler
 from .tasks import base_known_apps
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -38,6 +44,13 @@ DEFAULT_CONFIG = {
     "allow_apps": [],           # empty = allow all
     "sandbox_mode": True,       # informational flag shown in the UI
     "driver": "auto",           # auto | linux-x11 | linux-wayland | ...
+    "voice_updates": False,     # spoken progress updates (offline TTS)
+    # Per-category autonomy (v3.0): files/apps/web/messages/money ->
+    # free | confirm | never.  Money can never be "free" (hard floor,
+    # enforced by autonomy.validate_policy).
+    "autonomy": dict(DEFAULT_POLICY),
+    "watch_folders": [],        # folders the proactive watcher scans
+    "companion_pin": "",        # PIN for non-loopback mutating calls
 }
 
 
@@ -72,6 +85,34 @@ class RunManager:
         self.kill = KillSwitch()
         self.pending = None          # dict with an Event + verdict
         self.routines = RoutineStore()
+        self.memory = MemoryStore(os.path.join(DATA_DIR, "memory.json"))
+        self.scheduler = Scheduler(
+            self.routines, self._run_routine,
+            os.path.join(DATA_DIR, "scheduler-events.jsonl"))
+        self.proposals = ProposalStore(
+            os.path.join(DATA_DIR, "proposals.json"))
+        self.watcher = ProactiveWatcher(
+            self.proposals, self._run_goal,
+            policy=AutonomyPolicy(load_config()["autonomy"]))
+
+    def _run_goal(self, goal):
+        """Proactive/scheduler entry point: the normal run path."""
+        try:
+            self.start_run(goal, "builtin")
+            return True, "run started"
+        except HTTPException as exc:
+            return False, str(exc.detail)
+
+    # -- scheduler entry point: same path as pressing RUN NOW ---------
+    def _run_routine(self, routine):
+        try:
+            self.routines.mark_run(routine["name"])
+            self.start_run(routine["goal"],
+                           routine.get("planner_mode") or None,
+                           routine_name=routine["name"])
+            return True, "run started"
+        except HTTPException as exc:
+            return False, str(exc.detail)
 
     # -- confirmation policy: blocks the agent thread until the UI answers
     def ui_policy(self, step, description=""):
@@ -82,6 +123,8 @@ class RunManager:
                   "approved": None}
         with self.lock:
             self.pending = record
+        if load_config().get("voice_updates"):
+            voice.speak("DeskDora needs your confirmation to continue.")
         # 300s timeout -> deny (fail closed).
         event.wait(timeout=300)
         with self.lock:
@@ -98,7 +141,7 @@ class RunManager:
         record["event"].set()
         return {"ok": True}
 
-    def start_run(self, goal, planner_mode=None):
+    def start_run(self, goal, planner_mode=None, routine_name=None):
         with self.lock:
             if self.state["running"]:
                 raise HTTPException(409, "a run is already in progress")
@@ -115,15 +158,22 @@ class RunManager:
 
         def _work():
             planner, mode_label = get_planner(
-                mode, model=cfg["model"], known_apps=base_known_apps())
+                mode, model=cfg["model"], known_apps=base_known_apps(),
+                memory=self.memory)
             gate = ConfirmationGate(self.ui_policy)
             log = RunLog(RUNS_DIR, goal, mode_label)
             from .drivers import get_driver
             driver = get_driver(None if cfg.get("driver", "auto") == "auto"
                                 else cfg["driver"])
+            try:
+                policy = AutonomyPolicy(cfg.get("autonomy"))
+            except PolicyError:
+                # A hand-edited config must fail safe, never open.
+                policy = AutonomyPolicy()
             agent = Agent(planner, mode_label, gate, self.kill,
                           AllowList(cfg["allow_apps"]), log,
-                          on_event=_on_event, driver=driver)
+                          on_event=_on_event, driver=driver,
+                          autonomy=policy)
             with self.lock:
                 self.agent = agent
                 self.state["planner_mode"] = mode_label
@@ -132,6 +182,20 @@ class RunManager:
                 result = agent.run(goal)
             except Exception as exc:  # agent.run already logs; be safe
                 result = {"status": "failed", "reason": str(exc)}
+            # Resident memory learns from finished runs (success only,
+            # inside learn_from_log) and habits count routine runs.
+            try:
+                learn_from_log(self.memory, log.dir,
+                               result.get("status", ""))
+                if routine_name:
+                    self.memory.note_routine(routine_name)
+                    self.memory.save()
+            except Exception:
+                pass
+            if cfg.get("voice_updates"):
+                summary = result.get("answer") or result.get("reason") or ""
+                voice.speak(f"Run finished: {result.get('status', '')}. "
+                            f"{summary}"[:200])
             with self.lock:
                 self.state["running"] = False
                 self.state["result"] = result
@@ -148,7 +212,32 @@ class RunManager:
 MANAGER = RunManager()
 from . import __version__
 
-app = FastAPI(title="DeskDora", version=__version__)
+_background_started = False
+
+
+def start_background():
+    """Start the scheduler and the proactive watcher exactly once,
+    however the app is being served (serve(), uvicorn directly, or
+    the desktop launcher)."""
+    global _background_started
+    if _background_started:
+        return
+    _background_started = True
+    MANAGER.scheduler.start()
+    threading.Thread(target=_watcher_loop, daemon=True,
+                     name="deskdora-watcher").start()
+
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    start_background()
+    yield
+
+
+app = FastAPI(title="DeskDora", version=__version__, lifespan=_lifespan)
 
 
 @app.middleware("http")
@@ -158,6 +247,31 @@ async def _no_store(request, call_next):
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+@app.middleware("http")
+async def _companion_guard(request, call_next):
+    # Phone-companion safety rule: reads (GET) are open, but any
+    # mutating call that does NOT come from this machine itself must
+    # present the companion PIN (config "companion_pin").  Loopback —
+    # the owner at their own desktop — is never challenged.  If no
+    # PIN is configured, non-loopback mutation is refused outright:
+    # serving the app on a LAN without a PIN must not silently hand
+    # strangers the confirm/kill/run buttons.
+    if request.method in ("POST", "DELETE") \
+            and request.url.path.startswith("/api/"):
+        client = request.client.host if request.client else ""
+        if client not in _LOCAL_HOSTS:
+            pin = load_config().get("companion_pin", "")
+            if not pin or request.headers.get("x-companion-pin") != pin:
+                return JSONResponse(
+                    {"detail": "companion PIN required for "
+                               "non-local control"},
+                    status_code=401)
+    return await call_next(request)
 
 
 class RunRequest(BaseModel):
@@ -174,12 +288,27 @@ class RoutineRequest(BaseModel):
     goal: str
     planner_mode: str = ""
     schedule: str | None = None
+    trigger: dict | None = None
 
 
 class FromRunRequest(BaseModel):
     name: str
     run_id: str
     schedule: str | None = None
+
+
+class PlaceRequest(BaseModel):
+    alias: str
+    path: str
+
+
+class ForgetRequest(BaseModel):
+    kind: str          # places | apps | goals | routines
+    key: str
+
+
+class SayRequest(BaseModel):
+    text: str
 
 
 @app.get("/api/status")
@@ -250,8 +379,14 @@ def routines_list():
 
 @app.post("/api/routines")
 def routines_create(req: RoutineRequest):
+    if req.trigger is not None:
+        t = req.trigger
+        if t.get("type") != "folder_change" or not t.get("path"):
+            raise HTTPException(
+                400, "trigger must be {'type': 'folder_change', "
+                     "'path': ...}")
     return MANAGER.routines.save(req.name, req.goal, req.planner_mode,
-                                 schedule=req.schedule)
+                                 schedule=req.schedule, trigger=req.trigger)
 
 
 @app.post("/api/routines/from-run")
@@ -273,7 +408,91 @@ def routines_run(name: str):
         raise HTTPException(404, "routine not found")
     MANAGER.routines.mark_run(name)
     return MANAGER.start_run(routine["goal"],
-                             routine.get("planner_mode") or None)
+                             routine.get("planner_mode") or None,
+                             routine_name=routine["name"])
+
+
+@app.get("/api/scheduler/events")
+def scheduler_events():
+    return MANAGER.scheduler.events()
+
+
+# ---------------------------------------------------------------------------
+# Resident memory
+# ---------------------------------------------------------------------------
+
+@app.get("/api/memory")
+def memory_get():
+    return MANAGER.memory.snapshot()
+
+
+@app.post("/api/memory/places")
+def memory_set_place(req: PlaceRequest):
+    try:
+        entry = MANAGER.memory.set_place(req.alias, req.path)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"alias": req.alias.strip().lower(), **entry,
+            "exists": os.path.isdir(req.path)}
+
+
+@app.post("/api/memory/forget")
+def memory_forget(req: ForgetRequest):
+    if not MANAGER.memory.forget(req.kind, req.key):
+        raise HTTPException(404, "no such memory entry")
+    return {"ok": True}
+
+
+@app.post("/api/memory/clear")
+def memory_clear():
+    MANAGER.memory.clear()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Voice (offline TTS out, pluggable STT in)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/voice")
+def voice_info():
+    return voice.voice_status()
+
+
+@app.post("/api/voice/say")
+def voice_say(req: SayRequest):
+    engine = voice.get_tts()
+    started = voice.speak(req.text, engine=engine)
+    return {"ok": started, "engine": engine.name}
+
+
+@app.post("/api/voice/render")
+def voice_render(req: SayRequest):
+    out_dir = os.path.join(DATA_DIR, "voice")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "render.wav")
+    try:
+        voice.render_speech(req.text, path)
+    except voice.VoiceError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "engine": voice.get_tts().name,
+            "path": path, "bytes": os.path.getsize(path)}
+
+
+@app.post("/api/voice/transcribe")
+async def voice_transcribe(file: UploadFile = File(...)):
+    import tempfile
+    suffix = os.path.splitext(file.filename or "clip.wav")[1] or ".wav"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+    try:
+        text = voice.transcribe(tmp_path)
+    except voice.TranscriptionError as exc:
+        raise HTTPException(400, str(exc))
+    finally:
+        os.unlink(tmp_path)
+    engine = voice.get_transcriber()
+    return {"text": text, "engine": engine.name if engine else None}
 
 
 @app.delete("/api/routines/{name}")
@@ -305,14 +524,56 @@ def config_post(cfg: dict):
     for key in DEFAULT_CONFIG:
         if key in cfg:
             merged[key] = cfg[key]
+    if "autonomy" in cfg:
+        try:
+            merged["autonomy"] = validate_policy(cfg["autonomy"])
+        except PolicyError as exc:
+            raise HTTPException(400, str(exc))
     save_config(merged)
     return merged
+
+
+# ---------------------------------------------------------------------------
+# Proactive proposals
+# ---------------------------------------------------------------------------
+
+@app.get("/api/proposals")
+def proposals_list():
+    return MANAGER.proposals.list()
+
+
+@app.post("/api/proposals/{proposal_id}/approve")
+def proposals_approve(proposal_id: str):
+    result = MANAGER.watcher.approve(proposal_id)
+    if result is None:
+        raise HTTPException(404, "no such open proposal")
+    return result
+
+
+@app.post("/api/proposals/{proposal_id}/dismiss")
+def proposals_dismiss(proposal_id: str):
+    proposal = MANAGER.watcher.dismiss(proposal_id)
+    if proposal is None:
+        raise HTTPException(404, "no such proposal")
+    return proposal
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 
+def _watcher_loop():
+    while True:
+        try:
+            cfg = load_config()
+            MANAGER.watcher.policy = AutonomyPolicy(cfg.get("autonomy"))
+            MANAGER.watcher.scan(cfg.get("watch_folders") or [])
+        except Exception:
+            pass  # a bad folder must never kill the watcher
+        time.sleep(45)
+
+
 def serve(host="127.0.0.1", port=8765):
     import uvicorn
     os.makedirs(RUNS_DIR, exist_ok=True)
+    start_background()
     uvicorn.run(app, host=host, port=port, log_level="info")

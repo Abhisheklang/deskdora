@@ -441,6 +441,9 @@ select:focus{outline:none;border-color:var(--lime)}
     <button class="rnav" data-view="routines" data-name="Routines">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M20.5 6H9a5 5 0 0 0-5 5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M3.5 18H15a5 5 0 0 0 5-5"/></svg>
       <span>Routines</span></button>
+    <button class="rnav" data-view="memory" data-name="Memory">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5V12c0 1.66 3.58 3 8 3s8-1.34 8-3V5.5"/><path d="M4 12v6.5c0 1.66 3.58 3 8 3s8-1.34 8-3V12"/></svg>
+      <span>Memory</span></button>
     <button class="rnav" data-view="benchmark" data-name="Benchmark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
       <span>Bench</span></button>
@@ -541,6 +544,11 @@ select:focus{outline:none;border-color:var(--lime)}
         <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">LIVE LOG</span><span class="rule"></span><span class="sec-note">EVERY STEP, AS IT HAPPENS</span></div>
         <div class="timeline" id="feed"><div class="tl-empty">No run yet — give DeskDora a task above.</div></div>
       </div>
+
+      <div class="col12" id="proposalSection" hidden>
+        <div class="sec-head"><span class="sec-no">04</span><span class="sec-name">PROACTIVE</span><span class="rule"></span><span class="sec-note">WORK DESKDORA NOTICED ON ITS OWN</span></div>
+        <div id="proposalList"></div>
+      </div>
     </div>
   </section>
 
@@ -586,10 +594,45 @@ select:focus{outline:none;border-color:var(--lime)}
           <input type="text" id="routineGoal" placeholder="The task, in plain words"></div>
         <div class="frow2"><span class="mono-lab">Schedule</span>
           <input type="text" id="routineSchedule" placeholder="Cron — optional, e.g. 0 9 * * 1">
-          <span class="hint">Five-field cron. Leave empty to run only on demand.</span></div>
+          <span class="hint">Five-field cron. The scheduler fires it through the same confirmation rules as a manual run.</span></div>
+        <div class="frow2"><span class="mono-lab">Trigger</span>
+          <input type="text" id="routineTriggerPath" placeholder="Watch folder — optional, fires when its contents change">
+          <span class="hint">Folder-change trigger. Leave empty for no trigger. First sighting is a baseline, not a firing.</span></div>
         <div class="frow2"><span class="mono-lab"></span>
           <span><button class="pill-btn lime" id="routineSave">SAVE ROUTINE</button></span></div>
       </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">SCHEDULER</span><span class="rule"></span><span class="sec-note">RECENT FIRINGS &amp; SKIPS</span></div>
+      <div class="timeline" id="schedFeed"><div class="tl-empty">No scheduler events yet.</div></div>
+    </div>
+  </section>
+
+  <!-- ======================= MEMORY VIEW ======================= -->
+  <section id="view-memory" class="view" hidden>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">PLACES</span><span class="rule"></span><span class="sec-note">NAMED FOLDERS THE PLANNER CAN USE</span></div>
+    <h2 class="view-head">What it<br>remembers<span class="lime-dot">.</span></h2>
+    <div id="placeList"><div class="skl sklrow"></div><div class="skl sklrow"></div></div>
+    <div class="form-rows" style="margin-top:26px">
+      <div class="frow2"><span class="mono-lab">New place</span>
+        <span style="display:flex;gap:10px;flex-wrap:wrap">
+          <input type="text" id="placeAlias" placeholder="Name — e.g. invoices" style="flex:1;min-width:160px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:11px 14px">
+          <input type="text" id="placePath" placeholder="Folder path" style="flex:2;min-width:220px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:11px 14px">
+          <button class="pill-btn lime" id="placeSave">TEACH PLACE</button>
+        </span></div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">APPS &amp; HABITS</span><span class="rule"></span><span class="sec-note">LEARNED FROM SUCCESSFUL RUNS ONLY</span></div>
+      <div id="habitList"><div class="skl sklrow"></div></div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">FORGET</span><span class="rule"></span></div>
+      <p class="set-note" style="margin:0 0 14px">Memory lives in one local file and is never sent anywhere. Delete single entries above, or wipe it all:</p>
+      <button class="pill-btn ghosty" id="memoryClear">CLEAR ALL MEMORY</button>
+      <span class="shot-lab" id="memoryMsg" style="margin-left:12px"></span>
     </div>
   </section>
 
@@ -626,11 +669,62 @@ select:focus{outline:none;border-color:var(--lime)}
       <div class="frow2"><span class="mono-lab">Sandbox / VM mode</span>
         <label class="switch"><input type="checkbox" id="cfgSandbox"><i></i></label>
         <span class="hint">Recommended while you evaluate DeskDora.</span></div>
+      <div class="frow2"><span class="mono-lab">Voice updates</span>
+        <label class="switch"><input type="checkbox" id="cfgVoice"><i></i></label>
+        <span class="hint">Spoken progress updates via the offline speech engine (espeak). Off by default.</span></div>
+      <div class="frow2"><span class="mono-lab">Driver</span>
+        <span class="set-note" id="cfgDriverNote">Platform driver is chosen automatically (set “driver” in the config file to override).</span></div>
       <div class="frow2"><span class="mono-lab">Confirmations</span>
         <span class="set-note">Before delete / send / submit / install — always on, cannot be disabled.</span></div>
       <div class="frow2"><span class="mono-lab"></span>
         <span><button class="pill-btn lime" id="cfgSave">SAVE SETTINGS</button>
         <span class="shot-lab" id="cfgMsg" style="margin-left:12px"></span></span></div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">AUTONOMY</span><span class="rule"></span><span class="sec-note">WHAT THE AGENT MAY DO WITHOUT ASKING</span></div>
+      <div class="form-rows" id="autonomyRows">
+        <div class="frow2"><span class="mono-lab">Files</span>
+          <span><select id="cfgAut-files" aria-label="Files autonomy">
+            <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
+          </select></span>
+          <span class="hint">Deleting, moving and renaming files.</span></div>
+        <div class="frow2"><span class="mono-lab">Apps</span>
+          <span><select id="cfgAut-apps" aria-label="Apps autonomy">
+            <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
+          </select></span>
+          <span class="hint">Installing or removing software; launching is never gated.</span></div>
+        <div class="frow2"><span class="mono-lab">Web</span>
+          <span><select id="cfgAut-web" aria-label="Web autonomy">
+            <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
+          </select></span>
+          <span class="hint">Acting inside a browser. “Never” means no browsing at all.</span></div>
+        <div class="frow2"><span class="mono-lab">Messages</span>
+          <span><select id="cfgAut-messages" aria-label="Messages autonomy">
+            <option value="free">Free-run</option><option value="confirm">Confirm first</option><option value="never">Never</option>
+          </select></span>
+          <span class="hint">Sending, submitting, posting — anything that leaves the machine.</span></div>
+        <div class="frow2"><span class="mono-lab">Money</span>
+          <span><select id="cfgAut-money" aria-label="Money autonomy">
+            <option value="confirm">Confirm first</option><option value="never">Never</option>
+          </select></span>
+          <span class="hint">Payments, purchases, orders. Free-run is not offered — money always needs a human yes. That floor is enforced in code, not just here.</span></div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">03</span><span class="sec-name">PROACTIVE &amp; COMPANION</span><span class="rule"></span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Watch folders</span>
+          <textarea id="cfgWatch" placeholder="One folder per line — DeskDora proposes an organise when one fills with loose files"></textarea>
+          <span class="hint">Proposals appear on the Run screen. With Files set to free-run, a proposal executes itself; otherwise it waits for your approval.</span></div>
+        <div class="frow2"><span class="mono-lab">Companion PIN</span>
+          <input type="text" id="cfgPin" placeholder="PIN for phone control over the local network" autocomplete="off">
+          <span class="hint">Open <span class="mono">/companion.html</span> on a phone browser on the same network (service must be started with a network host). Approving, stopping and starting from any non-local device requires this PIN; without one, remote control is refused.</span></div>
+        <div class="frow2"><span class="mono-lab"></span>
+          <span><button class="pill-btn lime" id="cfgSave2">SAVE SETTINGS</button>
+          <span class="shot-lab" id="cfgMsg2" style="margin-left:12px"></span></span></div>
+      </div>
     </div>
   </section>
   </main>
@@ -678,7 +772,8 @@ const S = {
   routinesCache: [],
 };
 const VIEW_NAMES = {run:"Command", log:"Action Log", routines:"Routines",
-                    benchmark:"Benchmark", settings:"Settings"};
+                    memory:"Memory", benchmark:"Benchmark",
+                    settings:"Settings"};
 
 /* ================= clock ================= */
 function tickClock() {
@@ -707,13 +802,14 @@ function activate(name) {
   S.view = name;
   document.querySelectorAll(".rnav").forEach(b =>
     b.classList.toggle("active", b.dataset.view === name));
-  ["run","log","routines","benchmark","settings"].forEach(v => {
+  ["run","log","routines","memory","benchmark","settings"].forEach(v => {
     $("#view-" + v).hidden = v !== name;
   });
   $("#tsName").textContent = name === "run"
     ? (S.goal ? trunc(S.goal, 44) : "Command") : VIEW_NAMES[name];
   if (name === "log") loadRuns();
   if (name === "routines") loadRoutines();
+  if (name === "memory") loadMemory();
   if (name === "benchmark") loadBenchmark();
   if (name === "settings") loadConfig();
 }
@@ -776,6 +872,16 @@ function eventRow(ev) {
     case "confirmation": return {cls:"warn", pill:"CONFIRM",
       text:"Confirmation " + (ev.approved ? "approved" : "DENIED") +
         " — " + describeStep(ev.step), res: ev.approved ? "YES" : "NO"};
+    case "autonomy": return ev.decision === "deny"
+      ? {cls:"err", pill:"POLICY",
+         text:"Autonomy policy refused a " + (ev.category || "") +
+           " action — " + describeStep(ev.step), res:"NEVER"}
+      : {cls:"quiet", pill:"POLICY",
+         text:"Auto-approved by policy (" + (ev.category || "") +
+           " is free-run) — " + describeStep(ev.step), res:"FREE"};
+    case "focus_guard": return {cls:"quiet", pill:"FOCUS",
+      text:"Focus guard: " + (ev.result || "") +
+        (ev.window ? " — " + ev.window : ""), res:""};
     case "target": return {cls:"quiet", pill:"TARGET",
       text:(ev.element?.role || "") + " '" + (ev.element?.name || "") +
         "' — " + (ev.element?.app || ""), res:""};
@@ -1200,7 +1306,7 @@ async function loadRoutines() {
       <div>
         <div class="rr-name">${esc(r.name)}</div>
         <div class="rr-goal">${esc(r.goal)}</div>
-        <div class="rr-meta">${r.schedule ? "CRON " + esc(r.schedule) + " · " : ""}RAN ${r.run_count || 0}&times;</div>
+        <div class="rr-meta">${r.schedule ? "CRON " + esc(r.schedule) + " · " : ""}${r.trigger ? "WATCHES " + esc(r.trigger.path) + " · " : ""}RAN ${r.run_count || 0}&times;</div>
       </div>
       <div class="rr-actions">
         <button class="pill-btn lime" onclick="runRoutine('${esc(r.name)}')">RUN NOW</button>
@@ -1208,6 +1314,26 @@ async function loadRoutines() {
       </div>
     </div>`).join("")
     : "<div class='tl-empty' style='border-top:1px solid var(--line)'>No routines yet — create one below, or save a finished run from the Action log.</div>";
+  loadSchedulerEvents();
+}
+async function loadSchedulerEvents() {
+  const feed = $("#schedFeed");
+  if (!feed) return;
+  try {
+    const events = await (await fetch("/api/scheduler/events")).json();
+    if (!events.length) {
+      feed.innerHTML = "<div class='tl-empty'>No scheduler events yet.</div>";
+      return;
+    }
+    feed.innerHTML = events.slice().reverse().map(e => {
+      const t = e.ts ? new Date(e.ts * 1000).toLocaleTimeString("en-GB") : "--:--:--";
+      const cls = e.kind === "fired" ? "ok" : "warn";
+      return `<div class="tl-row ${cls}"><span class="tl-time">${t}</span>` +
+        `<span class="tl-pill">${esc(e.kind.toUpperCase())}</span>` +
+        `<span class="tl-text">${esc(e.routine)} — ${esc(e.detail || "")}</span>` +
+        `<span class="tl-res"></span></div>`;
+    }).join("");
+  } catch (e) { /* scheduler not started in this process */ }
 }
 async function runRoutine(name) {
   const res = await fetch(`/api/routines/${encodeURIComponent(name)}/run`, { method: "POST" });
@@ -1224,15 +1350,90 @@ async function deleteRoutine(name) {
   loadRoutines();
 }
 $("#routineSave").addEventListener("click", async () => {
+  const watchPath = $("#routineTriggerPath").value.trim();
   const body = { name: $("#routineName").value.trim(),
                  goal: $("#routineGoal").value.trim(),
-                 schedule: $("#routineSchedule").value.trim() || null };
+                 schedule: $("#routineSchedule").value.trim() || null,
+                 trigger: watchPath
+                   ? { type: "folder_change", path: watchPath } : null };
   if (!body.name || !body.goal) return alert("Name and goal are required.");
   await fetch("/api/routines", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
   $("#routineName").value = ""; $("#routineGoal").value = "";
-  $("#routineSchedule").value = "";
+  $("#routineSchedule").value = ""; $("#routineTriggerPath").value = "";
   loadRoutines();
+});
+
+/* ================= memory ================= */
+async function loadMemory() {
+  const data = await (await fetch("/api/memory")).json();
+  const places = Object.entries(data.places || {});
+  $("#placeList").innerHTML = places.length ? places.map(([alias, e], i) => `
+    <div class="rrow">
+      <span class="rr-idx">P—${pad2(i + 1)}</span>
+      <div>
+        <div class="rr-name">${esc(alias)}</div>
+        <div class="rr-goal mono" style="font-size:12px">${esc(e.path)}</div>
+        <div class="rr-meta">${esc((e.source || "user").toUpperCase())}</div>
+      </div>
+      <div class="rr-actions">
+        <button class="pill-btn ghosty" onclick="forgetPlace('${esc(alias)}')">FORGET</button>
+      </div>
+    </div>`).join("")
+    : "<div class='tl-empty' style='border-top:1px solid var(--line)'>No places yet — teach one below, or organise a folder and it will be learned.</div>";
+  const apps = Object.entries(data.apps || {});
+  const goals = Object.entries(data.habits?.goals || {})
+    .sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const routines = Object.entries(data.habits?.routines || {});
+  let rows = "";
+  apps.forEach(([cmd, e], i) => {
+    rows += `<div class="rrow"><span class="rr-idx">A—${pad2(i + 1)}</span>
+      <div><div class="rr-goal mono" style="font-size:12.5px">${esc(cmd)}</div>
+      <div class="rr-meta">LAUNCHED ${e.count}&times;</div></div>
+      <div class="rr-actions"><button class="pill-btn ghosty"
+        onclick="forgetEntry('apps', '${esc(cmd)}')">FORGET</button></div></div>`;
+  });
+  goals.forEach(([goal, count], i) => {
+    rows += `<div class="rrow"><span class="rr-idx">G—${pad2(i + 1)}</span>
+      <div><div class="rr-goal">${esc(goal)}</div>
+      <div class="rr-meta">SUCCEEDED ${count}&times;</div></div>
+      <div class="rr-actions"></div></div>`;
+  });
+  routines.forEach(([name, e], i) => {
+    rows += `<div class="rrow"><span class="rr-idx">R—${pad2(i + 1)}</span>
+      <div><div class="rr-goal">${esc(name)}</div>
+      <div class="rr-meta">ROUTINE RAN ${e.count}&times;</div></div>
+      <div class="rr-actions"></div></div>`;
+  });
+  $("#habitList").innerHTML = rows ||
+    "<div class='tl-empty' style='border-top:1px solid var(--line)'>Nothing learned yet — habits appear after successful runs.</div>";
+}
+async function forgetPlace(alias) {
+  await fetch("/api/memory/forget", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ kind: "places", key: alias }) });
+  loadMemory();
+}
+async function forgetEntry(kind, key) {
+  await fetch("/api/memory/forget", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ kind, key }) });
+  loadMemory();
+}
+$("#placeSave").addEventListener("click", async () => {
+  const alias = $("#placeAlias").value.trim(), path = $("#placePath").value.trim();
+  if (!alias || !path) return alert("Name and path are required.");
+  const res = await fetch("/api/memory/places", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ alias, path }) });
+  $("#memoryMsg").textContent = res.ok ? "TAUGHT" : "FAILED";
+  $("#placeAlias").value = ""; $("#placePath").value = "";
+  loadMemory();
+});
+$("#memoryClear").addEventListener("click", async () => {
+  await fetch("/api/memory/clear", { method: "POST" });
+  $("#memoryMsg").textContent = "MEMORY CLEARED";
+  loadMemory();
 });
 
 /* ================= benchmark ================= */
@@ -1270,22 +1471,75 @@ async function loadBenchmark() {
 }
 
 /* ================= settings ================= */
+const AUT_CATS = ["files", "apps", "web", "messages", "money"];
 async function loadConfig() {
   const cfg = await (await fetch("/api/config")).json();
   $("#cfgPlanner").value = cfg.planner;
   $("#cfgModel").value = cfg.model;
   $("#cfgAllow").value = (cfg.allow_apps || []).join("\n");
   $("#cfgSandbox").checked = !!cfg.sandbox_mode;
+  $("#cfgVoice").checked = !!cfg.voice_updates;
+  const aut = cfg.autonomy || {};
+  AUT_CATS.forEach(c => { $("#cfgAut-" + c).value = aut[c] || "confirm"; });
+  $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
+  $("#cfgPin").value = cfg.companion_pin || "";
 }
-$("#cfgSave").addEventListener("click", async () => {
+async function saveConfig(msgEl) {
+  const autonomy = {};
+  AUT_CATS.forEach(c => { autonomy[c] = $("#cfgAut-" + c).value; });
   const body = { planner: $("#cfgPlanner").value, model: $("#cfgModel").value,
     allow_apps: $("#cfgAllow").value.split("\n").map(s => s.trim()).filter(Boolean),
-    sandbox_mode: $("#cfgSandbox").checked };
-  await fetch("/api/config", { method: "POST",
+    sandbox_mode: $("#cfgSandbox").checked,
+    voice_updates: $("#cfgVoice").checked,
+    autonomy,
+    watch_folders: $("#cfgWatch").value.split("\n").map(s => s.trim()).filter(Boolean),
+    companion_pin: $("#cfgPin").value.trim() };
+  const res = await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
-  $("#cfgMsg").textContent = "SAVED";
+  msgEl.textContent = res.ok ? "SAVED" :
+    "REFUSED — " + (await res.text()).slice(0, 80);
   pollStatus();
-});
+}
+$("#cfgSave").addEventListener("click", () => saveConfig($("#cfgMsg")));
+$("#cfgSave2").addEventListener("click", () => saveConfig($("#cfgMsg2")));
+
+/* ================= proactive proposals ================= */
+let proposalJSON = "";
+async function loadProposals() {
+  try {
+    const list = await (await fetch("/api/proposals")).json();
+    const open = list.filter(p => p.status === "proposed");
+    const settled = list.filter(p => p.status !== "proposed").slice(0, 3);
+    const key = JSON.stringify(list);
+    if (key === proposalJSON) return;
+    proposalJSON = key;
+    const section = $("#proposalSection");
+    if (!list.length) { section.hidden = true; return; }
+    section.hidden = false;
+    const row = (p, actions) => `
+      <div class="rrow">
+        <span class="rr-idx">${p.auto ? "AUTO" : "PROP"}</span>
+        <div>
+          <div class="rr-name" style="font-size:19px">Organise ${esc(p.path.split("/").pop() || p.path)}</div>
+          <div class="rr-goal">${esc(p.detail)}</div>
+          <div class="rr-meta mono">${esc(p.path)} · ${esc(p.status.toUpperCase())}</div>
+        </div>
+        <div class="rr-actions">${actions}</div>
+      </div>`;
+    $("#proposalList").innerHTML =
+      open.map(p => row(p,
+        `<button class="pill-btn lime" onclick="proposalAct('${p.id}','approve')">ORGANISE IT</button>
+         <button class="pill-btn ghosty" onclick="proposalAct('${p.id}','dismiss')">DISMISS</button>`)).join("")
+      + settled.map(p => row(p, "")).join("");
+  } catch (e) { /* older server; proposals appear when available */ }
+}
+async function proposalAct(id, verb) {
+  await fetch(`/api/proposals/${id}/${verb}`, { method: "POST" });
+  proposalJSON = "";
+  loadProposals();
+  pollStatus();
+}
+setInterval(loadProposals, 5000);
 </script>
 </body>
 </html>

@@ -73,3 +73,51 @@ def test_live_view_removed():
     assert "Live view" not in ui
     assert "liveImg" not in ui
     assert "/api/live/screenshot" not in ui
+
+
+def test_memory_api(tmp_path, monkeypatch):
+    from deskdora import server
+    from deskdora.memory import MemoryStore
+    monkeypatch.setattr(server.MANAGER, "memory",
+                        MemoryStore(str(tmp_path / "memory.json")))
+    res = client.post("/api/memory/places",
+                      json={"alias": "invoices", "path": "/tmp"})
+    assert res.status_code == 200
+    assert res.json()["exists"] is True
+    body = client.get("/api/memory").json()
+    assert body["places"]["invoices"]["path"] == "/tmp"
+    res = client.post("/api/memory/forget",
+                      json={"kind": "places", "key": "invoices"})
+    assert res.status_code == 200
+    assert client.get("/api/memory").json()["places"] == {}
+    res = client.post("/api/memory/forget",
+                      json={"kind": "places", "key": "invoices"})
+    assert res.status_code == 404
+
+
+def test_voice_api():
+    body = client.get("/api/voice").json()
+    assert "tts" in body and "stt" in body
+    res = client.post("/api/voice/render",
+                      json={"text": "DeskDora test render."})
+    if res.status_code == 200:
+        assert res.json()["bytes"] > 1000
+
+
+def test_scheduler_events_api():
+    res = client.get("/api/scheduler/events")
+    assert res.status_code == 200
+    assert isinstance(res.json(), list)
+
+
+def test_routine_trigger_validation():
+    res = client.post("/api/routines", json={
+        "name": "bad-trigger", "goal": "goal",
+        "trigger": {"type": "telepathy"}})
+    assert res.status_code == 400
+    res = client.post("/api/routines", json={
+        "name": "folder-watcher", "goal": "goal",
+        "trigger": {"type": "folder_change", "path": "/tmp"}})
+    assert res.status_code == 200
+    assert res.json()["trigger"]["type"] == "folder_change"
+    client.delete("/api/routines/folder-watcher")

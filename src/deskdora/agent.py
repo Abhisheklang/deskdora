@@ -12,6 +12,7 @@ import time
 from .drivers import get_driver
 from .drivers.base import DriverError
 from .planners import PlanError, validate_plan
+from .autonomy import evaluate as autonomy_evaluate
 from .safety import classify_step
 
 
@@ -38,7 +39,7 @@ def parse_table(raw):
 class Agent:
     def __init__(self, planner, planner_mode, gate, kill_switch, allow_list,
                  run_log, max_steps=400, on_event=None, settle=0.45,
-                 driver=None):
+                 driver=None, autonomy=None):
         self.planner = planner
         self.planner_mode = planner_mode
         self.gate = gate
@@ -48,6 +49,9 @@ class Agent:
         self.max_steps = max_steps
         self.on_event = on_event or (lambda kind, **fields: None)
         self.settle = settle
+        # Per-category autonomy policy (deskdora.autonomy) or None
+        # for the legacy all-confirm behaviour.
+        self.autonomy = autonomy
         self.d = driver or get_driver()
         self.answers = {}
         self.executed = 0
@@ -433,8 +437,24 @@ class Agent:
                     break
                 if action == "fail":
                     raise StepFailure(step.get("reason", "planner gave up"))
-                # Safety gate before anything destructive.
-                if classify_step(step) == "destructive":
+                # Safety gate: the per-category autonomy policy
+                # decides — deny (category set to never), confirm
+                # (ask the human through the gate), or allow (safe
+                # step, or a significant step in a free-run category,
+                # which is logged as an auto-approval).  With no
+                # policy configured this is exactly the pre-v3.0
+                # behaviour: destructive steps confirm, safe steps run.
+                decision, category, significant = autonomy_evaluate(
+                    self.autonomy, step,
+                    context=getattr(self, "context", ""))
+                if decision == "deny":
+                    self._emit("autonomy", step=step, category=category,
+                               decision="deny")
+                    status = "blocked"
+                    reason = (f"autonomy policy: '{category}' actions "
+                              "are set to never — step refused")
+                    break
+                if decision == "confirm":
                     desc = f"{action} {step.get('target') or step.get('key') or ''}"
                     approved = self.gate.check(step, desc)
                     self._emit("confirmation", step=step, approved=approved)
@@ -442,6 +462,9 @@ class Agent:
                         status = "blocked"
                         reason = f"confirmation denied for: {desc}"
                         break
+                elif significant:
+                    self._emit("autonomy", step=step, category=category,
+                               decision="auto-approved")
                 self._emit("step_start", index=i, step=step)
                 try:
                     detail = self._exec_primitive(step)

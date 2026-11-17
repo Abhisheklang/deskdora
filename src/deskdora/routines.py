@@ -35,11 +35,12 @@ class RoutineStore:
         return os.path.join(self.root, f"{safe}.json"), safe
 
     def save(self, name, goal, planner_mode="", schedule=None,
-             source_run=None):
+             source_run=None, trigger=None):
         path, safe = self._path(name)
         data = {
             "name": safe, "goal": goal, "planner_mode": planner_mode,
             "schedule": schedule, "source_run": source_run,
+            "trigger": trigger,
             "created_at": time.time(), "last_run_at": None,
             "run_count": 0,
         }
@@ -47,7 +48,7 @@ class RoutineStore:
             json.dump(data, fh, indent=2)
         return data
 
-    def record_from_run(self, name, run_dir, schedule=None):
+    def record_from_run(self, name, run_dir, schedule=None, trigger=None):
         events = read_log(os.path.join(run_dir, "log.jsonl"))
         start = next((e for e in events if e["kind"] == "run_start"), None)
         end = next((e for e in reversed(events) if e["kind"] == "run_end"),
@@ -56,7 +57,7 @@ class RoutineStore:
             raise ValueError("only a successful run can become a routine")
         return self.save(name, start["goal"],
                          planner_mode=start.get("planner_mode", ""),
-                         schedule=schedule,
+                         schedule=schedule, trigger=trigger,
                          source_run=os.path.basename(run_dir))
 
     def get(self, name):

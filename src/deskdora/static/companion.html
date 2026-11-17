@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeskDora Companion</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<style>
+/* DeskDora Companion — the phone-sized face of the Control Room.
+   Same system: near-black, hairlines, one lime accent, mustard only
+   for stop.  Served by the DeskDora service itself on the local
+   network; mutating actions from a non-local client require the
+   companion PIN (see server._companion_guard). */
+@font-face{font-family:"Oswald";src:url("/fonts/oswald-var.woff2") format("woff2");font-weight:400 700;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-400.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Inter";src:url("/fonts/inter-600.woff2") format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("/fonts/jetbrains-mono-600.woff2") format("woff2");font-weight:600;font-display:swap}
+:root{color-scheme:dark;--void:#040404;--panel:#0A0B0A;--panel2:#101110;
+  --line:rgba(92,92,91,.28);--text:#F4F4F4;--text2:#9E9F9F;--text3:#5C5C5B;
+  --lime:#CEDE62;--lime-live:#DAF64C;--mustard:#ECD06F;--ok:#06D6A0;--bad:#EF476F;
+  --disp:"Oswald","Arial Narrow",sans-serif;--ui:"Inter",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--void);color:var(--text);font-family:var(--ui);
+  font-size:15px;line-height:1.5;padding:18px 16px 40px;max-width:560px;margin:0 auto}
+h1{font-family:var(--disp);font-weight:600;text-transform:uppercase;
+  font-size:30px;letter-spacing:-.01em;margin:2px 0 2px}
+.sub{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--text3)}
+.card{border:1px solid var(--line);background:var(--panel);border-radius:6px;
+  padding:16px;margin-top:16px}
+.lab{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.18em;
+  color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.goal{font-family:var(--disp);font-weight:500;font-size:23px;text-transform:uppercase;
+  line-height:1.15;overflow-wrap:anywhere}
+.pill{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);
+  font-size:10.5px;font-weight:600;letter-spacing:.13em;padding:6px 12px;
+  border-radius:999px;border:1px solid var(--line);color:var(--text2)}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--text3)}
+.pill.run{color:#040404;background:var(--lime);border-color:var(--lime)}
+.pill.run i{background:#040404}
+.pill.wait{color:#040404;background:var(--mustard);border-color:var(--mustard)}
+.pill.wait i{background:#040404}
+.pill.ok{color:var(--ok);border-color:var(--ok)} .pill.ok i{background:var(--ok)}
+.pill.bad{color:var(--bad);border-color:var(--bad)} .pill.bad i{background:var(--bad)}
+.event{color:var(--text2);font-size:13.5px;margin-top:8px;overflow-wrap:anywhere}
+button{font-family:inherit;cursor:pointer;border-radius:999px;width:100%;
+  padding:15px;font-size:16px;font-weight:600}
+.approve{background:var(--lime);color:#040404;border:1px solid var(--lime);
+  font-family:var(--disp);text-transform:uppercase;letter-spacing:.04em}
+.deny{background:none;color:var(--text2);border:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;margin-top:10px}
+.stop{background:none;color:var(--mustard);border:1.5px solid var(--mustard);
+  font-family:var(--mono);font-size:12px;letter-spacing:.22em;margin-top:16px}
+.stop:active{background:var(--mustard);color:#040404}
+pre{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+  padding:10px;font-family:var(--mono);font-size:11px;color:var(--text2);
+  white-space:pre-wrap;word-break:break-word;max-height:140px;overflow:auto}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  padding:9px 0;border-bottom:1px solid rgba(92,92,91,.14)}
+.row:last-child{border-bottom:none}
+.row .g{overflow-wrap:anywhere}
+.row .s{font-family:var(--mono);font-size:10px;letter-spacing:.1em;flex:none}
+#pinCard input{width:100%;background:var(--panel2);border:1px solid var(--line);
+  border-radius:4px;color:var(--text);padding:13px;font-size:17px;
+  font-family:var(--mono);letter-spacing:.3em;text-align:center}
+#pinCard button{margin-top:12px}
+.note{color:var(--text3);font-size:12px;margin-top:10px}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="sub">DESKDORA · LOCAL NETWORK COMPANION</div>
+<h1>Companion</h1>
+<div class="sub" id="connNote">CONNECTING…</div>
+
+<div class="card" id="pinCard" hidden>
+  <div class="lab">Companion PIN required</div>
+  <input type="password" id="pinInput" inputmode="numeric" autocomplete="off"
+         placeholder="••••">
+  <button class="approve" id="pinSave">Unlock controls</button>
+  <p class="note">The PIN is set in DeskDora's Settings on the computer.
+    Viewing status needs no PIN; approving, stopping and starting do.</p>
+</div>
+
+<div class="card">
+  <div class="lab">Agent state</div>
+  <span class="pill" id="statePill"><i></i><span id="stateTxt">—</span></span>
+  <div class="goal" id="goalText" style="margin-top:12px">No run yet</div>
+  <div class="event" id="lastEvent">—</div>
+  <button class="stop" id="stopBtn">■ STOP THE AGENT</button>
+</div>
+
+<div class="card" id="confirmCard" hidden>
+  <div class="lab" style="color:var(--mustard)">Confirmation required</div>
+  <div class="goal" id="confirmGoal" style="font-size:19px">Allow this action?</div>
+  <pre id="confirmStep"></pre>
+  <button class="approve" id="approveBtn">Confirm — do it</button>
+  <button class="deny" id="denyBtn">DENY — STOP THE RUN</button>
+</div>
+
+<div class="card" id="proposalCard" hidden>
+  <div class="lab">Proactive proposals</div>
+  <div id="proposalList"></div>
+</div>
+
+<div class="card">
+  <div class="lab">Recent runs</div>
+  <div id="runList"><div class="event">Loading…</div></div>
+</div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let pendingId = null;
+
+function pin() { return sessionStorage.getItem("dd-pin") || ""; }
+function headers() {
+  const h = {"Content-Type": "application/json"};
+  if (pin()) h["X-Companion-Pin"] = pin();
+  return h;
+}
+async function post(path, body) {
+  const res = await fetch(path, { method: "POST", headers: headers(),
+    body: JSON.stringify(body || {}) });
+  if (res.status === 401) { $("#pinCard").hidden = false; throw new Error("pin"); }
+  return res;
+}
+$("#pinSave").addEventListener("click", () => {
+  sessionStorage.setItem("dd-pin", $("#pinInput").value.trim());
+  $("#pinCard").hidden = true;
+  poll();
+});
+$("#stopBtn").addEventListener("click", async () => {
+  try { await post("/api/kill"); } catch (e) { /* pin card shown */ }
+  poll();
+});
+$("#approveBtn").addEventListener("click", () => answer(true));
+$("#denyBtn").addEventListener("click", () => answer(false));
+async function answer(approved) {
+  if (!pendingId) return;
+  try {
+    await post("/api/confirmations/" + pendingId, { approved });
+    $("#confirmCard").hidden = true;
+  } catch (e) { /* pin card shown */ }
+  poll();
+}
+async function proposalAct(id, verb) {
+  try { await post("/api/proposals/" + id + "/" + verb); }
+  catch (e) { /* pin card shown */ }
+  poll();
+}
+
+function describeEvent(ev) {
+  if (!ev) return "—";
+  switch (ev.kind) {
+    case "step_start": return "Working — step " + ((ev.index ?? 0) + 1);
+    case "step_result": return ev.ok ? "Step done" : "Step failed — " + (ev.error || "");
+    case "run_end": return "Run finished: " + (ev.status || "");
+    case "confirmation": return "Confirmation " + (ev.approved ? "approved" : "denied");
+    case "plan": return "Plan ready — " + (ev.steps || []).length + " steps";
+    default: return ev.kind || "—";
+  }
+}
+
+async function poll() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    $("#connNote").textContent = "CONNECTED · PLANNER " +
+      (st.state.planner_mode || st.config.planner || "—").toString().toUpperCase() +
+      (st.ollama_available ? " · OLLAMA UP" : " · OLLAMA DOWN");
+    const pill = $("#statePill"), txt = $("#stateTxt");
+    let cls = "", label = "IDLE";
+    if (st.pending_confirmation) { cls = "wait"; label = "AWAITING CONFIRMATION"; }
+    else if (st.state.running) { cls = "run"; label = "RUNNING"; }
+    else if (st.state.result) {
+      const s = st.state.result.status;
+      label = (s || "DONE").toUpperCase();
+      cls = s === "success" ? "ok" : (s === "blocked" || s === "killed") ? "wait" : "bad";
+    }
+    pill.className = "pill " + cls; txt.textContent = label;
+    $("#goalText").textContent = st.state.goal || "No run yet";
+    $("#lastEvent").textContent = describeEvent(st.last_event) +
+      (st.kill_tripped ? " · KILL SWITCH TRIPPED" : "");
+
+    const card = $("#confirmCard");
+    if (st.pending_confirmation) {
+      pendingId = st.pending_confirmation.id;
+      card.hidden = false;
+      $("#confirmStep").textContent =
+        (st.pending_confirmation.description || "") + "\n" +
+        JSON.stringify(st.pending_confirmation.step, null, 2);
+    } else { pendingId = null; card.hidden = true; }
+
+    const runs = await (await fetch("/api/runs")).json();
+    $("#runList").innerHTML = runs.slice(0, 5).map(r =>
+      `<div class="row"><span class="g">${esc(r.goal)}</span>` +
+      `<span class="s">${esc((r.status || "").toUpperCase())}</span></div>`).join("")
+      || "<div class='event'>No runs yet.</div>";
+
+    const proposals = await (await fetch("/api/proposals")).json();
+    const open = proposals.filter(p => p.status === "proposed");
+    $("#proposalCard").hidden = !open.length;
+    $("#proposalList").innerHTML = open.map(p =>
+      `<div class="row"><span class="g">${esc(p.detail)}<br>` +
+      `<span class="s" style="color:var(--text3)">${esc(p.path)}</span></span></div>` +
+      `<div style="display:flex;gap:10px;margin:6px 0 12px">` +
+      `<button class="approve" style="padding:11px" onclick="proposalAct('${p.id}','approve')">Organise it</button>` +
+      `<button class="deny" style="margin-top:0;padding:11px" onclick="proposalAct('${p.id}','dismiss')">Dismiss</button></div>`
+    ).join("");
+  } catch (e) {
+    $("#connNote").textContent = "CANNOT REACH DESKDORA — IS IT RUNNING?";
+  }
+}
+setInterval(poll, 2500); poll();
+</script>
+</body>
+</html>
