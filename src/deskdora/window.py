@@ -36,7 +36,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
 
-from deskdora.overlay import edge_state, overlay_state  # noqa: E402
+from deskdora.overlay import (edge_state, overlay_enabled,  # noqa: E402
+                              overlay_state)
 
 DEFAULT_URL = "http://127.0.0.1:8765/"
 APP_TITLE = "DeskDora"
@@ -277,6 +278,13 @@ class ControlOverlay(Gtk.Window):
 
     # -- view ------------------------------------------------------------
     def _apply(self):
+        # Features panel: the floating window's master switch.  Off
+        # means the window never appears, whatever the agent does.
+        cfg = (self._hub.status or {}).get("config") or {}
+        if not overlay_enabled(cfg):
+            if self.get_visible():
+                self.hide()
+            return True
         st = overlay_state(self._hub.status)
         if not st["visible"]:
             if self.get_visible():
@@ -518,10 +526,16 @@ class EdgeLight(Gtk.Window):
     def _tick(self):
         status = self._hub.status
         setting = "single"
+        motion = True
         if status:
-            setting = (status.get("config") or {}).get(
-                "edge_light", "single")
+            cfg = status.get("config") or {}
+            setting = cfg.get("edge_light", "single")
+            # Features panel: UI animations off = the border holds
+            # steady instead of pulsing/flowing.
+            motion = cfg.get("feature_animations", True) is not False
         st = edge_state(status, setting)
+        if not motion:
+            st = {**st, "animated": False}
         changed = (st["visible"] != self._state["visible"]
                    or st["mode"] != self._state["mode"]
                    or st["style"] != self._state["style"])

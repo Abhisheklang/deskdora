@@ -283,6 +283,21 @@ class McpServer:
 
 
 def main():
+    # Features panel: if the user switched the MCP server off, do
+    # not serve.  Only an explicit "disabled" answer refuses — if
+    # the service is unreachable we still start (its tools will
+    # surface their own connection errors).  The service ALSO
+    # refuses MCP-tagged runs while disabled, so this check is a
+    # courtesy, not the enforcement.
+    try:
+        info = DeskDoraClient().call("GET", "/api/mcp", timeout=5)
+        if info.get("enabled") is False:
+            print("deskdora-mcp: MCP access is switched off in "
+                  "DeskDora Settings > Features; not serving.",
+                  file=sys.stderr)
+            return 2
+    except Exception:
+        pass
     server = McpServer()
     out = sys.stdout
     for line in sys.stdin:

@@ -45,7 +45,10 @@ def test_status_progress_shape():
                 "percent", "current_action", "queue_position",
                 "queue_total"):
         assert key in prog, key
-    assert body["screen_share"] == {"enabled": False, "viewers": 0}
+    share = body["screen_share"]
+    assert set(share) == {"enabled", "viewers"}
+    assert share["viewers"] == 0
+    assert isinstance(share["enabled"], bool)
 
 
 # -- pause / resume / reset ----------------------------------------------

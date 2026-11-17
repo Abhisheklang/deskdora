@@ -66,6 +66,15 @@ DEFAULT_CONFIG = {
     # Edge light (v3.2): click-through neon border while the agent
     # works.  off | single | double | flow.
     "edge_light": "single",
+    # Features panel (v3.2): master switches.  Off stops the
+    # machinery, not just the UI; each switch's enforcement point
+    # is named in REPORT-V3.2.
+    "feature_overlay": True,     # floating control window (window.py)
+    "feature_companion": True,   # companion page + companion endpoints
+    "feature_mcp": True,         # MCP-started runs refused when off
+    "feature_api": True,         # API-key authentication refused when off
+    "feature_animations": True,  # UI motion (complements reduced-motion)
+    "proposals_enabled": True,   # proactive watcher scanning
 }
 
 
@@ -508,8 +517,26 @@ async def _no_store(request, call_next):
 _LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 
+def _api_key_ok(request):
+    """DeskDora API-key authentication.  Refused entirely when API
+    access is switched off in Settings > Features — the key stops
+    working everywhere, not just in one place."""
+    if not load_config().get("feature_api", True):
+        return False
+    return API_KEYS.verify(presented_key(request.headers))
+
+
 @app.middleware("http")
 async def _companion_guard(request, call_next):
+    # Features panel: with the companion switched off, its page and
+    # its dedicated endpoints refuse — for local clients too.  The
+    # shared /api/* surface the desktop app itself uses stays up.
+    if request.url.path in ("/companion.html", "/api/companion/auth",
+                            "/api/screen.mjpg") \
+            and not load_config().get("feature_companion", True):
+        return JSONResponse(
+            {"detail": "companion is switched off in Settings"},
+            status_code=403)
     # Remote-control safety rule: reads (GET) are open, but any
     # mutating call that does NOT come from this machine itself must
     # authenticate — with the companion PIN (the phone companion) or
@@ -522,7 +549,7 @@ async def _companion_guard(request, call_next):
             and request.url.path.startswith("/api/"):
         client = request.client.host if request.client else ""
         if client not in _LOCAL_HOSTS:
-            if API_KEYS.verify(presented_key(request.headers)):
+            if _api_key_ok(request):
                 return await call_next(request)
             pin = load_config().get("companion_pin", "")
             if not pin or request.headers.get("x-companion-pin") != pin:
@@ -594,11 +621,17 @@ def status():
 
 @app.post("/api/run")
 def run(req: RunRequest, request: Request):
-    if not req.goal.strip():
-        raise HTTPException(400, "goal is empty")
     source = request.headers.get("x-deskdora-client", "api")
     if source not in ("ui", "mcp", "api"):
         source = "api"
+    # Features panel: with the MCP server switched off, runs that
+    # arrive through it are refused at the service — the MCP process
+    # also checks on startup, but the service is the enforcement.
+    if source == "mcp" and not load_config().get("feature_mcp", True):
+        raise HTTPException(403, "MCP server is switched off in "
+                                 "Settings > Features")
+    if not req.goal.strip():
+        raise HTTPException(400, "goal is empty")
     return MANAGER.start_run(req.goal.strip(), req.planner,
                              source=source)
 
@@ -751,6 +784,7 @@ def mcp_info():
     management is exposed to the companion."""
     return {
         "available": shutil.which("deskdora-mcp") is not None,
+        "enabled": bool(load_config().get("feature_mcp", True)),
         "command": "deskdora-mcp",
         "transport": "stdio",
         "config": {"mcpServers": {"deskdora": {
@@ -763,7 +797,7 @@ def _screen_auth_ok(request):
     """Screen share is paired-only: DeskDora API key, companion PIN
     header, or a companion session cookie (from /api/companion/auth).
     Loopback is NOT exempt — a live screen is not a read endpoint."""
-    if API_KEYS.verify(presented_key(request.headers)):
+    if _api_key_ok(request):
         return True
     pin = load_config().get("companion_pin", "")
     if pin and request.headers.get("x-companion-pin") == pin:
@@ -1207,12 +1241,19 @@ def proposals_dismiss(proposal_id: str):
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 
+def _watcher_tick():
+    cfg = load_config()
+    MANAGER.watcher.policy = AutonomyPolicy(cfg.get("autonomy"))
+    # Features panel: proposals off = the watcher does not scan at
+    # all.  Existing proposals stay listed; no new ones are raised.
+    if cfg.get("proposals_enabled", True):
+        MANAGER.watcher.scan(cfg.get("watch_folders") or [])
+
+
 def _watcher_loop():
     while True:
         try:
-            cfg = load_config()
-            MANAGER.watcher.policy = AutonomyPolicy(cfg.get("autonomy"))
-            MANAGER.watcher.scan(cfg.get("watch_folders") or [])
+            _watcher_tick()
         except Exception:
             pass  # a bad folder must never kill the watcher
         time.sleep(45)

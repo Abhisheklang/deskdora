@@ -130,6 +130,11 @@ button{font-family:inherit}
 main{padding:30px 30px 56px;flex:1;min-height:0;width:100%;max-width:1560px;
   margin:0 auto;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
 
+/* Features panel: UI animations off (complements reduced-motion) */
+html.no-motion *,html.no-motion *::before,html.no-motion *::after{
+  animation:none !important;transition:none !important;
+  scroll-behavior:auto !important}
+
 /* ---------- slim scrollbars (design system) ---------- */
 *{scrollbar-width:thin;scrollbar-color:#2b2b24 transparent}
 ::-webkit-scrollbar{width:9px;height:9px}
@@ -887,6 +892,44 @@ select:focus{outline:none;border-color:var(--lime)}
           <span class="shot-lab" id="cfgMsg2" style="margin-left:12px"></span></span></div>
       </div>
     </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">06</span><span class="sec-name">FEATURES</span><span class="rule"></span><span class="sec-note">OFF MEANS OFF — THE MACHINERY STOPS</span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Floating window</span>
+          <label class="switch"><input type="checkbox" id="featOverlay"><i></i></label>
+          <span class="hint">The small control window that floats on the desktop while the agent works.</span></div>
+        <div class="frow2"><span class="mono-lab">Edge light</span>
+          <select id="featEdge">
+            <option value="off">Off</option>
+            <option value="single">Single line</option>
+            <option value="double">Double lines</option>
+            <option value="flow">Flowing gradient</option>
+          </select>
+          <span class="hint">Same setting as Proactive &amp; Companion above.</span></div>
+        <div class="frow2"><span class="mono-lab">Companion</span>
+          <label class="switch"><input type="checkbox" id="featCompanion"><i></i></label>
+          <span class="hint">The phone companion page and its endpoints. Off refuses them all.</span></div>
+        <div class="frow2"><span class="mono-lab">Screen share</span>
+          <label class="switch"><input type="checkbox" id="featShare"><i></i></label>
+          <span class="hint">Same setting as Access above — a paired companion can watch this screen.</span></div>
+        <div class="frow2"><span class="mono-lab">Voice</span>
+          <label class="switch"><input type="checkbox" id="featVoice"><i></i></label>
+          <span class="hint">Spoken announcements for confirmations and finished runs.</span></div>
+        <div class="frow2"><span class="mono-lab">Proposals</span>
+          <label class="switch"><input type="checkbox" id="featProposals"><i></i></label>
+          <span class="hint">The watcher that proposes organising watched folders. Off stops it scanning.</span></div>
+        <div class="frow2"><span class="mono-lab">MCP server</span>
+          <label class="switch"><input type="checkbox" id="featMcp"><i></i></label>
+          <span class="hint">Off refuses runs started through deskdora-mcp.</span></div>
+        <div class="frow2"><span class="mono-lab">API access</span>
+          <label class="switch"><input type="checkbox" id="featApi"><i></i></label>
+          <span class="hint">Off makes the DeskDora API key stop working everywhere.</span></div>
+        <div class="frow2"><span class="mono-lab">UI animations</span>
+          <label class="switch"><input type="checkbox" id="featAnim"><i></i></label>
+          <span class="hint">Motion in this window and the desktop overlays. Off holds everything steady.</span></div>
+      </div>
+    </div>
   </section>
   </main>
 </div>
@@ -1308,6 +1351,8 @@ async function pollStatus() {
     dot.className = dotCls;
     railState.innerHTML = "AGENT<br>" +
       (label === "AWAITING CONFIRMATION" ? "WAITING" : label);
+    document.documentElement.classList.toggle(
+      "no-motion", st.config.feature_animations === false);
     $("#railKill").className = "rail-kill" + (st.kill_tripped ? " tripped" : "");
     $("#railKill").innerHTML = st.kill_tripped ? "KILL<br>TRIPPED" : "KILL<br>READY";
     $("#pullTab").classList.toggle("tripped", !!st.kill_tripped);
@@ -1874,6 +1919,16 @@ async function loadConfig() {
   $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
   $("#cfgPin").value = cfg.companion_pin || "";
   $("#cfgEdge").value = cfg.edge_light || "single";
+  // Features panel (same keys as their home sections)
+  $("#featOverlay").checked = cfg.feature_overlay !== false;
+  $("#featEdge").value = cfg.edge_light || "single";
+  $("#featCompanion").checked = cfg.feature_companion !== false;
+  $("#featShare").checked = !!cfg.screen_share;
+  $("#featVoice").checked = !!cfg.voice_updates;
+  $("#featProposals").checked = cfg.proposals_enabled !== false;
+  $("#featMcp").checked = cfg.feature_mcp !== false;
+  $("#featApi").checked = cfg.feature_api !== false;
+  $("#featAnim").checked = cfg.feature_animations !== false;
   loadProviders();
   loadAccess();
 }
@@ -2099,11 +2154,35 @@ $("#provSave").addEventListener("click", saveProvider);
 $("#provTest").addEventListener("click", testProvider);
 $("#provFetch").addEventListener("click", fetchModels);
 $("#custAdd").addEventListener("click", addCustom);
-$("#cfgEdge").addEventListener("change", async (e) => {
+async function postConfig(patch) {
   await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ edge_light: e.target.value }) });
+    body: JSON.stringify(patch) });
+}
+$("#cfgEdge").addEventListener("change", async (e) => {
+  $("#featEdge").value = e.target.value;
+  await postConfig({ edge_light: e.target.value });
 });
+/* Features panel: every switch writes its key immediately; twins
+   (the same setting in its home section) are kept in step. */
+function featWire(id, key, twinId, twinProp) {
+  $(id).addEventListener("change", async (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked
+      : e.target.value;
+    if (twinId) $(twinId)[twinProp || "checked"] = val;
+    await postConfig({ [key]: val });
+    pollStatus();
+  });
+}
+featWire("#featOverlay", "feature_overlay");
+featWire("#featEdge", "edge_light", "#cfgEdge", "value");
+featWire("#featCompanion", "feature_companion");
+featWire("#featShare", "screen_share", "#shareToggle");
+featWire("#featVoice", "voice_updates", "#cfgVoice");
+featWire("#featProposals", "proposals_enabled");
+featWire("#featMcp", "feature_mcp");
+featWire("#featApi", "feature_api");
+featWire("#featAnim", "feature_animations");
 $("#shareToggle").addEventListener("change", async (e) => {
   await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"},

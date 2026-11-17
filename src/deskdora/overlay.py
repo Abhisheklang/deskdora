@@ -95,6 +95,12 @@ def overlay_state(status):
     return dict(HIDDEN)
 
 
+def overlay_enabled(config):
+    """Features panel: the floating control window's master switch.
+    Default on; only an explicit False hides it for good."""
+    return bool((config or {}).get("feature_overlay", True))
+
+
 # ---------------------------------------------------------------------
 # Edge light: a click-through neon border around the screen edges.
 # Same state signal as the floating window:
