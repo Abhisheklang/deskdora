@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DeskDora logo">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C5CFF"/>
+      <stop offset="0.55" stop-color="#6558F5"/>
+      <stop offset="1" stop-color="#4F8CFF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.18" r="0.85">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#tile)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#glow)"/>
+
+  <!-- cursor shadow -->
+  <path d="M218 152 L218 360 L280 300 L306 390 L344 376 L318 286 L386 286 Z"
+        fill="#1B1440" opacity="0.20" transform="translate(7 11)"/>
+  <!-- cursor -->
+  <path d="M218 152 L218 360 L280 300 L306 390 L344 376 L318 286 L386 286 Z"
+        fill="#FFFFFF"/>
+
+  <!-- target ring around the cursor tip (amber = DeskDora's highlight colour) -->
+  <circle cx="218" cy="152" r="42" fill="none" stroke="#FFB020" stroke-width="13" opacity="0.96"/>
+
+  <!-- the desk: a clean surface line the cursor works above -->
+  <rect x="118" y="408" width="276" height="27" rx="13.5" fill="#FFFFFF" opacity="0.92"/>
+</svg>

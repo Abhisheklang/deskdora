@@ -1,3 +1,5 @@
+<p align="center"><img src="src/deskdora/static/logo.svg" width="120" alt="DeskDora logo"></p>
+
 # DeskDora
 
 **Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding with vision fallback, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action.**
@@ -43,6 +45,20 @@ An agent that can operate your whole PC can also delete your files. So:
   let it earn your real machine later.
 
 ## Quick start (Ubuntu 22.04 / 24.04, GNOME, Xorg session)
+
+**Easiest — the installable app (Ubuntu 24.04):**
+
+```bash
+sudo apt install ./deskdora_1.0.0_amd64.deb
+```
+
+Then launch **DeskDora** from your applications menu: it starts the local
+service and opens the control UI in your browser. The package is
+self-contained — its Python dependencies are bundled and installed into
+a private virtualenv, no network needed beyond apt's own archives.
+(Build it yourself with `packaging/build-deb.sh`.)
+
+**From source:**
 
 ```bash
 # System dependencies
