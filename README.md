@@ -13,7 +13,7 @@ It is **local-first**: planning runs on your machine (a local model via
 Ollama, or a built-in deterministic planner that needs no model at all).
 Your screen never streams to a cloud service, because there isn't one.
 
-![DeskDora web UI](docs/screenshots/ui-run.png)
+![DeskDora app window](docs/screenshots/ui-run.png)
 
 ## Why it works (and when it doesn't)
 
