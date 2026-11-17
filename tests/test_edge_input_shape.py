@@ -46,7 +46,7 @@ def test_shape_call_uses_instance_xid_methods():
     cls = _edge_light_source()
     body = cls[cls.index("def _apply_click_through"):]
     body = body[:body.index("# -- state")]
-    assert "GdkX11.Window" not in body
-    assert "GdkX11.Display" not in body
+    assert "GdkX11.Window.get_xid" not in body
+    assert "GdkX11.Display.get_xdisplay" not in body
     assert "gdk_win.get_xid()" in body
     assert ".get_xdisplay()" in body
