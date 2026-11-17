@@ -1,7 +1,12 @@
 #!/bin/sh
 # DeskDora launcher (used by the applications-menu entry):
 # start the local service if it is not already running, wait until it
-# answers, then open the control UI in the default browser.
+# answers, then open the DeskDora application window.
+#
+# The default — and what the desktop entry runs — is the native GTK
+# window (deskdora.window).  `--browser` exists only as a debugging
+# fallback that opens the UI in the default browser instead; it is
+# not the default anywhere.
 URL="http://127.0.0.1:8765"
 
 probe() {
@@ -26,5 +31,20 @@ if ! probe; then
   done
 fi
 
-xdg-open "$URL" >/dev/null 2>&1 &
-exit 0
+if [ "${1:-}" = "--browser" ]; then
+  xdg-open "$URL" >/dev/null 2>&1 &
+  exit 0
+fi
+
+# Rendering guards for virtualised desktops: WebKitGTK's DMABUF
+# renderer needs a GPU; without a DRI render node (VMs, Xvfb) ask for
+# the software path.  Only set when unset, and never on a machine
+# with a real GPU device — real desktops keep their defaults.
+if [ ! -e /dev/dri/renderD128 ]; then
+  : "${WEBKIT_DISABLE_DMABUF_RENDERER:=1}"
+  export WEBKIT_DISABLE_DMABUF_RENDERER
+  : "${LIBGL_ALWAYS_SOFTWARE:=1}"
+  export LIBGL_ALWAYS_SOFTWARE
+fi
+
+exec /opt/deskdora/venv/bin/python -m deskdora.window "$URL"

@@ -53,9 +53,10 @@ sudo apt install ./deskdora_1.0.0_amd64.deb
 ```
 
 Then launch **DeskDora** from your applications menu: it starts the local
-service and opens the control UI in your browser. The package is
-self-contained — its Python dependencies are bundled and installed into
-a private virtualenv, no network needed beyond apt's own archives.
+service and opens the DeskDora application window (a native GTK window —
+no browser involved). The package is self-contained — its Python
+dependencies are bundled and installed into a private virtualenv, no
+network needed beyond apt's own archives.
 (Build it yourself with `packaging/build-deb.sh`.)
 
 **From source:**
@@ -63,7 +64,7 @@ a private virtualenv, no network needed beyond apt's own archives.
 ```bash
 # System dependencies
 sudo apt install python3-pyatspi python3-gi at-spi2-core xdotool scrot \
-                 gir1.2-atspi-2.0
+                 gir1.2-atspi-2.0 gir1.2-gtk-3.0 gir1.2-webkit2-4.1
 
 # DeskDora itself
 pip install deskdora        # or: pip install .  from a source checkout
