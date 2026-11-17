@@ -105,7 +105,8 @@ def test_agent_enforces_never_and_free(tmp_path):
         driver = FakeDriver()
         events = []
         agent = Agent(FixedPlanner(), "fixed",
-                      ConfirmationGate(deny_all), KillSwitch(),
+                      ConfirmationGate(deny_all),
+                      KillSwitch(stop_file=str(tmp_path / "STOP")),
                       AllowList(), RunLog(str(tmp_path), "g", "fixed"),
                       driver=driver, autonomy=policy,
                       on_event=lambda k, **f: events.append((k, f)))
