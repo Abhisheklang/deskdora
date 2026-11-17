@@ -20,6 +20,20 @@ class StepFailure(Exception):
     pass
 
 
+def _launch_app_hint(command):
+    """The app a launch command means to raise, for focus adoption:
+    the program's basename — or, for interpreter launches
+    (``python3 form_app.py``), the script's basename."""
+    tokens = (command or "").split()
+    if not tokens:
+        return None
+    first = tokens[0].rsplit("/", 1)[-1]
+    if first in ("python3", "python", "sh", "bash", "node", "env") \
+            and len(tokens) > 1:
+        return tokens[1].rsplit("/", 1)[-1]
+    return first
+
+
 def parse_table(raw):
     """Parse clipboard text into rows of cells.  Structured separators
     (tab, 2+ spaces, pipe) win; a line that yields a single cell falls
@@ -63,6 +77,7 @@ class Agent:
         self.focus_app = None
         self.focus_window = None
         self._launch_snapshot = None  # window titles before a launch
+        self._launch_hint = None      # app the last launch meant to raise
 
     # -- helpers ---------------------------------------------------------
     def _emit(self, kind, **fields):
@@ -128,24 +143,59 @@ class Agent:
                 return el
         return None
 
+    def _adopt_launched_window(self):
+        """Try once to pin the window a pending launch meant to
+        raise.  Signals, in order: the focused element if it is new
+        or belongs to the launched app; any element in a new window;
+        any element of the launched app (its window may predate the
+        launch — a leftover instance)."""
+        try:
+            obs = self.d.observe()
+        except Exception:
+            return False
+        hint = (self._launch_hint or "").lower()
+        new = [e for e in obs.elements
+               if e.window and e.window not in self._launch_snapshot]
+        hinted = [e for e in obs.elements
+                  if hint and e.app and hint in e.app.lower()]
+        focused = self._focused_element(obs)
+        adopted = None
+        if focused is not None and (
+                focused.window not in self._launch_snapshot
+                or (hint and hint in (focused.app or "").lower())):
+            adopted = focused
+        elif new:
+            adopted = new[0]
+        elif hinted:
+            adopted = hinted[0]
+        if adopted is None:
+            return False
+        self._pin_focus(adopted.app, adopted.window)
+        self._launch_snapshot = None
+        self._launch_hint = None
+        return True
+
     def _guard_focus(self):
         # A launch since the last check may have brought up the window
-        # subsequent input is meant for: adopt the first new window.
+        # subsequent input is meant for: adopt it before verifying.
         if self._launch_snapshot is not None:
-            try:
-                obs = self.d.observe()
-            except Exception:
-                obs = None
-            if obs is not None:
-                new = [e for e in obs.elements
-                       if e.window and e.window not in self._launch_snapshot]
-                focused = self._focused_element(obs)
-                if focused is not None and focused.window not in self._launch_snapshot:
-                    self._pin_focus(focused.app, focused.window)
-                    self._launch_snapshot = None
-                elif new:
-                    self._pin_focus(new[0].app, new[0].window)
-                    self._launch_snapshot = None
+            adopted = self._adopt_launched_window()
+            if not adopted and self._launch_hint:
+                # The launched app may still be starting; give it a
+                # moment, then refuse rather than verify against the
+                # previous app's pin — that stale-pin pass is how a
+                # spreadsheet's cells once got typed into a browser.
+                for _ in range(4):
+                    time.sleep(0.5)
+                    if self._adopt_launched_window():
+                        adopted = True
+                        break
+                if not adopted:
+                    raise StepFailure(
+                        f"focus guard: the launched app "
+                        f"({self._launch_hint}) did not present a "
+                        "window; refusing to type into the previous "
+                        "application")
         if self.focus_app is None and self.focus_window is None:
             if self._launch_snapshot is not None:
                 # A launched app has not shown a window yet.  Do not
@@ -278,6 +328,7 @@ class Agent:
                 self._launch_snapshot = set(self.d.observe().windows)
             except Exception:
                 self._launch_snapshot = None
+            self._launch_hint = _launch_app_hint(step["command"])
             self.d.launch(step["command"])
             return f"launched {step['command']}"
         if action in ("click", "double_click"):
@@ -385,10 +436,23 @@ class Agent:
         self._emit("macro_substeps", macro="build_sheet", cells=sub)
         # Save through the GUI save dialog.
         save_as = step["save_as"]
+        # Re-verify focus immediately before saving: another app can
+        # raise itself during the long cell-entry phase (a browser
+        # finishing its first-run startup did exactly this in the
+        # rig, and the save keystroke opened the *browser's* save
+        # dialog instead of the spreadsheet's).
+        self._guard_focus()
+        save_started = time.time()
         self.d.key("ctrl+s")
-        time.sleep(1.2)
-        obs = self.d.observe()
-        save_buttons = obs.find(role="push button", exact_name="Save")
+        # The save dialog can be slow to present under load; poll
+        # briefly instead of assuming after a single look.
+        save_buttons = []
+        for _ in range(6):
+            time.sleep(0.6)
+            obs = self.d.observe()
+            save_buttons = obs.find(role="push button", exact_name="Save")
+            if save_buttons:
+                break
         if save_buttons:
             # A save dialog is open: focus its location/name entry,
             # type the filename, confirm.  GTK save dialogs append the
@@ -409,14 +473,36 @@ class Agent:
             if replaces:
                 self.d.click(*replaces[0].center)
                 time.sleep(0.8)
-            return f"entered {len(rows)}x{width} table and saved as {save_as}"
-        replaces = obs.find(role="push button", name_contains="Replace")
-        if replaces:
-            self.d.click(*replaces[0].center)
-            time.sleep(0.8)
-            return f"entered {len(rows)}x{width} table and re-saved ({save_as})"
-        return (f"entered {len(rows)}x{width} table; no save dialog "
-                f"appeared (direct save assumed)")
+        else:
+            replaces = obs.find(role="push button", name_contains="Replace")
+            if replaces:
+                self.d.click(*replaces[0].center)
+                time.sleep(0.8)
+        # Verify the save actually produced the file — never assume.
+        # The v3.0 final benchmark caught the previous behaviour
+        # ("no save dialog appeared, direct save assumed") reporting
+        # success for spreadsheets that were never written.  An
+        # unverifiable save is a failed step, said out loud.
+        import os
+        found = None
+        deadline = time.time() + 6
+        while time.time() < deadline and not found:
+            for base in (os.getcwd(), os.path.expanduser("~"),
+                         os.path.expanduser("~/Downloads")):
+                candidate = os.path.join(base, save_as)
+                if os.path.isfile(candidate) \
+                        and os.path.getmtime(candidate) >= save_started - 2:
+                    found = candidate
+                    break
+            if not found:
+                time.sleep(0.5)
+        if not found:
+            raise StepFailure(
+                f"spreadsheet save could not be verified: {save_as} "
+                "not found in cwd, home, or Downloads after the save "
+                "attempt")
+        return (f"entered {len(rows)}x{width} table and saved as "
+                f"{save_as} (verified)")
 
     # -- main loop -----------------------------------------------------------
     def run(self, goal):

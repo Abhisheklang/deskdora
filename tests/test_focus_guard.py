@@ -181,3 +181,37 @@ def test_guard_active_window_in_other_app_blocks(rig):
     with pytest.raises(StepFailure, match="focus guard"):
         agent._exec_primitive({"action": "type", "text": "x"})
     assert driver.typed == []
+
+
+def test_guard_adopts_preexisting_window_of_launched_app(rig):
+    # Regression (sheet tasks): the spreadsheet app was already
+    # running when the plan launched it, so no *new* window appeared
+    # and the pin stayed on the browser — the table was typed into
+    # the browser window.  Adoption must also match by app identity.
+    agent, driver, _events = rig
+    driver.windows = ["PDF - Chrome", "Book1.gnumeric - Gnumeric"]
+    driver.elements = [el("chrome", "PDF - Chrome", focused=True),
+                       el("gnumeric", "Book1.gnumeric - Gnumeric")]
+    agent.focus_app, agent.focus_window = "chrome", "PDF - Chrome"
+    agent._exec_primitive({"action": "launch", "command": "gnumeric"})
+    # focus is still on Chrome, but the guard must adopt gnumeric
+    # and refocus before typing
+    def flip():
+        driver.elements = [el("chrome", "PDF - Chrome", focused=False),
+                           el("gnumeric", "Book1.gnumeric - Gnumeric",
+                              focused=True)]
+    driver.activate_ok = True
+    driver.on_activate = flip
+    agent._exec_primitive({"action": "key", "key": "ctrl+Home"})
+    assert driver.keys == ["ctrl+Home"]
+    assert agent.focus_app == "gnumeric"
+
+
+def test_guard_refuses_when_launched_app_never_appears(rig):
+    agent, driver, _events = rig
+    driver.windows = ["Form"]
+    driver.elements = [el("formapp", "Form", focused=True)]
+    agent._exec_primitive({"action": "launch", "command": "gnumeric"})
+    with pytest.raises(StepFailure, match="did not present a window"):
+        agent._exec_primitive({"action": "key", "key": "ctrl+s"})
+    assert driver.keys == []
