@@ -4,5 +4,5 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: DeskDora Contributors
-Depends: python3 (>= 3.12), python3-venv, python3-gi, python3-pyatspi, at-spi2-core, gir1.2-atspi-2.0, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, xdotool, scrot, xdg-utils
+Depends: python3 (>= 3.12), python3-venv, python3-gi, python3-pyatspi, at-spi2-core, gir1.2-atspi-2.0, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, xdotool, scrot, xclip, xdg-utils
 Description: Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding with vision fallback, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action.
