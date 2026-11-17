@@ -6,6 +6,8 @@ trips — and never improvises clicks the planner did not ask for.
 """
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import time
 
@@ -18,6 +20,50 @@ from .safety import classify_step
 
 class StepFailure(Exception):
     pass
+
+
+def describe_step(step):
+    """A plan step as one readable line — used by the dry-run
+    approval view and the exported run report, so a human can
+    judge a plan without reading JSON."""
+    action = step.get("action", "?")
+    target = step.get("target") or {}
+    tdesc = ""
+    if target:
+        bits = [target.get("name_contains") or target.get("label_contains")
+                or target.get("text_contains") or target.get("role") or ""]
+        tdesc = " ".join(b for b in bits if b)
+    if "element" in step:
+        tdesc = f"element {step['element']}"
+    if action == "launch":
+        return f"Open {step.get('command', '')}"
+    if action == "wait":
+        return f"Wait {step.get('seconds', 1)}s"
+    if action == "key":
+        return f"Press {step.get('key', '')}"
+    if action in ("click", "double_click"):
+        verb = "Double-click" if action == "double_click" else "Click"
+        return f"{verb} {tdesc or 'point'}".rstrip()
+    if action == "click_at":
+        return f"Click at {step.get('x')},{step.get('y')}"
+    if action == "type":
+        text = str(step.get("text", ""))
+        if len(text) > 42:
+            text = text[:42] + "…"
+        return f"Type '{text}'" + (f" into {tdesc}" if tdesc else "")
+    if action == "scroll":
+        return f"Scroll {step.get('direction', 'down')}"
+    if action == "extract":
+        return f"Read text matching {step.get('pattern', '')!r}"
+    if action == "read_clipboard":
+        return "Read the clipboard"
+    if action == "build_sheet":
+        return f"Build a spreadsheet and save as {step.get('save_as', '')}"
+    if action == "done":
+        return "Finish"
+    if action == "fail":
+        return f"Give up: {step.get('reason', '')}"
+    return action
 
 
 def _launch_app_hint(command):
@@ -53,7 +99,8 @@ def parse_table(raw):
 class Agent:
     def __init__(self, planner, planner_mode, gate, kill_switch, allow_list,
                  run_log, max_steps=400, on_event=None, settle=0.45,
-                 driver=None, autonomy=None, pause_gate=None):
+                 driver=None, autonomy=None, pause_gate=None,
+                 denied_apps=None, recovery_enabled=True):
         self.planner = planner
         self.planner_mode = planner_mode
         self.gate = gate
@@ -69,6 +116,20 @@ class Agent:
         # Cooperative pause (safety.PauseGate) or None: checked at
         # each step boundary, never mid-action.
         self.pause_gate = pause_gate
+        # Per-app permissions (v3.3): lowercase substrings of AT-SPI
+        # application names the agent must not touch.  Enforced at
+        # the action layer (like the money floor) and by filtering
+        # the planner's observation.
+        self.denied_apps = [str(a).lower() for a in (denied_apps or [])
+                            if str(a).strip()]
+        # Failure self-recovery (v3.3): one alternative attempt per
+        # failed step, never more.
+        self.recovery_enabled = recovery_enabled
+        self._recovered = set()
+        # File-change journal (v3.3): completed file operations,
+        # mirrored into the audit log as file_op events so a run's
+        # file changes can be undone from History.
+        self.file_journal = []
         self.d = driver or get_driver()
         self.answers = {}
         self.executed = 0
@@ -356,11 +417,30 @@ class Agent:
         return None
 
     # -- primitive execution ----------------------------------------------
+    # -- per-app permissions (v3.3) -----------------------------------
+    def _check_app_allowed(self, app_name):
+        """Refuse to touch a denied application — enforcement at
+        the action layer, the same place the money floor lives.
+        A planner (built-in or LLM) that targets a denied app gets
+        this stated refusal, never a silent workaround."""
+        if not app_name:
+            return
+        low = str(app_name).lower()
+        for denied in self.denied_apps:
+            if denied in low:
+                raise StepFailure(
+                    f"per-app permissions: '{app_name}' is on the "
+                    "deny list (Settings → App permissions) — "
+                    "the agent will not interact with it")
+
     def _exec_primitive(self, step):
         action = step["action"]
         if action == "launch":
             if not self.allow_list.permits(step["command"]):
                 raise StepFailure(f"app not in allow-list: {step['command']}")
+            self._check_app_allowed(_launch_app_hint(step["command"]))
+            self._check_app_allowed(step["command"].split()[0]
+                                    .rsplit("/", 1)[-1])
             try:
                 self._launch_snapshot = set(self.d.observe().windows)
             except Exception:
@@ -370,6 +450,7 @@ class Agent:
             return f"launched {step['command']}"
         if action in ("click", "double_click"):
             el = self._resolve(step)
+            self._check_app_allowed(getattr(el, "app", None))
             if el is not None and not getattr(el, "sensitive", True):
                 raise StepFailure(
                     f"element '{el.name}' ({el.role}) is disabled "
@@ -395,6 +476,7 @@ class Agent:
         if action == "type":
             if step.get("target"):
                 el = self._resolve(step)
+                self._check_app_allowed(getattr(el, "app", None))
                 self.last_target = el.to_dict()
                 self.d.activate_window(getattr(el, "window", ""))
                 self._pin_focus(getattr(el, "app", None),
@@ -411,6 +493,7 @@ class Agent:
             return f"key {step['key']}"
         if action == "scroll":
             el = self._resolve(step) if step.get("target") else None
+            self._check_app_allowed(getattr(el, "app", None))
             x, y = el.center if el else (640, 400)
             self.d.scroll(x, y, step.get("direction", "down"))
             return f"scrolled {step.get('direction', 'down')}"
@@ -542,22 +625,115 @@ class Agent:
                 f"{save_as} (verified)")
 
     # -- main loop -----------------------------------------------------------
-    def run(self, goal):
-        status, answer, reason = "failed", None, ""
-        try:
-            obs = self.d.observe()
-            self.plan_observation = obs
-            self._shot("initial")
+    # -- planning ------------------------------------------------------
+    def build_plan(self, goal):
+        """Observe and plan, without executing.  Used by run() and
+        by the dry-run approval flow, which shows this plan to the
+        user before a single action is taken.  Per-app permissions
+        apply here too: elements of denied apps are removed from
+        the observation, so no planner can target what it cannot
+        see (the action layer still refuses as a second line)."""
+        obs = self.d.observe()
+        if self.denied_apps:
+            from .perception import Observation
+            kept = [e for e in obs.elements
+                    if not any(d in (e.app or "").lower()
+                               for d in self.denied_apps)]
+            obs = Observation(elements=kept, windows=obs.windows,
+                              texts=obs.texts)
+        self.plan_observation = obs
+        self._shot("initial")
+        plan = self.planner.plan(goal, obs)
+        return validate_plan(
+            plan, element_count=len(obs.elements)
+            if hasattr(self.planner, "model") else None)
+
+    # -- file-change journal (v3.3) ------------------------------------
+    def _record_file_ops(self, file_op, index):
+        for entry in file_op.get("files", []):
+            record = {"op": file_op.get("op", "move"),
+                      "src": entry.get("src"), "dst": entry.get("dst"),
+                      "step": index, "sha256": None}
             try:
-                plan = self.planner.plan(goal, obs)
-                plan = validate_plan(plan, element_count=len(obs.elements)
-                                     if hasattr(self.planner, "model") else None)
-            except PlanError as exc:
-                self._emit("plan_failed", error=str(exc))
-                self.log.finish("failed", reason=f"planning failed: {exc}")
-                return {"status": "failed", "reason": f"planning failed: {exc}",
-                        "answers": {}, "steps_executed": 0}
-            self._emit("plan", steps=plan, planner_mode=self.planner_mode)
+                dst = record["dst"]
+                if dst and os.path.isfile(dst) \
+                        and os.path.getsize(dst) <= 64 * 1024 * 1024:
+                    digest = hashlib.sha256()
+                    with open(dst, "rb") as fh:
+                        for chunk in iter(lambda: fh.read(1 << 20), b""):
+                            digest.update(chunk)
+                    record["sha256"] = digest.hexdigest()
+            except Exception:
+                pass  # a hash is a bonus, never a blocker
+            self.file_journal.append(record)
+            self._emit("file_op", **record)
+
+    # -- failure self-recovery (v3.3) ----------------------------------
+    def _attempt_recovery(self, step, exc):
+        """ONE alternative attempt for a failed step: re-observe,
+        then a strategy matched to the failure — focus retry for
+        focus-guard failures, scroll-into-view + fresh element
+        match for targeted steps, a plain fresh attempt otherwise.
+        Returns (ok, detail, strategy).  Never loops: the caller
+        marks the step recovered-or-not exactly once."""
+        message = str(exc)
+        time.sleep(0.6)  # let the desktop settle first
+        if "focus guard" in message:
+            strategy = "focus retry"
+            self._try_refocus()
+        elif step.get("target") or "element" in step:
+            strategy = "fresh element match"
+            bounds = (self.last_target or {}).get("bounds") or []
+            if step["action"] in ("click", "double_click") \
+                    and len(bounds) == 4:
+                cx = bounds[0] + bounds[2] // 2
+                cy = bounds[1] + bounds[3] // 2
+                try:
+                    self.d.scroll(cx, cy, "down")
+                    self.d.scroll(cx, cy, "up")
+                    strategy = "scroll into view + fresh match"
+                except Exception:
+                    pass
+        else:
+            strategy = "retry after re-observing"
+        try:
+            self.d.observe()
+            detail = self._exec_and_verify(step)
+            return True, detail, strategy
+        except StepFailure as exc2:
+            return False, f"{strategy} also failed: {exc2}", strategy
+
+    def _exec_and_verify(self, step):
+        detail = self._exec_primitive(step)
+        if step.get("expect_text"):
+            obs2 = self.d.observe()
+            joined = "\n".join(obs2.texts.values())
+            names = " ".join(e.name for e in obs2.elements)
+            if step["expect_text"] not in joined \
+                    and step["expect_text"] not in names:
+                raise StepFailure(
+                    f"expected to see {step['expect_text']!r} after step")
+        return detail
+
+    def run(self, goal):
+        try:
+            plan = self.build_plan(goal)
+        except PlanError as exc:
+            self._emit("plan_failed", error=str(exc))
+            self.log.finish("failed", reason=f"planning failed: {exc}")
+            return {"status": "failed", "reason": f"planning failed: {exc}",
+                    "answers": {}, "steps_executed": 0}
+        self._emit("plan", steps=plan, planner_mode=self.planner_mode)
+        return self.execute_plan(goal, plan)
+
+    def execute_plan(self, goal, plan, skip=frozenset()):
+        """Execute a built plan.  ``skip`` is the dry-run contract:
+        indices the user unticked are logged as skipped-by-user
+        and never reach the executor — enforcement here, in the
+        engine, not in any UI."""
+        status, answer, reason = "failed", None, ""
+        self._recovered = set()
+        try:
             replans = 1 if hasattr(self.planner, "model") else 0
             i = 0
             while i < len(plan):
@@ -570,6 +746,13 @@ class Agent:
                     self._emit("run_resumed", index=i)
                 if self.executed >= self.max_steps:
                     raise StepFailure(f"step cap reached ({self.max_steps})")
+                if i in skip:
+                    self._emit("step_start", index=i, step=step)
+                    self._emit("step_result", index=i, ok=True,
+                               detail="skipped by user",
+                               skipped=True)
+                    i += 1
+                    continue
                 action = step["action"]
                 if action == "done":
                     answer = step.get("answer") or answer
@@ -607,20 +790,41 @@ class Agent:
                                decision="auto-approved")
                 self._emit("step_start", index=i, step=step)
                 try:
-                    detail = self._exec_primitive(step)
+                    detail = self._exec_and_verify(step)
                     self.executed += 1
                     time.sleep(self.settle)
                     shot = self._shot(f"step{i}")
                     self._emit("step_result", index=i, ok=True,
                                detail=detail, screenshot=shot)
-                    if step.get("expect_text"):
-                        obs2 = self.d.observe()
-                        joined = "\n".join(obs2.texts.values())
-                        names = " ".join(e.name for e in obs2.elements)
-                        if step["expect_text"] not in joined and step["expect_text"] not in names:
-                            raise StepFailure(
-                                f"expected to see {step['expect_text']!r} after step")
+                    if step.get("file_op"):
+                        self._record_file_ops(step["file_op"], i)
                 except StepFailure as exc:
+                    # Failure self-recovery: exactly ONE alternative
+                    # attempt (re-observe + a different approach),
+                    # logged in the open.  A second failure ends
+                    # the step exactly as it always has.
+                    if self.recovery_enabled and i not in self._recovered:
+                        self._recovered.add(i)
+                        ok, rdetail, strategy = \
+                            self._attempt_recovery(step, exc)
+                        self._emit("recovery", index=i,
+                                   strategy=strategy, ok=ok,
+                                   detail=rdetail, error=str(exc))
+                        if ok:
+                            self.executed += 1
+                            time.sleep(self.settle)
+                            shot = self._shot(f"step{i}")
+                            self._emit(
+                                "step_result", index=i, ok=True,
+                                detail=f"recovered ({strategy}): "
+                                       f"{rdetail}",
+                                screenshot=shot, recovered=True)
+                            if step.get("file_op"):
+                                self._record_file_ops(step["file_op"], i)
+                            i += 1
+                            continue
+                        exc = StepFailure(
+                            f"{exc} (recovery attempted: {rdetail})")
                     shot = self._shot(f"step{i}-failed")
                     self._emit("step_result", index=i, ok=False,
                                error=str(exc), screenshot=shot)
@@ -628,7 +832,16 @@ class Agent:
                         replans -= 1
                         self._emit("replan", after_step=i, error=str(exc))
                         obs = self.d.observe()
+                        if self.denied_apps:
+                            from .perception import Observation
+                            obs = Observation(
+                                elements=[e for e in obs.elements
+                                          if not any(
+                                              d in (e.app or "").lower()
+                                              for d in self.denied_apps)],
+                                windows=obs.windows, texts=obs.texts)
                         self.plan_observation = obs
+                        self._recovered = set()
                         plan = validate_plan(self.planner.plan(
                             goal, obs, history=f"step {i} failed: {exc}"))
                         self._emit("plan", steps=plan,

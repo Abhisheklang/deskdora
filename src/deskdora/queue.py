@@ -45,6 +45,7 @@ class TaskQueue:
     def __init__(self, runner, path=None):
         self.runner = runner
         self.path = path
+        self.on_drained = None      # optional callback (sound tone)
         self._cond = threading.Condition()
         self._items = []            # list of dicts, execution order
         self._paused = False
@@ -270,3 +271,11 @@ class TaskQueue:
                                if id(it) not in drop]
             self._save()
             self._cond.notify_all()
+            drained = not any(
+                it["status"] in (ITEM_QUEUED, ITEM_RUNNING)
+                for it in self._items)
+        if drained and self.on_drained is not None:
+            try:
+                self.on_drained()
+            except Exception:
+                pass  # a sound must never break the queue

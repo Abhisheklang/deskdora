@@ -35,12 +35,15 @@ class RoutineStore:
         return os.path.join(self.root, f"{safe}.json"), safe
 
     def save(self, name, goal, planner_mode="", schedule=None,
-             source_run=None, trigger=None):
+             source_run=None, trigger=None, goal_template=None,
+             params=None):
         path, safe = self._path(name)
         data = {
             "name": safe, "goal": goal, "planner_mode": planner_mode,
             "schedule": schedule, "source_run": source_run,
             "trigger": trigger,
+            "goal_template": goal_template,
+            "params": params or [],
             "created_at": time.time(), "last_run_at": None,
             "run_count": 0,
         }
@@ -136,3 +139,175 @@ def cron_matches(expression, when=None):
 def due_routines(store, when=None):
     return [r for r in store.list()
             if r.get("schedule") and cron_matches(r["schedule"], when)]
+
+
+# --------------------------------------------------------------------------
+# Teach a routine from history (v3.3): parameterise a finished run's
+# goal — path literals become routine parameters whose defaults are
+# the original values, so the routine works for the next folder,
+# not just the one in the recording.
+# --------------------------------------------------------------------------
+
+_PATH_RE = re.compile(r"/[\w.\-]+(?:/[\w.\-]+)+")
+_SAVE_AS_RE = re.compile(r"\bsaved as (\S+\.(?:gnumeric|ods|xlsx|csv))")
+
+
+def parameterize_goal(goal):
+    """Return (template, params): the goal with its variable
+    literals replaced by {placeholders}, and the parameter list
+    [{name, default}] in order of appearance."""
+    params = []
+    template = goal
+
+    def add_param(name, value):
+        for existing in params:
+            if existing["name"] == name:
+                if existing["default"] == value:
+                    return "{" + name + "}"
+                return add_param(f"{name}_{len(params) + 1}", value)
+        params.append({"name": name, "default": value})
+        return "{" + name + "}"
+
+    def path_sub(match):
+        path = match.group(0)
+        name = "folder" if template.lower().startswith(
+            ("organise", "organize", "tidy")) and not params \
+            else "path"
+        return add_param(name, path)
+
+    template = _PATH_RE.sub(path_sub, template)
+    template = _SAVE_AS_RE.sub(
+        lambda m: "saved as " + add_param("filename", m.group(1)),
+        template)
+    return template, params
+
+
+def render_goal(routine, values=None):
+    """Instantiate a routine's goal from its template + parameter
+    values (defaults fill whatever the user didn't change)."""
+    template = routine.get("goal_template")
+    if not template:
+        return routine.get("goal", "")
+    merged = {p["name"]: p["default"]
+              for p in routine.get("params") or []}
+    for key, value in (values or {}).items():
+        if key in merged and str(value).strip():
+            merged[key] = str(value)
+    try:
+        return template.format(**merged)
+    except (KeyError, IndexError):
+        return routine.get("goal", "")
+
+
+def record_parameterized(store, name, run_dir, schedule=None,
+                         trigger=None):
+    """Save a successful run as a routine with a parameterised
+    goal (the v3.2 save-as-routine, upgraded)."""
+    events = read_log(os.path.join(run_dir, "log.jsonl"))
+    start = next((e for e in events if e["kind"] == "run_start"), None)
+    end = next((e for e in reversed(events) if e["kind"] == "run_end"),
+               None)
+    if not start or not end or end.get("status") != "success":
+        raise ValueError("only a successful run can become a routine")
+    template, params = parameterize_goal(start["goal"])
+    return store.save(name, start["goal"],
+                      planner_mode=start.get("planner_mode", ""),
+                      schedule=schedule, trigger=trigger,
+                      source_run=os.path.basename(run_dir),
+                      goal_template=template, params=params)
+
+
+# --------------------------------------------------------------------------
+# Routines in plain words (v3.3): a sentence -> a routine draft.
+# The built-in parser covers the common shapes; anything it cannot
+# read refuses honestly instead of inventing a routine.
+# --------------------------------------------------------------------------
+
+_WEEKDAYS = {"monday": 1, "tuesday": 2, "wednesday": 3,
+             "thursday": 4, "friday": 5, "saturday": 6, "sunday": 0}
+_HOME_DIRS = {"downloads": "~/Downloads", "desktop": "~/Desktop",
+              "documents": "~/Documents", "pictures": "~/Pictures",
+              "home": "~"}
+
+
+def _parse_schedule(text):
+    """Return (cron, remaining_text) or (None, text)."""
+    low = text.lower()
+    m = re.search(r"every (morning|evening|night)\b", low)
+    if m:
+        hour = {"morning": 9, "evening": 19, "night": 22}[m.group(1)]
+        return f"0 {hour} * * *", text[:m.start()] + text[m.end():]
+    m = re.search(r"every day at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?", low)
+    if m:
+        hour = int(m.group(1))
+        if m.group(3) == "pm" and hour < 12:
+            hour += 12
+        return f"{int(m.group(2) or 0)} {hour} * * *", \
+            text[:m.start()] + text[m.end():]
+    m = re.search(r"\bdaily at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?", low)
+    if m:
+        hour = int(m.group(1))
+        if m.group(3) == "pm" and hour < 12:
+            hour += 12
+        return f"{int(m.group(2) or 0)} {hour} * * *", \
+            text[:m.start()] + text[m.end():]
+    m = re.search(r"every (monday|tuesday|wednesday|thursday|friday|"
+                  r"saturday|sunday)\b", low)
+    if m:
+        return f"0 9 * * {_WEEKDAYS[m.group(1)]}", \
+            text[:m.start()] + text[m.end():]
+    if re.search(r"\bevery hour\b", low):
+        m = re.search(r"\bevery hour\b", low)
+        return "0 * * * *", text[:m.start()] + text[m.end():]
+    if re.search(r"\bevery week\b", low):
+        m = re.search(r"\bevery week\b", low)
+        return "0 9 * * 1", text[:m.start()] + text[m.end():]
+    if re.search(r"\bevery day\b|\bdaily\b", low):
+        m = re.search(r"\bevery day\b|\bdaily\b", low)
+        return "0 9 * * *", text[:m.start()] + text[m.end():]
+    return None, text
+
+
+def describe_routine(text):
+    """Parse a plain-words routine description into a draft
+    {goal, schedule, trigger}.  Raises ValueError with an honest
+    reason when the sentence can't be read — the same refusal
+    contract as the planner's."""
+    text = " ".join((text or "").split()).strip()
+    if not text:
+        raise ValueError("describe the routine first")
+    schedule, rest = _parse_schedule(text)
+    trigger = None
+    m = re.search(r"when(?:ever)? files (?:land|arrive|appear) in "
+                  r"(\S+)", rest, re.IGNORECASE)
+    if m:
+        folder = os.path.expanduser(m.group(1).rstrip(".,"))
+        trigger = {"folder": folder}
+        rest = (rest[:m.start()] + rest[m.end():]).strip(" ,")
+    goal = " ".join(rest.split()).strip(" ,")
+    # "my Downloads" / "the Downloads folder" -> a real path, and an
+    # organise verb -> the canonical organise goal.
+    home_match = re.search(
+        r"\b(?:my|the) (downloads|desktop|documents|pictures)"
+        r"(?: folder)?\b", goal, re.IGNORECASE)
+    if home_match:
+        path = os.path.expanduser(
+            _HOME_DIRS[home_match.group(1).lower()])
+        if re.match(r"(?i)(organise|organize|tidy|sort|clean up)\b",
+                    goal):
+            goal = f"Organise folder {path} by type"
+        else:
+            goal = (goal[:home_match.start()] + path
+                    + goal[home_match.end():])
+    if not goal:
+        raise ValueError(
+            "I couldn't find the task in that description — say "
+            "what should happen, e.g. 'every morning organise my "
+            "Downloads'")
+    if schedule is None and trigger is None:
+        raise ValueError(
+            "I couldn't find when it should run — add 'every "
+            "morning', 'daily at 9', 'every Monday', or 'when files "
+            "land in …'")
+    goal = goal[0].upper() + goal[1:]
+    return {"goal": goal, "schedule": schedule, "trigger": trigger}

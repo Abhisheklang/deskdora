@@ -637,6 +637,21 @@ class EdgeLight(Gtk.Window):
             self.provider.load_from_data(css.encode())
 
 
+def _app_opened_tone(url):
+    """Sound tone: the app opened (v3.3).  Best-effort, off-thread;
+    the service applies the user's sound settings."""
+    def _post():
+        try:
+            req = urllib.request.Request(
+                url.rstrip("/") + "/api/sound",
+                data=json.dumps({"event": "app_opened"}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=3).read()
+        except Exception:
+            pass
+    threading.Thread(target=_post, daemon=True).start()
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     url = argv[0] if argv else DEFAULT_URL
@@ -644,6 +659,7 @@ def main(argv=None):
     DeskDoraWindow(url)
     ControlOverlay(hub)
     EdgeLight(hub)
+    _app_opened_tone(url)
     Gtk.main()
     return 0
 

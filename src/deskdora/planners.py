@@ -179,6 +179,23 @@ class OllamaPlanner:
         except Exception:
             return False
 
+    def complete_text(self, system, user):
+        """Free-form completion via the local model (ask/describe
+        helpers).  Raises PlanError when Ollama is unreachable."""
+        body = {"model": self.model, "stream": False,
+                "messages": [{"role": "system", "content": system},
+                             {"role": "user", "content": user}]}
+        req = urllib.request.Request(
+            self.host + "/api/chat",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.load(resp)
+            return data["message"]["content"]
+        except Exception as exc:
+            raise PlanError(f"Ollama completion failed: {exc}")
+
     def plan(self, goal, observation, history=None):
         user = _user_prompt(goal, observation, self.memory, history)
         body = {
@@ -460,6 +477,11 @@ class _CloudPlannerBase:
     def _complete(self, system, user, max_tokens=1024):
         raise NotImplementedError
 
+    def complete_text(self, system, user):
+        """Free-form completion for read-only helpers (ask about
+        screen, plain-words routines).  Not used for planning."""
+        return self._complete(system, user)
+
 
 class OpenAICompatiblePlanner(_CloudPlannerBase):
     """The OpenAI chat-completions protocol.  Most providers speak it
@@ -726,6 +748,7 @@ class BuiltinPlanner:
         if not os.path.isdir(path):
             raise PlanError(f"folder not found: {path}")
         present = {}
+        files_for = {}
         for entry in os.listdir(path):
             full = os.path.join(path, entry)
             if os.path.isfile(full) and "." in entry:
@@ -733,6 +756,8 @@ class BuiltinPlanner:
                 for folder, exts in FILE_TYPE_GROUPS.items():
                     if ext in exts:
                         present.setdefault(folder, set()).add(ext)
+                        files_for.setdefault((folder, ext),
+                                             []).append(entry)
         if not present:
             raise PlanError(f"no organisable files found in {path}")
         steps = [{"action": "launch", "command": f"thunar {path}"},
@@ -747,6 +772,17 @@ class BuiltinPlanner:
             ]
         for folder, exts in present.items():
             for ext in sorted(exts):
+                # The paste step completes a batch of file moves;
+                # it carries file_op metadata so the agent can
+                # journal exactly which files went where (undo).
+                paste = {"action": "key", "key": "ctrl+v",
+                         "file_op": {
+                             "op": "move",
+                             "files": [
+                                 {"src": f"{path}/{name}",
+                                  "dst": f"{path}/{folder}/{name}"}
+                                 for name in
+                                 files_for.get((folder, ext), [])]}}
                 steps += [
                     {"action": "key", "key": "ctrl+s"},
                     {"action": "wait", "seconds": 0.7},
@@ -758,7 +794,7 @@ class BuiltinPlanner:
                     {"action": "type", "text": f"{path}/{folder}"},
                     {"action": "key", "key": "Return"},
                     {"action": "wait", "seconds": 0.5},
-                    {"action": "key", "key": "ctrl+v"},
+                    paste,
                     {"action": "wait", "seconds": 0.5},
                     {"action": "key", "key": "alt+Up"},
                     {"action": "wait", "seconds": 0.5},
