@@ -137,6 +137,35 @@ are refused honestly rather than improvised.
   desktop has one pointer and one keyboard, so queued tasks take
   turns — the queue never pretends to run things in parallel. Pause,
   reorder, remove, and the kill switch halts the whole queue
+- **Freeze, resume, reset** (v3.2): pause a run at a step boundary
+  (never mid-action) from the app, the companion or the floating
+  window. After a kill, *Resume* continues the queue — a killed run
+  is never fake-resumed; it restarts cleanly or not at all
+- **Floating control window** (v3.2): a small always-on-top window
+  that appears on the desktop while the agent works — task,
+  progress %, step x/y, Stop / Freeze / Resume / Reset — and hides
+  when idle. It never takes keyboard focus
+- **Edge light** (v3.2): a neon border around the screen edges
+  while the agent works — lime while running, amber when it needs
+  you or is frozen, off when idle. Pure paint: its input shape is
+  empty, so it can never take a click. Single / double / flowing
+  styles, or off, in Settings
+- **Companion, full remote** (v3.2): the phone companion shows live
+  progress (planner + model, step x/y, %), the same Freeze / Resume
+  / Reset / Stop controls, browsable history threads, and MCP
+  status. Behind the pairing PIN as always
+- **Companion screen share** (v3.2): a paired companion can watch
+  the desktop screen, view-only, at a monitoring-grade few frames
+  per second. Off by default; the app shows a SCREEN SHARED
+  indicator while anyone is watching, and the stream serves
+  nothing while it is off. (The app itself has no live view — this
+  is companion-side only)
+- **Features panel** (v3.2): Settings → Features has a master
+  switch for every major feature — floating window, edge light,
+  companion, screen share, voice, proposals, MCP, API access, UI
+  animations. Off stops the machinery, not just the UI. The safety
+  layer is not a feature: confirmations and the money floor have
+  no off switch
 - Safety layer: confirmations, app allow-list, sandbox mode, kill
   switch, and a **focus guard** (v1.1) that refuses to type into the
   wrong window instead of following focus blindly
@@ -201,6 +230,10 @@ Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
   real-world level depends on the compositor's portal backend (see
   the session note above). GNOME is the reference desktop; other
   AT-SPI desktops (KDE, Cinnamon) are untested.
+- The edge light's soft glow needs a compositor; without one it
+  renders as a plain border.
+- Companion screen share runs at a few frames per second — enough
+  to monitor a run, not smooth video.
 - Some widgets expose their rows poorly to the accessibility tree
   (certain icon views); tasks depending on those can fail — the agent
   reports the failure instead of working around it silently.
