@@ -368,7 +368,9 @@ class ControlOverlay(Gtk.Window):
 # --- edge light (v3.2) ------------------------------------------------------
 # A neon border around the screen edges while the agent works, in
 # the spirit of phone edge-notification lighting.  The window is
-# fullscreen, transparent and CLICK-THROUGH: its X11 input shape is
+# full-screen-sized, override-redirect (v3.4.3: placed by raw X
+# geometry, outside window-manager policy — see _place),
+# transparent and CLICK-THROUGH: its X11 input shape is
 # set to an empty region (XShape), so it can never intercept a
 # click or a key, never takes focus, and the agent's own work is
 # unaffected by it.
@@ -436,7 +438,8 @@ class EdgeLight(Gtk.Window):
         self.set_focus_on_map(False)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         screen = self.get_screen()
-        self.set_default_size(screen.get_width(), screen.get_height())
+        self._geo = self._monitor_geometry(screen)
+        self.set_default_size(self._geo.width, self._geo.height)
         visual = screen.get_rgba_visual()
         if visual is not None:
             self.set_visual(visual)
@@ -458,7 +461,81 @@ class EdgeLight(Gtk.Window):
             overlay.set_overlay_pass_through(assembly, True)
         self.add(overlay)
         self.connect("map-event", self._apply_click_through)
+        # The window is override-redirect: the window manager
+        # never manages it, so it cannot re-place it (see _place
+        # for the measured failures of every managed alternative).
+        # The flag can only be set while the window is unmapped,
+        # so realize now, before the first show.  The window is
+        # still what it always was — undecorated paint with an
+        # empty input shape and no focus — just placed by raw X
+        # geometry instead of by WM policy.
+        self.realize()
+        gdk_win = self.get_window()
+        if gdk_win is not None:
+            gdk_win.set_override_redirect(True)
+        self.move(self._geo.x, self._geo.y)
         GLib.timeout_add(60, self._tick)
+
+    def _monitor_geometry(self, screen):
+        """The primary monitor's full geometry, in root coordinates.
+
+        The edge window must cover the MONITOR, not the window
+        manager's work area.  Measured live on v3.4.2: xfwm4 placed
+        the 1920x1080 window at the work-area origin (0,27) — just
+        below the top panel — so the bottom strip painted at screen
+        y ≈1081–1107, off-screen, and the running screenshot had
+        lime on only 3 of 4 edges (bottom: 100 px, corners only).
+        Sizing and placing from the monitor geometry keeps all
+        four strips on the physical screen at any resolution."""
+        try:
+            display = Gdk.Display.get_default()
+            monitor = display.get_primary_monitor()
+            if monitor is None:
+                monitor = display.get_monitor(0)
+            if monitor is not None:
+                return monitor.get_geometry()
+        except Exception:
+            pass
+        # Fallback: the whole screen at the origin.
+        rect = Gdk.Rectangle()
+        rect.x, rect.y = 0, 0
+        rect.width = screen.get_width()
+        rect.height = screen.get_height()
+        return rect
+
+    def _place(self):
+        """(Re)assert the window's position, size and stacking
+        from the monitor geometry, on every tick while visible.
+
+        These are raw X operations on an override-redirect
+        window, which the window manager cannot refuse or undo —
+        unlike every managed-window mechanism, each measured live
+        on the test rig before this one was adopted:
+        - move()/resize() on the managed window: xfwm4 clamped
+          it to the work-area origin (0,27) on every request
+          (the app's own and an external xdotool windowmove
+          alike), leaving the bottom strip off-screen.
+        - the _NET_WM_STATE fullscreen state: honoured for a
+          standalone window, but with the app's main window
+          present xfwm4 dropped the request — at show time,
+          re-issued per tick, even sent as a raw client
+          message; during live runs it landed only at a pause
+          or a re-show, never during active agent work.
+        raise_() each tick keeps the border above windows the
+        agent opens after the light appears; the empty input
+        shape keeps it click-through, so sitting on top costs
+        the user nothing."""
+        geo = self._geo
+        try:
+            if self.get_position() != (geo.x, geo.y):
+                self.move(geo.x, geo.y)
+            if self.get_size() != (geo.width, geo.height):
+                self.resize(geo.width, geo.height)
+            gdk_win = self.get_window()
+            if gdk_win is not None:
+                gdk_win.raise_()
+        except Exception:
+            pass
 
     def _build_edge(self, edge):
         vertical = edge in ("left", "right")
@@ -584,7 +661,7 @@ class EdgeLight(Gtk.Window):
             return True
         if not self.get_visible():
             self.show_all()
-            self.move(0, 0)
+            self._place()
             changed = True
         if st["animated"]:
             speed = 2.3 if st["mode"] == "amber-fast" else 1.0
@@ -593,6 +670,11 @@ class EdgeLight(Gtk.Window):
             self._restyle()
         elif changed:
             self._restyle()
+        # Placement, like the input shape below, is re-asserted on
+        # every tick while visible: the window manager's initial
+        # placement cannot be trusted to keep the window on the
+        # monitor origin (see _monitor_geometry).
+        self._place()
         # LAST in the tick, after any restyle: GTK syncs its own
         # input shape over ours when the window is styled/mapped,
         # so the empty shape must be (re)asserted after styling.
