@@ -100,11 +100,19 @@ class Agent:
     def __init__(self, planner, planner_mode, gate, kill_switch, allow_list,
                  run_log, max_steps=400, on_event=None, settle=0.45,
                  driver=None, autonomy=None, pause_gate=None,
-                 denied_apps=None, recovery_enabled=True):
+                 denied_apps=None, recovery_enabled=True,
+                 cancel_event=None):
         self.planner = planner
         self.planner_mode = planner_mode
         self.gate = gate
         self.kill = kill_switch
+        # Per-run cancellation (v3.4.1): set permanently by the
+        # server watchdog when this run is force-cleared.  Unlike
+        # the shared kill switch — which the NEXT run resets — this
+        # event is never cleared, so a worker that was stuck inside
+        # a step when its run was force-cleared can never dispatch
+        # another desktop action after it wakes up.
+        self.cancel_event = cancel_event
         self.allow_list = allow_list
         self.log = run_log
         self.max_steps = max_steps
@@ -148,8 +156,16 @@ class Agent:
         self.log.event(kind, **fields)
         self.on_event(kind, **fields)
 
+    def _is_cancelled(self):
+        """True when this run has been force-cleared by the server
+        watchdog (v3.4.1).  Checked before every action dispatch:
+        a stuck step that eventually returns must find its run
+        cancelled and stop, not carry on with the next action."""
+        return self.cancel_event is not None \
+            and self.cancel_event.is_set()
+
     def _check_kill(self):
-        if self.kill.is_tripped():
+        if self.kill.is_tripped() or self._is_cancelled():
             raise StepFailure("kill switch tripped")
 
     def _shot(self, tag):
@@ -261,6 +277,7 @@ class Agent:
         return True
 
     def _guard_focus(self):
+        self._check_kill()
         # A launch since the last check may have brought up the window
         # subsequent input is meant for: adopt it before verifying.
         if self._launch_snapshot is not None:
@@ -379,6 +396,7 @@ class Agent:
         *seen* in the intended app/window afterwards."""
         if not self.focus_window:
             return False
+        self._check_kill()
         if not self.d.activate_window(self.focus_window):
             return False
         deadline = time.time() + 1.5
@@ -434,6 +452,7 @@ class Agent:
                     "the agent will not interact with it")
 
     def _exec_primitive(self, step):
+        self._check_kill()
         action = step["action"]
         if action == "launch":
             if not self.allow_list.permits(step["command"]):
@@ -446,6 +465,7 @@ class Agent:
             except Exception:
                 self._launch_snapshot = None
             self._launch_hint = _launch_app_hint(step["command"])
+            self._check_kill()
             self.d.launch(step["command"])
             return f"launched {step['command']}"
         if action in ("click", "double_click"):
@@ -457,9 +477,11 @@ class Agent:
                     "(greyed out) and cannot be clicked")
             self.last_target = el.to_dict()
             self._emit("target", element=el.to_dict())
+            self._check_kill()
             self.d.activate_window(getattr(el, "window", ""))
             self._pin_focus(getattr(el, "app", None),
                             getattr(el, "window", None))
+            self._check_kill()
             cx, cy = el.center
             if action == "click":
                 self.d.click(cx, cy)
@@ -471,6 +493,7 @@ class Agent:
             self.last_target = {"role": "point", "name": f"{x},{y}",
                                 "bounds": [x - 12, y - 12, 24, 24]}
             self._emit("target", element=self.last_target)
+            self._check_kill()
             self.d.click(x, y)
             return f"clicked point {x},{y} (coordinate grounding)"
         if action == "type":
@@ -478,6 +501,7 @@ class Agent:
                 el = self._resolve(step)
                 self._check_app_allowed(getattr(el, "app", None))
                 self.last_target = el.to_dict()
+                self._check_kill()
                 self.d.activate_window(getattr(el, "window", ""))
                 self._pin_focus(getattr(el, "app", None),
                                 getattr(el, "window", None))
@@ -485,16 +509,19 @@ class Agent:
                 time.sleep(0.25)
             else:
                 self._guard_focus()
+            self._check_kill()
             self.d.type_text(step["text"])
             return f"typed {step['text'][:40]!r}"
         if action == "key":
             self._guard_focus()
+            self._check_kill()
             self.d.key(step["key"])
             return f"key {step['key']}"
         if action == "scroll":
             el = self._resolve(step) if step.get("target") else None
             self._check_app_allowed(getattr(el, "app", None))
             x, y = el.center if el else (640, 400)
+            self._check_kill()
             self.d.scroll(x, y, step.get("direction", "down"))
             return f"scrolled {step.get('direction', 'down')}"
         if action == "wait":
@@ -538,6 +565,7 @@ class Agent:
         self._guard_focus()
         width = max(len(r) for r in rows)
         sub = []
+        self._check_kill()
         self.d.key("ctrl+Home")
         time.sleep(0.3)
         for r, row in enumerate(rows):
@@ -563,6 +591,7 @@ class Agent:
         # dialog instead of the spreadsheet's).
         self._guard_focus()
         save_started = time.time()
+        self._check_kill()
         self.d.key("ctrl+s")
         # The save dialog can be slow to present under load; poll
         # briefly instead of assuming after a single look.
@@ -582,8 +611,10 @@ class Agent:
             stem = save_as
             if stem.lower().endswith(".gnumeric"):
                 stem = stem[: -len(".gnumeric")]
+            self._check_kill()
             self.d.key("ctrl+l")
             time.sleep(0.3)
+            self._check_kill()
             self.d.type_text(stem)
             time.sleep(0.3)
             self.d.key("Return")
@@ -591,11 +622,13 @@ class Agent:
             obs = self.d.observe()
             replaces = obs.find(role="push button", name_contains="Replace")
             if replaces:
+                self._check_kill()
                 self.d.click(*replaces[0].center)
                 time.sleep(0.8)
         else:
             replaces = obs.find(role="push button", name_contains="Replace")
             if replaces:
+                self._check_kill()
                 self.d.click(*replaces[0].center)
                 time.sleep(0.8)
         # Verify the save actually produced the file — never assume.
@@ -676,6 +709,7 @@ class Agent:
         match for targeted steps, a plain fresh attempt otherwise.
         Returns (ok, detail, strategy).  Never loops: the caller
         marks the step recovered-or-not exactly once."""
+        self._check_kill()
         message = str(exc)
         time.sleep(0.6)  # let the desktop settle first
         if "focus guard" in message:
@@ -704,7 +738,13 @@ class Agent:
             return False, f"{strategy} also failed: {exc2}", strategy
 
     def _exec_and_verify(self, step):
+        self._check_kill()
         detail = self._exec_primitive(step)
+        # A step that was stuck when its run was force-cleared
+        # returns here eventually (v3.4.1): refuse to verify it or
+        # let the run continue — the run is over, and the next
+        # thing this worker would do is another desktop action.
+        self._check_kill()
         if step.get("expect_text"):
             obs2 = self.d.observe()
             joined = "\n".join(obs2.texts.values())
@@ -803,7 +843,8 @@ class Agent:
                     # attempt (re-observe + a different approach),
                     # logged in the open.  A second failure ends
                     # the step exactly as it always has.
-                    if self.recovery_enabled and i not in self._recovered:
+                    if self.recovery_enabled and i not in self._recovered \
+                            and not self._is_cancelled():
                         self._recovered.add(i)
                         ok, rdetail, strategy = \
                             self._attempt_recovery(step, exc)
@@ -828,7 +869,7 @@ class Agent:
                     shot = self._shot(f"step{i}-failed")
                     self._emit("step_result", index=i, ok=False,
                                error=str(exc), screenshot=shot)
-                    if replans > 0:
+                    if replans > 0 and not self._is_cancelled():
                         replans -= 1
                         self._emit("replan", after_step=i, error=str(exc))
                         obs = self.d.observe()

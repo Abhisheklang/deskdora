@@ -48,8 +48,19 @@ class RunLog:
             return None
 
     def finish(self, status, **fields):
-        self.event("run_end", status=status, **fields)
-        self._fh.close()
+        # Cleanup-path hardening (v3.4.1): finishing the log is
+        # what run teardown calls last, so a broken audit sink
+        # (full disk, EPERM write block) must never raise here and
+        # strand the run's state — the server's finally owns the
+        # state, and this method must not fight it.
+        try:
+            self.event("run_end", status=status, **fields)
+        except Exception:
+            pass
+        try:
+            self._fh.close()
+        except Exception:
+            pass
 
 
 def read_log(path):

@@ -189,9 +189,20 @@ class _ManagerRunner:
             raise BusyError(str(exc.detail)) from exc
 
     def join(self):
+        # Poll the manager's running flag, not just the worker
+        # thread: after a watchdog force-clear (v3.4.1) the worker
+        # may still be stuck inside a step as a fenced zombie, and
+        # joining it directly would hang the queue forever.  The
+        # queue item is marked from the run's recorded result, so
+        # a wedged run still lands as "killed" in the queue (and
+        # in queue.json) instead of stranding both forever.
         thread = self._m.thread
-        if thread is not None:
-            thread.join()
+        while thread is not None and thread.is_alive():
+            thread.join(timeout=0.2)
+            if not self._m.state.get("running"):
+                break
+            if self._m.thread is not thread:
+                break  # a newer run has taken over the manager
         return self._m.state.get("result")
 
     def kill_tripped(self):
@@ -253,6 +264,23 @@ class RunManager:
         }
         self.kill = KillSwitch()
         self.pause_gate = PauseGate()
+        # Kill-switch wedge fix (v3.4.1): the kill switch used to
+        # be checked only between steps, so a step that never
+        # returned wedged the run forever — running stayed True,
+        # reset was refused, only a server restart recovered.
+        # Now every run gets a generation number and a per-run
+        # cancel event; tripping the kill starts a watchdog that
+        # force-clears the run after a bounded grace period, and
+        # the generation bump fences the stuck worker (its events,
+        # its late result and its cleanup are all ignored, and
+        # the agent checks the cancel event before every action
+        # dispatch, so it can never act again).
+        self.kill_grace_seconds = 5.0
+        self._run_generation = 0
+        self._run_cancel = None       # cancel Event of the active run
+        self._kill_tripped_at = None
+        self._watchdog_thread = None
+        self._watchdog_generation = None
         self.progress = {"step_index": 0, "step_total": 0, "done": 0,
                          "current_action": ""}
         # Companion screen share (v3.2): live viewer count + the
@@ -379,6 +407,11 @@ class RunManager:
             self.progress = {"step_index": 0, "step_total": 0,
                              "done": 0, "current_action": "Planning",
                              "started_at": time.time()}
+            self._run_generation += 1
+            generation = self._run_generation
+            cancel_event = threading.Event()
+            self._run_cancel = cancel_event
+            self._kill_tripped_at = None
         self.kill.reset()
         self.pause_gate.clear()
         # Sound tones (v3.3): fire-and-forget, never blocking.
@@ -392,6 +425,8 @@ class RunManager:
             dry_run = bool(cfg.get("dry_run_default"))
 
         def _on_event(kind, **fields):
+            if generation != self._run_generation:
+                return  # fenced zombie from a force-cleared run
             with self.lock:
                 self.state["last_event"] = {"ts": time.time(),
                                             "kind": kind, **fields}
@@ -422,84 +457,127 @@ class RunManager:
                     self.progress["current_action"] = "Paused"
 
         def _work():
-            planner, mode_label = get_planner(
-                mode, model=cfg["model"], known_apps=base_known_apps(),
-                memory=self.memory, providers=cfg.get("providers"),
-                customs=cfg.get("custom_providers"))
-            gate = ConfirmationGate(self.ui_policy)
-            log = RunLog(RUNS_DIR, goal, mode_label, source=source)
-            from .drivers import get_driver
-            driver = get_driver(None if cfg.get("driver", "auto") == "auto"
-                                else cfg["driver"])
+            # EVERYTHING runs inside try/finally (v3.4.1): planner
+            # init, RunLog creation and driver construction used to
+            # sit outside any cleanup, so a setup failure (e.g. a
+            # RunLog PermissionError from a failing audit disk)
+            # killed this thread and stranded running=True forever.
+            # The finally below owns the state — and only for THIS
+            # run's generation: a force-cleared zombie finishing
+            # late must not clear a newer run's state.
+            result = {"status": "failed",
+                      "reason": "run did not complete"}
+            log = None
             try:
-                policy = AutonomyPolicy(cfg.get("autonomy"))
-            except PolicyError:
-                # A hand-edited config must fail safe, never open.
-                policy = AutonomyPolicy()
-            denied = (cfg.get("app_deny_list") or None) \
-                if cfg.get("feature_app_permissions", True) else None
-            agent = Agent(planner, mode_label, gate, self.kill,
-                          AllowList(cfg["allow_apps"]), log,
-                          on_event=_on_event, driver=driver,
-                          autonomy=policy, pause_gate=self.pause_gate,
-                          denied_apps=denied,
-                          recovery_enabled=bool(
-                              cfg.get("self_recovery", True)))
-            with self.lock:
-                self.agent = agent
-                self.state["planner_mode"] = mode_label
-                self.state["run_dir"] = log.dir
-            try:
-                if dry_run:
-                    result = self._dry_run(agent, goal, log)
-                else:
-                    result = agent.run(goal)
-            except Exception as exc:  # agent.run already logs; be safe
-                result = {"status": "failed", "reason": str(exc)}
-            # A planning/connection failure surfaces as the pop-up
-            # payload too (mid-run failures land here after the
-            # engine's one bounded replan retry).
-            if result.get("status") == "failed" and \
-                    connfail.planner_kind(mode, cfg) != "builtin":
-                payload = connfail.classify(
-                    result.get("reason", ""), mode, cfg)
-                if payload["cause"] != "unknown":
-                    with self.lock:
-                        self.state["connection_error"] = {
-                            **payload, "goal": goal, "planner": mode}
-                    notify.notify("connection_failed", cfg,
-                                  body=payload["headline"])
-            sounds.play(
-                "run_completed" if result.get("status") == "success"
-                else "run_failed" if result.get("status") == "failed"
-                else "", cfg, os.path.join(DATA_DIR, "sounds"))
-            if result.get("status") == "success":
-                notify.notify("run_completed", cfg,
-                              body=(goal[:80] + " — "
-                                    + (result.get("answer")
-                                       or ""))[:140])
-            elif result.get("status") == "failed":
-                notify.notify("run_failed", cfg,
-                              body=(goal[:80] + " — "
-                                    + (result.get("reason")
-                                       or ""))[:140])
-            # Resident memory learns from finished runs (success only,
-            # inside learn_from_log) and habits count routine runs.
-            try:
-                learn_from_log(self.memory, log.dir,
-                               result.get("status", ""))
-                if routine_name:
-                    self.memory.note_routine(routine_name)
-                    self.memory.save()
-            except Exception:
-                pass
-            if cfg.get("voice_updates"):
-                summary = result.get("answer") or result.get("reason") or ""
-                voice.speak(f"Run finished: {result.get('status', '')}. "
+                planner, mode_label = get_planner(
+                    mode, model=cfg["model"], known_apps=base_known_apps(),
+                    memory=self.memory, providers=cfg.get("providers"),
+                    customs=cfg.get("custom_providers"))
+                gate = ConfirmationGate(self.ui_policy)
+                log = RunLog(RUNS_DIR, goal, mode_label, source=source)
+                from .drivers import get_driver
+                driver = get_driver(
+                    None if cfg.get("driver", "auto") == "auto"
+                    else cfg["driver"])
+                try:
+                    policy = AutonomyPolicy(cfg.get("autonomy"))
+                except PolicyError:
+                    # A hand-edited config must fail safe, never open.
+                    policy = AutonomyPolicy()
+                denied = (cfg.get("app_deny_list") or None) \
+                    if cfg.get("feature_app_permissions", True) else None
+                agent = Agent(planner, mode_label, gate, self.kill,
+                              AllowList(cfg["allow_apps"]), log,
+                              on_event=_on_event, driver=driver,
+                              autonomy=policy, pause_gate=self.pause_gate,
+                              denied_apps=denied,
+                              recovery_enabled=bool(
+                                  cfg.get("self_recovery", True)),
+                              cancel_event=cancel_event)
+                with self.lock:
+                    if generation == self._run_generation:
+                        self.agent = agent
+                        self.state["planner_mode"] = mode_label
+                        self.state["run_dir"] = log.dir
+                try:
+                    if dry_run:
+                        result = self._dry_run(agent, goal, log)
+                    else:
+                        result = agent.run(goal)
+                except Exception as exc:  # agent.run logs; be safe
+                    result = {"status": "failed", "reason": str(exc)}
+                # A planning/connection failure surfaces as the
+                # pop-up payload too (mid-run failures land here
+                # after the engine's one bounded replan retry).
+                # The whole side-effect block (pop-up, tones,
+                # notifications, memory learning, voice) runs only
+                # while this run is still the current generation:
+                # a force-cleared zombie finishing late stays
+                # silent and changes nothing.
+                if generation == self._run_generation:
+                    if result.get("status") == "failed" and \
+                            connfail.planner_kind(mode, cfg) != "builtin":
+                        payload = connfail.classify(
+                            result.get("reason", ""), mode, cfg)
+                        if payload["cause"] != "unknown":
+                            with self.lock:
+                                self.state["connection_error"] = {
+                                    **payload, "goal": goal,
+                                    "planner": mode}
+                            notify.notify("connection_failed", cfg,
+                                          body=payload["headline"])
+                    sounds.play(
+                        "run_completed"
+                        if result.get("status") == "success"
+                        else "run_failed"
+                        if result.get("status") == "failed"
+                        else "", cfg, os.path.join(DATA_DIR, "sounds"))
+                    if result.get("status") == "success":
+                        notify.notify(
+                            "run_completed", cfg,
+                            body=(goal[:80] + " — "
+                                  + (result.get("answer")
+                                     or ""))[:140])
+                    elif result.get("status") == "failed":
+                        notify.notify(
+                            "run_failed", cfg,
+                            body=(goal[:80] + " — "
+                                  + (result.get("reason")
+                                     or ""))[:140])
+                    # Resident memory learns from finished runs
+                    # (success only, inside learn_from_log) and
+                    # habits count routine runs.
+                    try:
+                        learn_from_log(self.memory, log.dir,
+                                       result.get("status", ""))
+                        if routine_name:
+                            self.memory.note_routine(routine_name)
+                            self.memory.save()
+                    except Exception:
+                        pass
+                    if cfg.get("voice_updates"):
+                        summary = result.get("answer") \
+                            or result.get("reason") or ""
+                        voice.speak(
+                            f"Run finished: {result.get('status', '')}. "
                             f"{summary}"[:200])
-            with self.lock:
-                self.state["running"] = False
-                self.state["result"] = result
+            except Exception as exc:
+                # Run SETUP failed (planner init, RunLog creation,
+                # audit write, driver construction): the run never
+                # started, but running=True was already published —
+                # the finally below is what keeps that from
+                # stranding the manager in "a run is in progress"
+                # forever (the RunLog PermissionError wedge).
+                result = {"status": "failed",
+                          "reason": f"run setup failed: "
+                                    f"{type(exc).__name__}: {exc}"}
+            finally:
+                with self.lock:
+                    if generation == self._run_generation:
+                        self.state["running"] = False
+                        self.state["result"] = result
+                        if self._run_cancel is cancel_event:
+                            self._run_cancel = None
 
         self.thread = threading.Thread(target=_work, daemon=True)
         self.thread.start()
@@ -558,7 +636,94 @@ class RunManager:
         # The kill switch also fences the queue: nothing new starts
         # until the user explicitly resumes it.
         self.queue.halt()
+        with self.lock:
+            self._kill_tripped_at = time.time()
+            running = self.state["running"]
+            generation = self._run_generation
+        if running:
+            # A healthy worker notices the kill between steps and
+            # finishes on its own; the watchdog exists for the one
+            # that cannot — a step that never returns (v3.4.1).
+            self._start_watchdog(generation)
         return {"ok": True, "tripped": True}
+
+    # -- kill watchdog (v3.4.1) --------------------------------------
+    def _start_watchdog(self, generation):
+        """One watchdog per run generation.  It force-clears the
+        run if the worker is still going kill_grace_seconds after
+        the kill was tripped."""
+        with self.lock:
+            current = self._watchdog_thread
+            if current is not None and current.is_alive() \
+                    and self._watchdog_generation == generation:
+                return
+            thread = threading.Thread(
+                target=self._watchdog_loop, args=(generation,),
+                daemon=True, name="deskdora-kill-watchdog")
+            self._watchdog_thread = thread
+            self._watchdog_generation = generation
+        thread.start()
+
+    def _watchdog_loop(self, generation):
+        deadline = time.time() + self.kill_grace_seconds
+        while time.time() < deadline:
+            with self.lock:
+                if not self.state["running"] \
+                        or self._run_generation != generation \
+                        or not self.kill.is_tripped():
+                    return  # finished in time, superseded, or reset
+            time.sleep(0.05)
+        self._force_clear(
+            generation,
+            "kill switch tripped but the current step did not "
+            f"return within {self.kill_grace_seconds:g}s — the "
+            "run was force-cleared by the kill watchdog")
+
+    def _force_clear(self, generation, reason):
+        """End a wedged run without its worker's cooperation.
+
+        The state is cleared HERE, not by the worker: running
+        becomes False, the result is recorded as killed, and the
+        generation bump fences the stuck worker — its per-run
+        cancel event is set permanently (the agent checks it
+        before every action dispatch, so when the hung call
+        eventually returns, the worker unwinds without acting),
+        its events and late cleanup are ignored, and any pending
+        confirmation or plan approval is denied so a worker
+        blocked there wakes up and exits too.  Returns True when
+        this call actually cleared the run."""
+        with self.lock:
+            if not self.state["running"] \
+                    or self._run_generation != generation:
+                return False
+            cancel = self._run_cancel
+            agent = self.agent
+            result = {"status": "killed", "reason": reason,
+                      "answers": {},
+                      "steps_executed": self.progress.get("done", 0),
+                      "force_cleared": True}
+            self.state["running"] = False
+            self.state["result"] = result
+            self.progress["current_action"] = \
+                "Killed — step did not return"
+            self._run_generation += 1
+            self._run_cancel = None
+            pending = self.pending
+            self.pending = None
+        if cancel is not None:
+            cancel.set()
+        if pending is not None:
+            pending["approved"] = False
+            pending["event"].set()
+        # Wake a dry-run plan wait so that worker can unwind too.
+        self._plan_decision = {"approved": False, "skip": set()}
+        self._plan_event.set()
+        if agent is not None:
+            try:
+                agent.log.event("force_cleared", reason=reason)
+            except Exception:
+                pass  # the audit line is a bonus, never a blocker
+        return True
 
     # -- companion / overlay controls (v3.2) --------------------------
     def pause_all(self):
@@ -577,7 +742,39 @@ class RunManager:
         return {"ok": True, "paused": False}
 
     def reset_state(self):
-        """Clear a finished/stopped run back to idle."""
+        """Clear a finished/stopped run back to idle.
+
+        A live, unkilled run still refuses (409) — reset is not a
+        second stop button.  But a KILLED run can never refuse
+        permanently (v3.4.1): if the worker has not finished, reset
+        gives it the rest of the kill grace period to die on its
+        own, then force-clears it and proceeds."""
+        with self.lock:
+            running = self.state["running"]
+            tripped = self.kill.is_tripped()
+            generation = self._run_generation
+        if running and not tripped:
+            raise HTTPException(409, "a run is in progress")
+        if running and tripped:
+            deadline = time.time() + self.kill_grace_seconds
+            while time.time() < deadline:
+                with self.lock:
+                    if not self.state["running"]:
+                        break
+                time.sleep(0.05)
+            with self.lock:
+                wedged = self.state["running"] \
+                    and self._run_generation == generation
+            if wedged:
+                self._force_clear(
+                    generation,
+                    "kill switch tripped; the run was force-cleared "
+                    "on reset after the grace period")
+            with self.lock:
+                if self.state["running"]:
+                    # A newer run took over while we waited — its
+                    # state is not ours to clear.
+                    raise HTTPException(409, "a run is in progress")
         with self.lock:
             if self.state["running"]:
                 raise HTTPException(409, "a run is in progress")
