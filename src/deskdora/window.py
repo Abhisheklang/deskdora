@@ -114,8 +114,9 @@ class DeskDoraWindow(Gtk.Window):
 # sees an unexpected active window and fails the step safe instead
 # of typing into the wrong place — the designed behaviour.
 OVERLAY_CSS = """
-#overlay-card{background:#0A0B0A;border:1px solid rgba(206,222,98,.5);
-  border-radius:14px;padding:12px 14px}
+#overlay-card{background:#12140F;border:2px solid #CEDE62;
+  border-radius:14px;padding:12px 14px;
+  box-shadow:0 8px 28px rgba(0,0,0,.65), 0 0 18px rgba(206,222,98,.25)}
 #ov-brand{color:#9E9F9F;font-family:monospace;font-size:9px;
   letter-spacing:2px}
 #ov-dot{color:#CEDE62;font-size:11px}
@@ -414,8 +415,8 @@ class EdgeLight(Gtk.Window):
     strip (the bright line at the very edge) plus a glow strip whose
     gradient fades inward.  Styles restyle the same widgets."""
 
-    BAND = 14      # glow band thickness, px
-    CORE = 3       # bright line thickness, px
+    BAND = 18      # glow band thickness, px
+    CORE = 5       # bright line thickness, px
 
     def __init__(self, hub):
         super().__init__(title="DeskDora Edge")
@@ -461,9 +462,18 @@ class EdgeLight(Gtk.Window):
 
     def _build_edge(self, edge):
         vertical = edge in ("left", "right")
+        # The strips stack from the screen edge INWARD, so the box
+        # orientation is the stacking axis: top/bottom edges stack
+        # VERTICALLY (core line at the edge, glow beneath it),
+        # left/right edges stack HORIZONTALLY.  This was inverted
+        # until v3.4.2: with the axis swapped, each strip collapsed
+        # to zero size along the stack and the border painted
+        # nothing at all — the window mapped, the state logic ran,
+        # and the screen showed no light (measured in the v3.2
+        # videos: run-active frames have no lime pixel on any edge).
         box = Gtk.Box(
-            orientation=(Gtk.Orientation.VERTICAL if vertical
-                         else Gtk.Orientation.HORIZONTAL))
+            orientation=(Gtk.Orientation.HORIZONTAL if vertical
+                         else Gtk.Orientation.VERTICAL))
         box.set_name(f"edge-{edge}")
         if edge == "top":
             box.set_valign(Gtk.Align.START)
@@ -483,11 +493,11 @@ class EdgeLight(Gtk.Window):
         if vertical:
             core.set_size_request(self.CORE, -1)
             glow.set_size_request(self.BAND, -1)
-            core2.set_size_request(2, -1)
+            core2.set_size_request(3, -1)
         else:
             core.set_size_request(-1, self.CORE)
             glow.set_size_request(-1, self.BAND)
-            core2.set_size_request(-1, 2)
+            core2.set_size_request(-1, 3)
         # Order from the screen edge inward depends on the edge.
         order = ((core, glow, core2) if edge in ("top", "left")
                  else (core2, glow, core))
@@ -598,7 +608,7 @@ class EdgeLight(Gtk.Window):
             alpha = 0.95
         elif st["animated"]:
             speed = 2.3 if st["mode"] == "amber-fast" else 1.0
-            alpha = 0.74 + 0.26 * math.sin(self._pulse_t * speed)
+            alpha = 0.85 + 0.15 * math.sin(self._pulse_t * speed)
         else:
             alpha = 0.95
         style = st["style"]
