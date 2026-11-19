@@ -35,9 +35,11 @@ from deskdora.safety import KillSwitch
 # ----------------------------------------------------------------------
 # Harness (modelled on test_wedge_fix): a real RunManager against a
 # fake driver and a static planner, with the REAL sounds / notify
-# modules in the path — only their final output stages (paplay /
-# notify-send) are replaced by recorders, so the Settings-toggle
-# gating inside those modules is exercised, not bypassed.
+# modules in the path — tones are observed at the server's
+# dispatch queue (the window plays them; dispatch is the provable
+# layer) and notify-send is replaced by a recorder, so the
+# Settings-toggle gating inside those modules is exercised, not
+# bypassed.
 # ----------------------------------------------------------------------
 
 class FakeDriver(DesktopDriver):
@@ -106,20 +108,26 @@ def wait_until(predicate, timeout=15.0, poll=0.05):
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    """A RunManager on tmp dirs + tone/notification recorders."""
+    """A RunManager on tmp dirs + a notification recorder.  Tones
+    are observed where the server now dispatches them: the
+    tone_events queue in the run state (the window plays them;
+    the dispatch is what a test can prove)."""
     monkeypatch.setattr(server, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(server, "RUNS_DIR", str(tmp_path / "runs"))
     monkeypatch.setattr(server, "CONFIG_PATH",
                         str(tmp_path / "config.json"))
-    tones, notes = [], []
-    monkeypatch.setattr(server.sounds, "_paplay",
-                        lambda path, volume: tones.append(path) or True)
+    notes = []
     monkeypatch.setattr(
         server.notify, "_notify_send",
         lambda title, body, **kw: notes.append(title) or True)
     mgr = server.RunManager()
     mgr.kill = KillSwitch(str(tmp_path / "STOP"))
     mgr.kill_grace_seconds = 0.6
+
+    def tones():
+        return [(e["event"], e["tone"])
+                for e in mgr.state["tone_events"]]
+
     return mgr, tones, notes
 
 
@@ -189,7 +197,8 @@ def test_completion_tone_and_notification_fire_on_success(
     mgr, tones, notes = rig
     install(mgr, monkeypatch, FakeDriver(), KEY_PLAN)
     run_and_wait(mgr, "organise the folder")
-    assert any("tone-run_completed" in p for p in tones)
+    # The default completion tone, dispatched on success.
+    assert ("run_completed", "chime") in tones()
     assert "DeskDora — run completed" in notes
 
 
@@ -198,27 +207,41 @@ def test_failure_fires_its_own_tone_not_the_completion_one(
     mgr, tones, notes = rig
     install(mgr, monkeypatch, FakeDriver(), FAIL_PLAN)
     run_and_wait(mgr, "do the impossible")
-    assert any("tone-run_failed" in p for p in tones)
-    assert not any("tone-run_completed" in p for p in tones)
+    assert ("run_failed", "low") in tones()
+    assert all(ev != "run_completed" for ev, _t in tones())
     assert "DeskDora — run failed" in notes
     assert "DeskDora — run completed" not in notes
+
+
+def test_killed_run_dispatches_no_tone(rig, monkeypatch):
+    mgr, tones, _notes = rig
+    driver = FakeDriver(block_first_key=True)
+    install(mgr, monkeypatch, driver, KEY_PLAN)
+    assert mgr.start_run("organise the folder", "builtin")["ok"]
+    assert driver.entered.wait(timeout=10)
+    mgr.trip_kill()
+    assert wait_until(lambda: not mgr.state["running"])
+    assert mgr.state["result"]["status"] == "killed"
+    assert tones() == []
+    driver.release.set()
 
 
 def test_completion_tone_and_notification_respect_toggles(
         rig, monkeypatch, tmp_path):
     mgr, tones, notes = rig
-    # Both run-completed toggles OFF in the user's config.  The
-    # completion STATE is not gated (it is the app answering in
-    # its own window) — the sound and the system notification are.
+    # The run-completed tone set to Off and its notification
+    # toggled off in the user's config.  The completion STATE is
+    # not gated (it is the app answering in its own window) —
+    # the sound and the system notification are.
     (tmp_path / "config.json").write_text(json.dumps({
-        "sounds": {"events": {"run_completed": False}},
+        "sounds": {"events": {"run_completed": "off"}},
         "notifications": {"events": {"run_completed": False}},
     }))
     install(mgr, monkeypatch, FakeDriver(), KEY_PLAN)
     result = run_and_wait(mgr, "organise the folder")
     assert result["status"] == "success"
     assert mgr.state["completion"] is not None
-    assert not any("tone-run_completed" in p for p in tones)
+    assert all(ev != "run_completed" for ev, _t in tones())
     assert "DeskDora — run completed" not in notes
 
 

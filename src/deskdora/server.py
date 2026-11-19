@@ -332,8 +332,18 @@ class RunManager:
             # Cleared by the next run, by reset, and by the dismiss
             # endpoint.
             "completion": None,
+            # Tone dispatch queue (v3.7.2): the server resolves
+            # each sound event to its configured tone (sounds
+            # module — master switch + per-event selection) and
+            # queues it here; the app window plays what it finds
+            # via WebAudio.  Playback moved into the window
+            # because the old paplay path was silently dead
+            # wherever paplay or an audio server was missing —
+            # which included every environment the user ran in.
+            "tone_events": [],
             "source": "ui",
         }
+        self._tone_seq = 0
         self.kill = KillSwitch()
         self.pause_gate = PauseGate()
         # Kill-switch wedge fix (v3.4.1): the kill switch used to
@@ -385,8 +395,7 @@ class RunManager:
 
     def _queue_drained(self):
         cfg = load_config()
-        sounds.play("queue_finished", cfg,
-                    os.path.join(DATA_DIR, "sounds"))
+        self.emit_tone("queue_finished", cfg)
         snap = self.queue.snapshot()
         finished = [it for it in snap["items"]
                     if it["status"] in ("success", "failed", "blocked",
@@ -418,6 +427,24 @@ class RunManager:
         except HTTPException as exc:
             return False, str(exc.detail)
 
+    # -- tone dispatch (v3.7.2): resolve an event to its configured
+    # tone and queue it for the window to play.  The sounds module
+    # owns the gating (master switch, per-event selection); a
+    # silent event queues nothing at all.  The queue is capped and
+    # rides /api/status in the state payload.
+    def emit_tone(self, event, cfg=None):
+        tone = sounds.resolve_tone(
+            cfg if cfg is not None else load_config(), event)
+        if tone is None:
+            return False
+        with self.lock:
+            self._tone_seq += 1
+            entry = {"seq": self._tone_seq, "event": event,
+                     "tone": tone, "at": time.time()}
+            self.state["tone_events"] = (
+                self.state["tone_events"] + [entry])[-8:]
+        return True
+
     # -- confirmation policy: blocks the agent thread until the UI answers
     def ui_policy(self, step, description=""):
         cid = uuid.uuid4().hex[:8]
@@ -427,8 +454,7 @@ class RunManager:
                   "approved": None}
         with self.lock:
             self.pending = record
-        sounds.play("confirmation_waiting", load_config(),
-                    os.path.join(DATA_DIR, "sounds"))
+        self.emit_tone("confirmation_waiting", load_config())
         notify.notify("confirmation_waiting", load_config(),
                       body=(description or "DeskDora needs a "
                             "confirmation to continue.")[:140])
@@ -506,13 +532,12 @@ class RunManager:
             self._kill_tripped_at = None
         self.kill.reset()
         self.pause_gate.clear()
-        # Sound tones (v3.3): fire-and-forget, never blocking.
+        # Sound tones: dispatched to the window's tone queue,
+        # never blocking (see emit_tone).
         if source == "ui":
-            sounds.play("command_sent", cfg,
-                        os.path.join(DATA_DIR, "sounds"))
+            self.emit_tone("command_sent", cfg)
         elif source == "companion":
-            sounds.play("command_received", cfg,
-                        os.path.join(DATA_DIR, "sounds"))
+            self.emit_tone("command_received", cfg)
         if dry_run is None:
             dry_run = bool(cfg.get("dry_run_default"))
 
@@ -618,12 +643,10 @@ class RunManager:
                                     "planner": mode}
                             notify.notify("connection_failed", cfg,
                                           body=payload["headline"])
-                    sounds.play(
-                        "run_completed"
-                        if result.get("status") == "success"
-                        else "run_failed"
-                        if result.get("status") == "failed"
-                        else "", cfg, os.path.join(DATA_DIR, "sounds"))
+                    if result.get("status") == "success":
+                        self.emit_tone("run_completed", cfg)
+                    elif result.get("status") == "failed":
+                        self.emit_tone("run_failed", cfg)
                     if result.get("status") == "success":
                         notify.notify(
                             "run_completed", cfg,
@@ -1239,12 +1262,13 @@ def run_delete(run_id: str):
 
 @app.post("/api/sound")
 def sound_test(req: SoundRequest):
-    """Play one event tone (the Settings test buttons, and the
-    app window's app-opened tone)."""
+    """Queue one event tone for the window to play (the app
+    window's app-opened tone, posted by the window shell at
+    launch).  Settings previews no longer come through here —
+    they play locally in the page, so a preview can audition the
+    tone currently picked, saved or not."""
     cfg = load_config()
-    played = sounds.play(req.event, cfg,
-                         os.path.join(DATA_DIR, "sounds"),
-                         force=True)
+    played = MANAGER.emit_tone(req.event, cfg)
     return {"ok": played, "event": req.event}
 
 
@@ -1540,8 +1564,7 @@ def companion_auth(request: Request):
         raise HTTPException(401, "companion PIN required")
     token = secrets.token_urlsafe(24)
     MANAGER.companion_sessions[token] = time.time() + 12 * 3600
-    sounds.play("companion_connected", load_config(),
-                os.path.join(DATA_DIR, "sounds"))
+    MANAGER.emit_tone("companion_connected", load_config())
     resp = JSONResponse({"ok": True})
     resp.set_cookie("dd_companion_session", token, max_age=12 * 3600,
                     httponly=True, samesite="lax")
@@ -1754,7 +1777,10 @@ def config_post(cfg: dict):
         merged["user_name"] = cfg["user_name"].strip()[:80]
     if isinstance(cfg.get("sounds"), dict):
         # Sounds merge field-wise so a partial update can't drop
-        # event toggles it didn't mention.
+        # event selections it didn't mention.  Tone selections
+        # validate strictly, like every other setting: an unknown
+        # event or a tone that doesn't exist is a 400, never a
+        # silent save of a value nothing can play.
         current = sounds.sounds_config(merged)
         update = cfg["sounds"]
         if "enabled" in update:
@@ -1762,7 +1788,13 @@ def config_post(cfg: dict):
         if "volume" in update:
             current["volume"] = update["volume"]
         if isinstance(update.get("events"), dict):
-            current["events"].update(update["events"])
+            try:
+                sounds.validate_event_tones(update["events"])
+            except ValueError as exc:
+                raise HTTPException(400, str(exc))
+            for event, value in update["events"].items():
+                current["events"][event] = \
+                    sounds._migrate_value(event, value)
         merged["sounds"] = current
     if "autonomy" in cfg:
         try:

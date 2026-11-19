@@ -91,7 +91,8 @@ def test_failed_save_preserves_existing_config(config_env, monkeypatch):
 def manager(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(server, "RUNS_DIR", str(tmp_path / "runs"))
-    monkeypatch.setattr(server.sounds, "play", lambda *a, **k: None)
+    monkeypatch.setattr(server.sounds, "resolve_tone",
+                        lambda *a, **k: None)
     monkeypatch.setattr(server.notify, "notify", lambda *a, **k: None)
     mgr = server.RunManager()
     mgr.kill = KillSwitch(str(tmp_path / "STOP"))

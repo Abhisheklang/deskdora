@@ -1180,7 +1180,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
       <div class="form-rows">
         <div class="frow2"><span class="mono-lab">Sound tones</span>
           <label class="switch"><input type="checkbox" id="sndMaster"><i></i></label>
-          <span class="hint">Master switch for the event tones below.</span></div>
+          <span class="hint">Master switch — off silences every tone below. Each event picks its own tone, or Off; PLAY previews the pick.</span></div>
         <div class="frow2"><span class="mono-lab">Volume</span>
           <input type="range" id="sndVolume" min="0" max="100" step="5" style="max-width:220px">
           <span class="hint">Saved with SAVE SETTINGS.</span></div>
@@ -1373,7 +1373,7 @@ const S = {
   plan: [], planTotal: 0, planDone: 0, curIdx: -1, epoch: 0,
   lastAction: "Standby", plannerMode: "", runId: null,
   backfilledFor: null, evKeys: new Set(), liveRows: {},
-  dismissed: null,
+  dismissed: null, lastToneSeq: null,
   routinesCache: [],
 };
 const VIEW_NAMES = {run:"Command", queue:"Queue", log:"History",
@@ -1873,6 +1873,9 @@ async function pollStatus() {
       if (S.runId) { S.backfilledFor = null; backfill(S.runId); }
     }
 
+    // Tone dispatch (v3.7.2): play any tones the server queued
+    // since the last poll (completion, failure, confirmation…).
+    consumeToneEvents(st);
     // Completion card (v3.7.2): a successful finish is a server
     // state of its own — goal, steps and elapsed as the service
     // measured them — and this renders exactly that payload, on
@@ -2387,6 +2390,85 @@ $("#runUndoBtn").addEventListener("click", async () => {
     (r.missing.length ? ` · ${r.missing.length} MISSING` : "");
 });
 
+/* ================= tones (v3.7.2) =================
+   Playback lives here, in the window: WebAudio synthesis of the
+   sketches below — the same table the server keeps in
+   sounds.TONES (a source guard keeps the ids identical).  The
+   pre-v3.7.2 server-side paplay path was silently dead wherever
+   paplay or an audio server was missing — which was every
+   environment the app was used in — so the server now only
+   RESOLVES each event to its configured tone and queues it in
+   the status payload; this page plays what it finds there. */
+const TONES_JS = {
+  chime: [[523.25, 0, 0.13], [659.25, 0.09, 0.13], [783.99, 0.18, 0.24]],
+  harp: [[523.25, 0, 0.12], [659.25, 0.08, 0.12], [783.99, 0.16, 0.12],
+         [1046.50, 0.24, 0.28]],
+  bell: [[1318.50, 0, 0.35], [987.77, 0, 0.28]],
+  soft: [[392.00, 0, 0.18], [523.25, 0.14, 0.30]],
+  pop: [[1174.66, 0, 0.08], [880.00, 0.07, 0.14]],
+  low: [[220.00, 0, 0.20], [164.81, 0.16, 0.32]],
+};
+const TONE_OPTIONS_UI = [["chime", "Chime"], ["harp", "Harp"],
+  ["bell", "Bell"], ["soft", "Soft"], ["pop", "Pop"], ["low", "Low"],
+  ["off", "Off"]];
+const DEFAULT_TONE_JS = { run_completed: "chime", run_failed: "low",
+  confirmation_waiting: "bell", queue_finished: "harp",
+  app_opened: "off", companion_connected: "off",
+  command_received: "off", command_sent: "off" };
+let audioCtx = null;
+function toneContext() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try { audioCtx = new AC(); } catch (e) { return null; }
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+/* A user gesture is what unlocks WebAudio; any click in the app
+   (starting a run counts) arms the context for later tones. */
+document.addEventListener("pointerdown", () => toneContext());
+function playTone(toneId, volume) {
+  const notes = TONES_JS[toneId];
+  if (!notes) return false;
+  const ctx = toneContext();
+  if (!ctx) return false;
+  const master = ctx.createGain();
+  master.gain.value =
+    Math.max(0, Math.min(100, volume ?? 70)) / 100 * 0.5;
+  master.connect(ctx.destination);
+  const t0 = ctx.currentTime + 0.01;
+  notes.forEach(([freq, start, dur]) => {
+    [[1, 1.0], [2, 0.25]].forEach(([mult, amp]) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.frequency.value = freq * mult;
+      const s = t0 + start, e = s + dur;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, amp),
+                                          s + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, e);
+      osc.connect(g); g.connect(master);
+      osc.start(s); osc.stop(e + 0.05);
+    });
+  });
+  return true;
+}
+/* The poll side: play tone events the server queued since the
+   last poll.  Stale entries (an event from before this window
+   opened, beyond a few seconds) are marked seen, not played —
+   opening the app must not replay history. */
+function consumeToneEvents(st) {
+  const tones = (st.state && st.state.tone_events) || [];
+  if (!tones.length) return;
+  const vol = ((st.config || {}).sounds || {}).volume;
+  tones.forEach(te => {
+    if (S.lastToneSeq !== null && te.seq <= S.lastToneSeq) return;
+    if (Date.now() / 1000 - te.at <= 20) playTone(te.tone, vol);
+  });
+  S.lastToneSeq = tones[tones.length - 1].seq;
+}
+
 /* sounds settings */
 const SOUND_EVENTS_UI = [
   ["app_opened", "App opened"], ["run_completed", "Run completed"],
@@ -2399,23 +2481,41 @@ function buildSoundRows(snd) {
   $("#sndMaster").checked = snd.enabled !== false;
   $("#sndVolume").value = snd.volume ?? 70;
   const events = snd.events || {};
-  $("#sndRows").innerHTML = SOUND_EVENTS_UI.map(([ev, label]) => `
+  $("#sndRows").innerHTML = SOUND_EVENTS_UI.map(([ev, label]) => {
+    let val = events[ev];
+    /* Pre-v3.7.2 configs stored booleans; the server migrates
+       them on save — mirror that here for display. */
+    if (val === true) val = DEFAULT_TONE_JS[ev] === "off"
+      ? "chime" : DEFAULT_TONE_JS[ev];
+    else if (val === false) val = "off";
+    else if (val === undefined) val = DEFAULT_TONE_JS[ev];
+    const opts = TONE_OPTIONS_UI.map(([id, name]) =>
+      `<option value="${id}"${id === val ? " selected" : ""}>`
+      + `${name}</option>`).join("");
+    return `
     <div class="frow2"><span class="mono-lab">${label}</span>
-      <span><label class="switch"><input type="checkbox" class="snd-ev" data-ev="${ev}" ${events[ev] ? "checked" : ""}><i></i></label>
+      <span><select class="snd-tone" data-ev="${ev}" aria-label="Tone for ${label}">${opts}</select>
       <button class="mini-btn snd-test" data-ev="${ev}" style="margin-left:10px">PLAY</button></span>
-      <span class="hint"></span></div>`).join("");
+      <span class="hint"></span></div>`;
+  }).join("");
 }
 function collectSounds() {
   const events = {};
-  document.querySelectorAll(".snd-ev").forEach(c => { events[c.dataset.ev] = c.checked; });
+  document.querySelectorAll(".snd-tone").forEach(c => { events[c.dataset.ev] = c.value; });
   return { enabled: $("#sndMaster").checked,
            volume: Number($("#sndVolume").value || 70), events };
 }
 document.addEventListener("click", (e) => {
   const t = e.target.closest(".snd-test");
-  if (t) fetch("/api/sound", { method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ event: t.dataset.ev }) });
+  /* Preview is local WebAudio: it auditions the tone currently
+     picked in the row (saved or not) — the old server round-trip
+     went through paplay and was silently dead. */
+  if (t) {
+    const sel = document.querySelector(
+      `.snd-tone[data-ev="${t.dataset.ev}"]`);
+    if (sel && sel.value !== "off")
+      playTone(sel.value, Number($("#sndVolume").value || 70));
+  }
   const chip = e.target.closest("[data-deny-suggest]");
   if (chip) {
     const ta = $("#cfgDenyApps");

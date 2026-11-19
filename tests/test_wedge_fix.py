@@ -118,7 +118,10 @@ def wait_until(predicate, timeout=15.0, poll=0.05):
 def manager(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(server, "RUNS_DIR", str(tmp_path / "runs"))
-    monkeypatch.setattr(server.sounds, "play", lambda *a, **k: None)
+    # Tones resolve to nothing in this harness (v3.7.2 dispatch:
+    # resolve_tone is the gating point emit_tone consults).
+    monkeypatch.setattr(server.sounds, "resolve_tone",
+                        lambda *a, **k: None)
     monkeypatch.setattr(server.notify, "notify", lambda *a, **k: None)
     mgr = server.RunManager()
     mgr.kill = KillSwitch(str(tmp_path / "STOP"))
