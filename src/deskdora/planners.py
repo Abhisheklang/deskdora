@@ -277,6 +277,115 @@ class OllamaPlanner:
                         f"Ollama download failed: {event['error']}")
                 yield event
 
+    def installed_models(self):
+        """The models Ollama actually has on this machine, live
+        from GET /api/tags: [{"name": ..., "size": bytes|None}].
+        Raises PlanError when Ollama doesn't answer — callers
+        must be able to tell 'Ollama is off' apart from 'Ollama
+        is on and holds nothing'."""
+        req = urllib.request.Request(self.host + "/api/tags")
+        try:
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.load(resp)
+        except Exception as exc:
+            raise PlanError(
+                f"Ollama is not reachable at {self.host}") from exc
+        out = []
+        for m in data.get("models", []):
+            if m.get("name"):
+                out.append({"name": m["name"],
+                            "size": m.get("size")})
+        return out
+
+    def create_from_file(self, name, path):
+        """Register a local .gguf file with Ollama (POST
+        /api/create with a Modelfile of one line: FROM <path>),
+        streaming the same style of progress events pull()
+        yields.  Ollama does the importing/loading; this only
+        asks and relays.  Raises PlanError on refusal."""
+        body = {"name": name, "modelfile": f"FROM {path}",
+                "stream": True}
+        req = urllib.request.Request(
+            self.host + "/api/create",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            resp = urllib.request.urlopen(req, timeout=120)
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = json.loads(
+                    exc.read().decode("utf-8", "replace")).get(
+                        "error", "")
+            except Exception:
+                pass
+            raise PlanError(
+                f"Ollama refused the import of {name}: "
+                f"{detail or exc.reason or exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise PlanError(
+                f"Ollama is not reachable at {self.host} — start "
+                f"Ollama first, then retry the import. ({exc})"
+            ) from exc
+        with resp:
+            for raw in resp:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get("error"):
+                    raise PlanError(
+                        f"Ollama import failed: {event['error']}")
+                yield event
+
+
+class PullAggregator:
+    """Aggregate Ollama's per-layer pull progress into model
+    progress (v3.7.2).
+
+    Ollama reports bytes PER LAYER (digest): each layer restarts
+    at 0, so rendering a single event's completed/total — what
+    the UI did before — shows one layer's numbers, with the bar
+    jumping back at every layer change.  This tracks the latest
+    (total, completed) per digest and sums them: ``completed``
+    and ``total`` on the enriched event are the whole model's.
+    ``percent`` is None whenever no layer total is known yet —
+    the UI then shows downloaded size + status and NO invented
+    percentage.
+    """
+
+    def __init__(self):
+        self._layers = {}
+
+    def feed(self, event):
+        if not isinstance(event, dict):
+            return event
+        out = dict(event)
+        digest = event.get("digest")
+        if digest and event.get("total"):
+            self._layers[digest] = (
+                int(event["total"]), int(event.get("completed")
+                                         or 0))
+        elif digest and digest in self._layers and \
+                event.get("completed") is not None:
+            total, _done = self._layers[digest]
+            self._layers[digest] = (total, int(event["completed"]))
+        if self._layers:
+            total = sum(t for t, _c in self._layers.values())
+            completed = sum(c for _t, c in self._layers.values())
+            out["completed_all"] = completed
+            out["total_all"] = total
+            out["percent"] = round(100 * completed / total) \
+                if total > 0 else None
+        else:
+            out["completed_all"] = None
+            out["total_all"] = None
+            out["percent"] = None
+        return out
+
 
 def _user_prompt(goal, observation, memory=None, history=None):
     """The user message every LLM planner (local or cloud) sends:

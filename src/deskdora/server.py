@@ -33,8 +33,11 @@ from .audit import RunLog, list_runs, read_log
 from .autonomy import (DEFAULT_POLICY, AutonomyPolicy, PolicyError,
                       validate_policy)
 from .memory import MemoryStore, learn_from_log
+from .gguf import (GgufError, check_model_file,
+                   model_name_from_filename, validate_model_name)
 from .planners import (PROVIDER_REGISTRY, OllamaPlanner, PlanError,
-                       get_planner, make_provider_planner,
+                       PullAggregator, get_planner,
+                       make_provider_planner,
                        validate_custom_provider)
 from .proactive import ProposalStore, ProactiveWatcher
 from .queue import BusyError, TaskQueue
@@ -1952,29 +1955,104 @@ class PullRequest(BaseModel):
     model: str | None = None
 
 
+def _ollama_planner(cfg):
+    stored = (cfg.get("providers") or {}).get("ollama") or {}
+    host = stored.get("base_url") \
+        or PROVIDER_REGISTRY["ollama"]["base_url"]
+    return OllamaPlanner(model=stored.get("model") or cfg["model"],
+                         host=host)
+
+
+@app.get("/api/providers/ollama/installed")
+def providers_ollama_installed():
+    """The models Ollama has on this machine, live from /api/tags
+    (v3.7.2).  reachable=False is a 200, not an error: the picker
+    needs to say 'Ollama isn't running' in plain words, which is
+    a normal state, not a failure of this endpoint."""
+    planner = _ollama_planner(load_config())
+    try:
+        models = planner.installed_models()
+    except PlanError:
+        return {"reachable": False, "models": []}
+    return {"reachable": True, "models": models}
+
+
 @app.post("/api/providers/ollama/pull")
 def providers_pull_ollama(req: PullRequest):
     """Stream an Ollama model download as NDJSON progress events
     (v3.6, built for the setup wizard's AI step).
 
-    Each line is one Ollama pull event (status, and total/completed
-    byte counts while a layer downloads).  A failure — Ollama down,
-    model unknown — arrives as a final {"error": ...} event rather
-    than a hung or half-dead stream, so the wizard can show it
-    inline and offer retry/skip.  Local path only: cloud providers
-    have nothing to download."""
+    Each line is one Ollama pull event enriched by PullAggregator
+    (v3.7.2): Ollama reports bytes per layer, so the raw events
+    carry completed_all / total_all / percent for the WHOLE
+    model alongside the layer's own numbers — the UI renders the
+    aggregates.  A failure — Ollama down, model unknown — arrives
+    as a final {"error": ...} event rather than a hung or
+    half-dead stream, so the wizard can show it inline and offer
+    retry/skip.  Local path only: cloud providers have nothing
+    to download."""
     cfg = load_config()
     stored = (cfg.get("providers") or {}).get("ollama") or {}
     model = (req.model or "").strip() \
         or stored.get("model") or cfg["model"]
-    host = stored.get("base_url") \
-        or PROVIDER_REGISTRY["ollama"]["base_url"]
-    planner = OllamaPlanner(model=model, host=host)
+    planner = _ollama_planner(cfg)
+    planner.model = model
 
     def events():
+        agg = PullAggregator()
         try:
             for event in planner.pull():
-                yield json.dumps(event) + "\n"
+                yield json.dumps(agg.feed(event)) + "\n"
+        except PlanError as exc:
+            yield json.dumps({"error": str(exc)}) + "\n"
+
+    return StreamingResponse(events(),
+                             media_type="application/x-ndjson")
+
+
+class ImportCheckRequest(BaseModel):
+    path: str | None = None
+
+
+class ImportRequest(BaseModel):
+    path: str | None = None
+    name: str | None = None
+
+
+@app.post("/api/providers/ollama/import/check")
+def providers_ollama_import_check(req: ImportCheckRequest):
+    """Verify a .gguf file BEFORE importing (v3.7.2): existence,
+    extension, GGUF magic, and the header's declared name /
+    architecture.  Only the header is read — never the weights."""
+    try:
+        info = check_model_file(req.path or "")
+    except GgufError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, **info,
+            "suggested_name": model_name_from_filename(req.path)}
+
+
+@app.post("/api/providers/ollama/import")
+def providers_ollama_import(req: ImportRequest):
+    """Import a local .gguf file into Ollama (v3.7.2), streamed
+    as NDJSON progress in the same shape as the pull endpoint so
+    one UI renderer serves both.  The file is validated first
+    (header check); Ollama's create API does the importing —
+    DeskDora never loads the model itself."""
+    try:
+        check_model_file(req.path or "")
+        name = validate_model_name(
+            req.name or model_name_from_filename(req.path or ""))
+    except GgufError as exc:
+        raise HTTPException(400, str(exc))
+    planner = _ollama_planner(load_config())
+
+    def events():
+        agg = PullAggregator()
+        try:
+            for event in planner.create_from_file(
+                    name, (req.path or "").strip()):
+                yield json.dumps(agg.feed(event)) + "\n"
         except PlanError as exc:
             yield json.dumps({"error": str(exc)}) + "\n"
 

@@ -276,7 +276,9 @@ def test_pull_endpoint_streams_ndjson(config_env, monkeypatch):
                       json={"model": "qwen2.5:7b"})
     assert res.status_code == 200
     lines = [json.loads(l) for l in res.text.splitlines() if l.strip()]
-    assert lines[-1] == {"status": "success"}
+    # v3.7.2: events are enriched with whole-model aggregates.
+    assert lines[-1]["status"] == "success"
+    assert lines[-1]["percent"] == 100
     assert lines[1]["completed"] == 40
 
 

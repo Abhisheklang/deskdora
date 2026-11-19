@@ -2295,62 +2295,29 @@ $("#perrUseModel").addEventListener("click", async () => {
   }
   perrCheckAgain();
 });
-/* The download reuses the wizard's pull endpoint: NDJSON progress
-   from Ollama, streamed into this page's own progress bar.  On
-   success the page re-validates itself. */
+/* The download reuses the wizard's pull endpoint and the
+   shared progress renderer: NDJSON progress from Ollama,
+   aggregated server-side into whole-model figures.  On success
+   the page re-validates itself. */
 async function perrPullModel() {
   const pe = PERR.payload; if (!pe || PERR.pulling) return;
   const btn = $("#perrDownload"), msg = $("#perrPullMsg");
   perrFixMsg("");
   PERR.pulling = true;
   btn.disabled = true;
-  $("#perrProgWrap").hidden = false;
-  $("#perrProg").style.width = "0%";
-  msg.textContent = "Contacting Ollama…";
+  const prog = makePullProgress($("#perrProgWrap"), $("#perrProg"),
+                                msg);
+  prog.start("Contacting Ollama…");
   try {
-    const res = await fetch("/api/providers/ollama/pull", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ model: pe.model }) });
-    if (!res.ok || !res.body)
-      throw new Error("The download failed to start (HTTP "
-        + res.status + ").");
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "", failure = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (!line) continue;
-        let ev;
-        try { ev = JSON.parse(line); } catch (e) { continue; }
-        if (ev.error) { failure = ev.error; continue; }
-        if (ev.total)
-          $("#perrProg").style.width = Math.min(100,
-            Math.round((ev.completed || 0) / ev.total * 100)) + "%";
-        if (ev.status === "success")
-          $("#perrProg").style.width = "100%";
-        if (ev.status)
-          msg.textContent = ev.status + (ev.total
-            ? " — " + wizBytes(ev.completed || 0)
-              + " of " + wizBytes(ev.total) : "");
-      }
-    }
-    if (failure) {
-      perrFixMsg(failure + " Fix the problem and retry, or pick "
-        + "a model that is already installed.");
-      msg.textContent = "";
-    } else {
-      msg.textContent = "Downloaded — " + pe.model + " is ready.";
-      perrCheckAgain();
-    }
+    await streamNdjson("/api/providers/ollama/pull",
+                       { model: pe.model },
+                       ev => prog.update(ev));
+    prog.done("Downloaded — " + pe.model + " is ready.");
+    perrCheckAgain();
   } catch (e) {
-    perrFixMsg(String(e.message || e) + " Retry, or pick a model "
-      + "that is already installed.");
+    perrFixMsg(String(e.message || e) + " Fix the problem and "
+      + "retry, or pick a model that is already installed.");
+    msg.textContent = "";
   } finally {
     PERR.pulling = false;
     btn.disabled = false;
@@ -3143,6 +3110,60 @@ function fillProviderForm(pid) {
   $("#provKeyState").textContent = hasKey ? "Saved ····" + last4 :
     (keyOptional ? "No key needed" : "No key saved");
   $("#provMsg").textContent = "";
+  if (spec && spec.protocol === "ollama")
+    regroupSettingsOllamaModels(model);
+}
+
+/* Settings → AI Providers, Ollama (v3.7.2): the model picker
+   groups what Ollama actually has — live from /api/tags,
+   including models the registry doesn't know — above the
+   curated download list.  The same behaviour as the wizard's
+   picker and the error page's working-model picker. */
+async function regroupSettingsOllamaModels(currentModel) {
+  let data;
+  try {
+    data = await (await fetch(
+      "/api/providers/ollama/installed")).json();
+  } catch (e) { return; }
+  const sel = $("#provModel");
+  if (!sel || $("#provSelect").value !== "ollama") return;
+  const installed = (data.models || []).map(m => m.name);
+  const spec = PROV.registry.find(p => p.id === "ollama");
+  const curated = (spec.models || [])
+    .filter(m => !installed.includes(m));
+  sel.innerHTML = "";
+  const dl = document.createElement("optgroup");
+  dl.label = "Already downloaded — on this computer";
+  if (!data.reachable) {
+    const o = document.createElement("option");
+    o.textContent = "Ollama isn't running — start it to see "
+      + "your downloaded models";
+    o.disabled = true; dl.appendChild(o);
+  } else if (!installed.length) {
+    const o = document.createElement("option");
+    o.textContent = "No models downloaded yet";
+    o.disabled = true; dl.appendChild(o);
+  } else {
+    installed.forEach(name => {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name + " · on this computer";
+      dl.appendChild(o);
+    });
+  }
+  sel.appendChild(dl);
+  const cat = document.createElement("optgroup");
+  cat.label = "Download — needs internet";
+  curated.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m; o.textContent = m; cat.appendChild(o);
+  });
+  if (cat.children.length) sel.appendChild(cat);
+  if (currentModel
+      && [...sel.options].some(o => o.value === currentModel)) {
+    sel.value = currentModel;
+    $("#provModelCustom").value = "";
+  }
 }
 
 function effectiveModel() {
@@ -3369,6 +3390,7 @@ setInterval(loadProposals, 5000);
    it is tapped, like Settings), so a skip keeps whatever was
    already chosen and defaults fill the rest. */
 const WIZ = { step: 0, providerDirty: false, pulling: false,
+              importing: false, installed: null,
               plannerChosen: "", cfgAtOpen: null };
 const WIZ_NAMES = ["WELCOME", "APPEARANCE", "AI PLANNER", "SAFETY",
                    "ALL SET"];
@@ -3454,7 +3476,7 @@ async function wizFlush(done) {
 }
 
 async function wizNext() {
-  if (WIZ.pulling) return;
+  if (WIZ.pulling || WIZ.importing) return;
   const n = WIZ.step;
   if (n === 4) { closeWizard(); pollStatus(); return; }
   if (n === 0 || n === 2) await wizFlush(false);
@@ -3463,7 +3485,7 @@ async function wizNext() {
 }
 
 async function wizSkip() {
-  if (WIZ.pulling) return;
+  if (WIZ.pulling || WIZ.importing) return;
   await wizFlush(true);
   closeWizard();
   pollStatus();
@@ -3555,13 +3577,30 @@ function wizRenderAi() {
     <div class="frow2"><span class="mono-lab">Custom model ID</span>
       <input type="text" id="wizModelCustom" placeholder="Optional — overrides the list above"></div>`;
   if (spec.protocol === "ollama") {
-    html += `<div class="frow2"><span class="mono-lab">Download</span>
+    html += `<div id="wizDownloadBlock">
+      <div class="frow2"><span class="mono-lab">Download</span>
       <span><button type="button" class="pill-btn lime" id="wizPull">DOWNLOAD MODEL</button></span></div>
       <p class="hint">The model runs on this machine; downloads are
       several GB, so this can take a while. Skip it if you like —
       you can download later from Settings → AI Providers.</p>
+      </div>
+      <p class="hint" id="wizInstalledNote" hidden>Already on this
+      computer — no download needed.</p>
       <div class="wiz-prog" id="wizProgWrap" hidden><i id="wizProg"></i></div>
-      <p class="hint" id="wizPullMsg"></p>`;
+      <p class="hint" id="wizPullMsg"></p>
+      <div class="frow2"><span class="mono-lab">Model file</span>
+      <input type="text" id="wizImportPath" placeholder="Path to a .gguf file — e.g. /home/you/Downloads/model.gguf"></div>
+      <p class="hint">Have a model file already? Point at a .gguf
+      file and DeskDora will register it with Ollama.
+      DeskDora checks the file's header; Ollama loads and runs
+      the model. The file stays on this computer.</p>
+      <p class="hint" id="wizImportInfo"></p>
+      <div class="frow2"><span class="mono-lab">Import as</span>
+      <input type="text" id="wizImportName" placeholder="Model name — from the file name"></div>
+      <div class="frow2"><span class="mono-lab"></span>
+      <span><button type="button" class="pill-btn ghosty" id="wizImportBtn">IMPORT MODEL FILE</button></span></div>
+      <div class="wiz-prog" id="wizImportProgWrap" hidden><i id="wizImportProg"></i></div>
+      <p class="hint" id="wizImportMsg"></p>`;
   } else if (spec.local) {
     html += `<p class="hint">LM Studio serves the models it has
       downloaded itself — pick above the one you have loaded there.
@@ -3587,12 +3626,256 @@ function wizRenderAi() {
       el.addEventListener("input", () => { WIZ.providerDirty = true; });
     }
   });
+  if (spec.protocol === "ollama") wizInitOllamaStep(spec, cur);
+}
+
+/* --- step 3 (Ollama): downloaded models, grouping, import ---
+   The model picker lists what Ollama ACTUALLY has first —
+   live from /api/tags via the installed endpoint, including
+   models the curated registry has never heard of — and the
+   not-yet-downloaded curated models below.  Picking a
+   downloaded model needs no pull at all: the step's normal
+   save (wizFlush) stores it as the active model. */
+async function wizLoadInstalled(refresh) {
+  if (WIZ.installed && !refresh) return WIZ.installed;
+  try {
+    WIZ.installed = await (await fetch(
+      "/api/providers/ollama/installed")).json();
+  } catch (e) {
+    WIZ.installed = { reachable: false, models: [] };
+  }
+  return WIZ.installed;
+}
+
+function wizInstalledNames() {
+  return ((WIZ.installed || {}).models || []).map(m => m.name);
+}
+
+function wizFillModelOptions(spec, cur) {
+  const sel = $("#wizModel");
+  if (!sel) return;
+  const installed = wizInstalledNames();
+  const reachable = !WIZ.installed || WIZ.installed.reachable;
+  sel.innerHTML = "";
+  const dl = document.createElement("optgroup");
+  dl.label = "Already downloaded — on this computer";
+  if (!reachable) {
+    const o = document.createElement("option");
+    o.textContent = "Ollama isn't running — start it to see "
+      + "your downloaded models";
+    o.disabled = true; dl.appendChild(o);
+  } else if (!installed.length) {
+    const o = document.createElement("option");
+    o.textContent = "No models downloaded yet";
+    o.disabled = true; dl.appendChild(o);
+  } else {
+    installed.forEach(name => {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name + " · on this computer";
+      dl.appendChild(o);
+    });
+  }
+  sel.appendChild(dl);
+  const cat = document.createElement("optgroup");
+  cat.label = "Download — needs internet";
+  (spec.models || []).filter(m => !installed.includes(m))
+    .forEach(m => {
+      const o = document.createElement("option");
+      o.value = m; o.textContent = m; cat.appendChild(o);
+    });
+  if (cat.children.length) sel.appendChild(cat);
+  if (cur && [...sel.options].some(o => o.value === cur))
+    sel.value = cur;
+  wizSyncDownloadBlock();
+}
+
+function wizSyncDownloadBlock() {
+  const block = $("#wizDownloadBlock"), note = $("#wizInstalledNote");
+  if (!block || !note) return;
+  const isIn = wizInstalledNames().includes(wizModelValue());
+  block.hidden = isIn;
+  note.hidden = !isIn;
+}
+
+async function wizInitOllamaStep(spec, cur) {
+  wizFillModelOptions(spec, cur);
+  const sel = $("#wizModel");
+  if (sel) sel.addEventListener("change", wizSyncDownloadBlock);
+  const custom = $("#wizModelCustom");
+  if (custom) custom.addEventListener("input", wizSyncDownloadBlock);
+  const path = $("#wizImportPath");
+  if (path) path.addEventListener("change", wizCheckImportFile);
+  const btn = $("#wizImportBtn");
+  if (btn) btn.addEventListener("click", wizImportModel);
+  await wizLoadInstalled(true);
+  /* The step may have been re-rendered while the fetch flew. */
+  if ($("#wizModel")) {
+    wizFillModelOptions(spec, sel ? sel.value : cur);
+  }
+}
+
+/* Header check for a would-be import: the server reads ONLY
+   the file's header (magic + declared metadata) and reports
+   what it found, so the user sees the file verified before
+   anything is imported. */
+async function wizCheckImportFile() {
+  const pathEl = $("#wizImportPath"), info = $("#wizImportInfo");
+  const nameEl = $("#wizImportName");
+  if (!pathEl || !info) return;
+  const path = pathEl.value.trim();
+  if (!path) { info.textContent = ""; return; }
+  info.textContent = "Checking the file…";
+  try {
+    const res = await fetch("/api/providers/ollama/import/check", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ path }) });
+    const data = await res.json();
+    if (!res.ok)
+      throw new Error(data.detail || "That file can't be used.");
+    const bits = ["GGUF file ✓"];
+    if (data.name) bits.push("“" + data.name + "”");
+    if (data.architecture) bits.push(data.architecture);
+    bits.push(wizBytes(data.size_bytes) + " on disk");
+    info.textContent = bits.join(" · ");
+    if (nameEl && !nameEl.value.trim())
+      nameEl.value = data.suggested_name || "";
+  } catch (e) {
+    info.textContent = String(e.message || e);
+  }
+}
+
+async function wizImportModel() {
+  const pathEl = $("#wizImportPath"), nameEl = $("#wizImportName");
+  const btn = $("#wizImportBtn"), msg = $("#wizImportMsg");
+  const path = pathEl ? pathEl.value.trim() : "";
+  const name = nameEl ? nameEl.value.trim() : "";
+  wizAiError("");
+  if (!path) {
+    wizAiError("Enter the path to a .gguf model file first.");
+    return;
+  }
+  WIZ.importing = true;
+  if (btn) btn.disabled = true;
+  $("#wizNext").disabled = true;
+  $("#wizSkip").disabled = true;
+  const prog = makePullProgress($("#wizImportProgWrap"),
+                                $("#wizImportProg"), msg);
+  prog.start("Importing…");
+  try {
+    await streamNdjson("/api/providers/ollama/import",
+                       { path, name }, ev => prog.update(ev));
+    prog.done("Imported — " + (name || "the model")
+      + " is ready and selected.");
+    WIZ.providerDirty = true;
+    await wizLoadInstalled(true);
+    const spec = WIZPROV
+      ? WIZPROV.registry.find(p => p.id === "ollama") : null;
+    if (spec && $("#wizModel"))
+      wizFillModelOptions(spec, name);
+  } catch (e) {
+    wizAiError(String(e.message || e) + " Fix the problem and "
+      + "retry — importing needs Ollama running.");
+    if (msg) msg.textContent = "";
+  } finally {
+    WIZ.importing = false;
+    if (btn) btn.disabled = false;
+    $("#wizNext").disabled = false;
+    $("#wizSkip").disabled = false;
+  }
 }
 
 $("#wizProvider").addEventListener("change", () => {
   WIZ.providerDirty = true;
   wizRenderAi();
 });
+
+/* ============ pull / import progress (v3.7.2) ============
+   One renderer + one stream reader for every model transfer —
+   the wizard download, the error-page download, the .gguf
+   import.  The server aggregates Ollama's per-layer bytes into
+   whole-model completed_all / total_all / percent; when no
+   total is known yet the line shows the downloaded size and
+   the status word, and NO percentage — never an invented one.
+   (Before this, each consumer rendered a single layer's
+   numbers, so the bar restarted per layer and the figures
+   never described the model.) */
+function pullStatusWord(status) {
+  const s = String(status || "");
+  if (/pulling manifest/i.test(s)) return "Getting ready";
+  if (/downloading/i.test(s)) return "Downloading";
+  if (/verifying/i.test(s)) return "Verifying";
+  if (/writing manifest/i.test(s)) return "Finishing";
+  if (/creating|importing/i.test(s)) return "Importing";
+  if (/success/i.test(s)) return "Done";
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "Working";
+}
+
+function makePullProgress(wrap, bar, msg) {
+  return {
+    start(label) {
+      if (wrap) wrap.hidden = false;
+      if (bar) bar.style.width = "0%";
+      if (msg) msg.textContent = label || "Starting…";
+    },
+    update(ev) {
+      if (!ev) return;
+      if (ev.status === "success") {
+        if (bar) bar.style.width = "100%";
+      } else if (ev.percent != null && bar) {
+        bar.style.width = ev.percent + "%";
+      }
+      if (!msg) return;
+      const word = pullStatusWord(ev.status);
+      if (ev.total_all) {
+        msg.textContent = word + " — "
+          + wizBytes(ev.completed_all || 0) + " of "
+          + wizBytes(ev.total_all) + " · " + ev.percent + "%";
+      } else if (ev.completed_all) {
+        msg.textContent = word + " — "
+          + wizBytes(ev.completed_all) + " downloaded";
+      } else if (ev.status) {
+        msg.textContent = word + "…";
+      }
+    },
+    done(text) {
+      if (bar) bar.style.width = "100%";
+      if (msg) msg.textContent = text;
+    },
+  };
+}
+
+async function streamNdjson(url, body, onEvent) {
+  const res = await fetch(url, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body) });
+  if (!res.ok || !res.body) {
+    let detail = "";
+    try { detail = (await res.json()).detail || ""; }
+    catch (e) { /* not JSON — the status line will have to do */ }
+    throw new Error(detail || ("The transfer failed to start "
+                               + "(HTTP " + res.status + ")."));
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "", failure = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch (e) { continue; }
+      if (ev.error) { failure = ev.error; continue; }
+      onEvent(ev);
+    }
+  }
+  if (failure) throw new Error(failure);
+}
 
 function wizBytes(n) {
   if (!n && n !== 0) return "";
@@ -3602,7 +3885,8 @@ function wizBytes(n) {
 }
 
 /* The download streams NDJSON progress from the server (which
-   streams Ollama's own pull API).  Any failure lands in the
+   streams Ollama's own pull API and aggregates its per-layer
+   bytes into whole-model progress).  Any failure lands in the
    step's inline error box with the way out — retry, or continue
    without downloading.  (The full provider error page is a
    separate, later build.) */
@@ -3614,53 +3898,25 @@ async function wizPullModel() {
   btn.disabled = true;
   $("#wizNext").disabled = true;
   $("#wizSkip").disabled = true;
-  $("#wizProgWrap").hidden = false;
-  $("#wizProg").style.width = "0%";
-  msg.textContent = "Contacting Ollama…";
+  const prog = makePullProgress($("#wizProgWrap"), $("#wizProg"),
+                                msg);
+  prog.start("Contacting Ollama…");
   try {
-    const res = await fetch("/api/providers/ollama/pull", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ model }) });
-    if (!res.ok || !res.body)
-      throw new Error("The download failed to start (HTTP "
-        + res.status + ").");
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "", failure = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (!line) continue;
-        let ev;
-        try { ev = JSON.parse(line); } catch (e) { continue; }
-        if (ev.error) { failure = ev.error; continue; }
-        if (ev.total)
-          $("#wizProg").style.width = Math.min(100,
-            Math.round((ev.completed || 0) / ev.total * 100)) + "%";
-        if (ev.status === "success")
-          $("#wizProg").style.width = "100%";
-        if (ev.status)
-          msg.textContent = ev.status + (ev.total
-            ? " — " + wizBytes(ev.completed || 0)
-              + " of " + wizBytes(ev.total) : "");
-      }
-    }
-    if (failure) {
-      wizAiError(failure + " Fix the problem and retry, or continue "
-        + "without downloading — the model can be fetched later.");
-      msg.textContent = "";
-    } else {
-      msg.textContent = "Downloaded — " + model + " is ready.";
-      WIZ.providerDirty = true;
-    }
+    await streamNdjson("/api/providers/ollama/pull", { model },
+                       ev => prog.update(ev));
+    prog.done("Downloaded — " + model + " is ready.");
+    WIZ.providerDirty = true;
+    /* The model is on the machine now: refresh the picker so
+       it lands in the downloaded group, selected. */
+    await wizLoadInstalled(true);
+    const spec = WIZPROV
+      ? WIZPROV.registry.find(p => p.id === "ollama") : null;
+    if (spec && $("#wizModel")) wizFillModelOptions(spec, model);
   } catch (e) {
-    wizAiError(String(e.message || e) + " Retry, or continue without "
-      + "downloading.");
+    wizAiError(String(e.message || e) + " Fix the problem and "
+      + "retry, or continue without downloading — the model can "
+      + "be fetched later.");
+    msg.textContent = "";
   } finally {
     WIZ.pulling = false;
     btn.disabled = false;

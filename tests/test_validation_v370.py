@@ -443,7 +443,9 @@ def test_download_fix_action_uses_pull_endpoint(config_env,
                       json={"model": payload["model"]})
     assert res.status_code == 200
     events = [json.loads(l) for l in res.text.splitlines() if l.strip()]
-    assert events[-1] == {"status": "success"}
+    # v3.7.2: events are enriched with whole-model aggregates.
+    assert events[-1]["status"] == "success"
+    assert "percent" in events[-1]
 
 
 # ----------------------------------------------------------------------
