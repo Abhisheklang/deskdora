@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deskdora"
-version = "3.6.0"
+version = "3.7.0"
 description = "Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding with vision fallback, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action."
 readme = "README.md"
 requires-python = ">=3.10"
