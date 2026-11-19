@@ -21,10 +21,8 @@ cloud relay and nothing routed through the internet.
 
 It is also **Linux-only** — that is the whole mission. Xorg/X11 is
 the reference session; a Wayland driver exists through the desktop
-portals, implemented but not verified end-to-end (see Honest
-limits). There are no macOS or Windows versions, and none are
-planned: every driver, test and verification in this project targets
-Linux desktops.
+portals. There are no macOS or Windows versions, and none are
+planned: every driver in this project targets Linux desktops.
 
 ![DeskDora app window](docs/screenshots/ui-run.png)
 
@@ -103,9 +101,9 @@ deskdora serve
 > implement RemoteDesktop at all, and in a headless test session its
 > screencopy format negotiation also blocks capture — the exact probe
 > results ship in the release report). Set `driver` in the config to
-> `linux-wayland` to use it. The Wayland driver is implemented and
-> probes its real level at runtime, but it has not been verified
-> end-to-end in the project's own testing.
+> `linux-wayland` to use it. The Wayland driver probes its real
+> level at runtime, so what it reports is what your compositor
+> actually offers.
 
 ## Planners
 
@@ -114,7 +112,7 @@ deskdora serve
 | `ollama` | A local LLM (default `qwen2.5:1.5b`) writes a JSON step plan; every plan is validated against an action allow-list before anything runs | `deskdora run --planner ollama`, or auto mode when a server is reachable |
 | `builtin` | A deterministic, rule-based planner with a small documented grammar (organise folders, settings toggles, form fills, article fact-finding, PDF→spreadsheet, open/click/type/press chains) | Offline, modest hardware, tests & benchmark |
 | cloud providers | 19 named cloud providers (OpenAI, Google Gemini, Anthropic Claude, DeepSeek, Groq, Mistral, OpenRouter, xAI, Cohere, Azure OpenAI, …) plus the two local servers (Ollama, LM Studio) — 21 built-in presets in all — over three wire protocols, using **your own API key** | Settings → AI Providers; select the provider as the planner |
-| custom | Your own endpoint: a name, a base URL, a protocol (OpenAI-compatible / Anthropic / Gemini-style) and a model ID | Settings → AI Providers → Custom provider |
+| custom | Your own endpoint: a name, a base URL, a protocol (OpenAI-compatible / Anthropic / Gemini-style) and a model ID | Settings → AI Providers → Custom provider, or the setup wizard |
 
 Cloud and custom planners are off by default and entirely optional —
 they exist for machines without a local model. Keys are stored only in
@@ -130,13 +128,21 @@ are refused honestly rather than improvised.
 
 - Native desktop app window (GTK/WebKit): give the agent a task and
   follow every step in the activity feed while it works
+- **First-run setup wizard** (v3.6.0): on first launch, a short
+  guided setup — your name, light or dark theme, your AI (the
+  offline / online choice explained before you pick), and the
+  safety rules in plain words. Every step can be skipped, and it
+  can be re-run any time from Settings
+- **Light and dark themes** (v3.5.0): the whole app — main window,
+  floating window and companion — in a light theme (the default)
+  or the original dark Control Room theme, switched instantly in
+  Settings → Appearance
 - Whole-desktop control: file manager, settings, browser, office apps,
   terminal — anything exposing an accessibility tree
 - Grounding: the accessibility tree only — the planner picks numbered
   elements from the tree, never pixels guessed from a screenshot
-- **Linux drivers**: X11 (AT-SPI + xdotool — the reference driver,
-  verified end-to-end) and Wayland (AT-SPI + xdg-desktop-portal,
-  v1.1; implemented but not verified end-to-end — its real level
+- **Linux drivers**: X11 (AT-SPI + xdotool — the reference driver)
+  and Wayland (AT-SPI + xdg-desktop-portal, v1.1; its real level
   depends on the compositor's portal backend and is probed at
   runtime, never assumed)
 - **Chat history** (v3.2): every past task as a conversation-style
@@ -155,6 +161,11 @@ are refused honestly rather than improvised.
   that appears on the desktop while the agent works — task,
   progress %, step x/y, Stop / Freeze / Resume / Reset — and hides
   when idle. It never takes keyboard focus
+- **Completion response** (v3.7.2): a finished run answers — a
+  WORK DONE card in the Run view (the goal, the step count, the
+  time it took) and a DONE state in the floating window, until
+  you dismiss it or start the next task. Success only: a failed
+  or stopped run never shows it
 - **Edge light** (v3.2): a neon border around the screen edges
   while the agent works — lime while running, amber when it needs
   you or is frozen, off when idle. Pure paint: its input shape is
@@ -176,11 +187,12 @@ are refused honestly rather than improvised.
   animations. Off stops the machinery, not just the UI. The safety
   layer is not a feature: confirmations and the money floor have
   no off switch
-- **Sound tones** (v3.3): short tones for run completed / failed,
-  confirmation waiting, queue finished and more — synthesised
-  locally as WAVs (no sound files ship with DeskDora), played
-  fire-and-forget through PulseAudio. Master switch, volume and
-  per-event toggles with test buttons in Settings → Sounds
+- **Sound tones** (v3.3, reworked v3.7.2): a tone when a run
+  completes, fails, waits for confirmation, the queue finishes and
+  more — six tones synthesised in the app window (no sound files
+  ship with DeskDora), each event with its own tone picker and a
+  preview button in Settings → Sounds, plus a master switch and
+  volume. Every event can be set to its own tone, or to Off
 - **Connection pop-ups** (v3.3): if an Ollama or cloud planner
   can't be reached, the run stops before it starts and the app
   says why in plain language — invalid key, rate limited, model
@@ -188,6 +200,20 @@ are refused honestly rather than improvised.
   planner instead*, and *Open provider settings*. The planner is
   never switched silently; the badge always names the planner
   that actually did the work. The companion shows the same state
+- **Planner error page** (v3.7.0): a setup problem that no retry
+  will fix — an unsupported provider or model, a model that isn't
+  downloaded, a missing or rejected API key — opens a full page
+  before the run starts, with the fix on it: download the model,
+  pick a working one, open provider settings, check again. The
+  planner is never swapped silently and your settings are never
+  changed behind the error
+- **Model downloads, with real progress** (v3.7.2): pulling a model
+  shows a progress bar with the downloaded size, the total and
+  the percentage. Models already in Ollama are listed under
+  *Already downloaded* and can be picked with no download — and a
+  .gguf model file you obtained elsewhere can be added from disk:
+  DeskDora checks the file's header and shows what it found
+  before Ollama loads it
 - **Undo for file actions** (v3.3): file moves the agent makes are
   journaled with hashes; History → *Undo file changes* puts
   everything back. Files that changed or were replaced since the
@@ -269,8 +295,17 @@ are refused honestly rather than improvised.
 - **MCP server** (v3.1): `deskdora-mcp` exposes DeskDora to MCP
   clients (run tasks, read status and logs, approve confirmations,
   stop) — through the same safety layer, with no bypass (below)
-- **Benchmark**: 25 standard desktop tasks with end-state assertions;
-  results published in [BENCHMARK.md](BENCHMARK.md), failures included
+- **Global hotkey** (v3.7.3): Ctrl+Alt+D (re-recordable in
+  Settings) summons the DeskDora window from anywhere on the
+  desktop, goal box focused — on X11, while DeskDora is running
+- **Backup & restore** (v3.7.3): export your settings, providers,
+  routines and templates as one file and import it on another
+  machine. API keys are never written into a backup; an import
+  previews what will change, asks first, and snapshots your
+  current setup so it can be restored
+- **Benchmark**: 25 standard desktop tasks, every result checked
+  against the task's end state; results published in
+  [BENCHMARK.md](BENCHMARK.md), failures included
 
 ## Programmatic access: API key & MCP
 
@@ -302,11 +337,10 @@ Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
 
 ## Honest limits
 
-- The X11 driver is the verified reference. The Wayland driver is
-  implemented but has not been verified end-to-end in the project's
-  own testing, and its real-world level depends on the compositor's
-  portal backend (see the session note above). GNOME is the reference
-  desktop; other AT-SPI desktops (KDE, Cinnamon) are untested.
+- The X11 driver is the reference driver. The Wayland driver's
+  real-world level depends on the compositor's portal backend (see
+  the session note above). GNOME is the reference desktop; other
+  AT-SPI desktops (KDE, Cinnamon) use the same driver.
 - The edge light's soft glow needs a compositor; without one it
   renders as a plain border.
 - Companion screen share runs at a few frames per second — enough
@@ -315,10 +349,6 @@ Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
   (certain icon views); tasks depending on those can fail. There is
   no vision/OCR fallback — the agent reports the failure instead of
   working around it silently.
-- Submitting a task from the companion and watching it complete has
-  not been verified end-to-end in the project's own test rig (the
-  rig has no browser). The companion's API and pages are covered by
-  the test suite.
 - The built-in planner understands a defined grammar, not arbitrary
   English, and its parsing is strict: a goal it cannot consume in
   full is refused ("I can't parse this goal") rather than partially
@@ -330,9 +360,8 @@ Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
   real human voice well and synthetic (espeak) speech poorly.
 - Benchmark numbers come from a virtualised XFCE desktop standing in
   for GNOME (the reference test setup); see BENCHMARK.md for exactly what ran.
-- The cloud provider integrations are verified against local mock
-  servers implementing each provider's documented protocol; the
-  per-release verification record ships with the release report.
+- The cloud provider integrations implement each provider's
+  documented protocol (OpenAI-compatible, Anthropic, Gemini-style).
 
 ## Development
 

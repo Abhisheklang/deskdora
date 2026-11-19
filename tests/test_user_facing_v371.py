@@ -215,11 +215,14 @@ def test_readme_wayland_not_claimed_verified():
     text = _read(README)
     assert "Wayland is supported through the desktop" not in text
     assert "where every feature is verified" not in text
-    # Implemented-but-not-verified, stated where the claims live.
-    assert text.count("not verified end-to-end") >= 2
+    # Owner's order (2026-11-19): the test-status hedges came out —
+    # the README states what the driver does, not its test status.
+    assert "not verified end-to-end" not in text
+    assert "has not been verified" not in text
+    assert "untested" not in text
+    # The functional truth that replaced the hedge stays stated.
     flat = " ".join(text.split())
-    assert "has not been verified end-to-end in the project's own " \
-           "testing" in flat
+    assert "depends on the compositor's portal backend" in flat
 
 
 def test_readme_no_pypi_or_stale_version_claims():
