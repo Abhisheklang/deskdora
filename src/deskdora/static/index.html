@@ -555,6 +555,28 @@ select:focus{outline:none;border-color:var(--lime-ink)}
 .wiz-btn.primary:hover{background:var(--lime-live);color:#040404}
 .wiz-btn[disabled]{opacity:.45;cursor:default}
 
+/* ---------- planner error page (v3.7) ----------
+   A full-window takeover in the same pattern as the wizard:
+   a definitive planner setup problem (unknown provider/model,
+   model not installed, missing or rejected key) is a PAGE,
+   not a pop-up — the run cannot start until it is fixed, and
+   the fixes live on the page.  Unreachable stays the v3.3
+   modal.  Theme tokens only, so the page is correct in light
+   and dark; buttons/progress reuse the wizard classes. */
+#plannerError{position:fixed;inset:0;z-index:140;background:var(--void);
+  overflow:auto;padding:38px 22px 52px}
+.perr-wrap{max-width:760px;margin:0 auto}
+.perr-title{font-family:var(--disp);font-weight:600;font-size:46px;
+  line-height:1.03;text-transform:uppercase;margin:20px 0 12px}
+.perr-lede{color:var(--text2);font-size:15.5px;line-height:1.6;
+  max-width:56ch;margin:0;white-space:pre-wrap}
+.perr-panel{border-top:1px solid var(--line);padding:24px 0 8px;
+  margin-top:24px}
+.perr-class{color:var(--bad);font-weight:600}
+.perr-foot{display:flex;align-items:center;gap:12px;margin-top:34px;
+  border-top:1px solid var(--line);padding-top:22px;flex-wrap:wrap}
+.perr-foot .spacer{flex:1}
+
 /* ---------- skeletons ---------- */
 .skl{border-radius:4px;background:linear-gradient(100deg,var(--panel) 40%,
   var(--panel3) 50%,var(--panel) 60%);background-size:200% 100%;
@@ -952,7 +974,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
         <span class="hint">Re-opens the first-run setup: name, appearance, AI provider.</span></span></div>
     </div>
 
-    <div style="margin-top:38px">
+    <div style="margin-top:38px" id="settingsProviders">
       <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">AI PROVIDERS</span><span class="rule"></span><span class="sec-note">OPT-IN — YOUR OWN KEYS</span></div>
       <p class="set-note" style="margin:0 0 14px">When a cloud planner is active, your goal and a text summary of your screen are sent to that provider.</p>
       <div class="form-rows">
@@ -1190,6 +1212,39 @@ select:focus{outline:none;border-color:var(--lime-ink)}
       <button class="pill-btn ghosty" id="connDismiss">Dismiss</button>
     </div>
     <p class="m-note">THE PLANNER BADGE ALWAYS NAMES THE PLANNER THAT DID THE WORK</p>
+  </div>
+</div>
+
+<!-- ======================= PLANNER ERROR PAGE (v3.7) ======================= -->
+<div id="plannerError" hidden role="alertdialog" aria-modal="true" aria-labelledby="perrTitle">
+  <div class="perr-wrap">
+    <div class="sec-head"><span class="sec-no">!!</span><span class="sec-name">PLANNER PROBLEM</span><span class="rule"></span><span class="sec-note">THE RUN DID NOT START</span></div>
+    <h2 class="perr-title" id="perrTitle">Planner problem</h2>
+    <p class="perr-lede" id="perrBody"></p>
+    <div class="perr-panel">
+      <div class="frow2"><span class="mono-lab">Configured planner</span>
+        <span id="perrConfig"></span></div>
+      <div class="frow2"><span class="mono-lab">Problem</span>
+        <span class="perr-class" id="perrClass"></span></div>
+      <div class="frow2" id="perrModelRow" hidden><span class="mono-lab">Use a working model</span>
+        <span><select id="perrModel" class="wiz-input" aria-label="Working model"></select></span>
+        <span><button type="button" class="pill-btn lime" id="perrUseModel">USE THIS MODEL</button></span></div>
+      <div id="perrDownloadBlock" hidden>
+        <div class="frow2"><span class="mono-lab">Download</span>
+          <span><button type="button" class="pill-btn lime" id="perrDownload">DOWNLOAD THIS MODEL</button></span>
+          <span class="hint">Runs on this machine; can be several GB.</span></div>
+        <div class="wiz-prog" id="perrProgWrap" hidden><i id="perrProg"></i></div>
+        <p class="hint" id="perrPullMsg"></p>
+      </div>
+      <div class="wiz-err" id="perrFixMsg" role="alert"></div>
+    </div>
+    <div class="perr-foot">
+      <button type="button" class="wiz-btn" id="perrDismiss">NOT NOW</button>
+      <span class="spacer"></span>
+      <button type="button" class="wiz-btn" id="perrSettings">OPEN PROVIDER SETTINGS</button>
+      <button type="button" class="wiz-btn primary" id="perrCheck">CHECK AGAIN</button>
+    </div>
+    <p class="m-note">DESKDORA NEVER SWITCHES THE PLANNER OR MODEL BEHIND YOUR BACK — WHAT YOU CONFIGURED IS STILL WHAT&rsquo;S CONFIGURED</p>
   </div>
 </div>
 
@@ -1703,6 +1758,17 @@ async function pollStatus() {
       $("#connModal").classList.add("open");
     }
     if (!ce) { $("#connModal").classList.remove("open"); S.connShown = ""; }
+    // Planner error page (v3.7): a definitive setup problem —
+    // full page, raised while state carries it.  Dismissal is
+    // local and per-problem: a different problem, or a fresh
+    // run attempt, raises it again; a pass clears it server-side.
+    const pe = st.state.planner_error;
+    if (pe) {
+      if (perrKey(pe) !== PERR.dismissedKey) renderPlannerError(pe);
+    } else {
+      PERR.dismissedKey = ""; PERR.payload = null;
+      hidePlannerError();
+    }
     // Dry-run plan card (v3.3)
     const pp = st.state.pending_plan;
     if (pp && S.planShown !== pp.goal + "|" + pp.count) {
@@ -2033,6 +2099,173 @@ $("#connSettings").addEventListener("click", () => {
   $("#connModal").classList.remove("open");
   switchView("settings");
 });
+
+/* ================= planner error page (v3.7) =================
+   Raised by pre-run validation (server: validation.py) when the
+   configured planner has a DEFINITIVE setup problem.  The run
+   never started; this page is where it gets fixed — download
+   the missing model, pick a working one, or open provider
+   settings — and CHECK AGAIN re-runs the same validation.
+   Nothing here changes the configured planner on its own:
+   every fix is an explicit user action, and switching to a
+   different provider is never offered (no silent fallback). */
+const PERR = { payload: null, dismissedKey: "", pulling: false };
+const PERR_CLASSES = {
+  provider_unsupported: "Provider not supported",
+  model_unsupported: "Model not supported by this provider",
+  model_not_installed: "Model not installed",
+  key_missing: "API key missing",
+  key_rejected: "API key rejected",
+};
+function perrKey(pe) {
+  return (pe.provider || "") + "|" + (pe.class || "") + "|" +
+    (pe.model || "") + "|" + (pe.goal || "");
+}
+function perrFixMsg(text) {
+  const el = $("#perrFixMsg");
+  el.textContent = text || "";
+  el.classList.toggle("show", !!text);
+}
+function hidePlannerError() { $("#plannerError").hidden = true; }
+function renderPlannerError(pe) {
+  PERR.payload = pe;
+  perrFixMsg("");
+  $("#perrTitle").textContent = pe.headline || "Planner problem";
+  $("#perrBody").textContent = ((pe.detail || "") + "\n" +
+    (pe.suggestion || "")).trim();
+  $("#perrConfig").textContent = pe.provider_display || pe.provider || "";
+  $("#perrClass").textContent =
+    PERR_CLASSES[pe.class] || pe.class || "";
+  const models = Array.isArray(pe.models) ? pe.models : [];
+  $("#perrModelRow").hidden = !models.length;
+  if (models.length) {
+    $("#perrModel").innerHTML = models.map(m =>
+      `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  }
+  $("#perrDownloadBlock").hidden = !pe.can_download;
+  $("#perrProgWrap").hidden = true;
+  $("#perrPullMsg").textContent = "";
+  $("#plannerError").hidden = false;
+  $("#plannerError").scrollTop = 0;
+}
+async function perrCheckAgain() {
+  const pe = PERR.payload; if (!pe || PERR.pulling) return;
+  perrFixMsg("");
+  let data;
+  try {
+    const res = await fetch("/api/planner/validate", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ planner: pe.planner || pe.provider }) });
+    data = await res.json();
+  } catch (e) {
+    perrFixMsg("Couldn't reach DeskDora to re-check — try again.");
+    return;
+  }
+  if (data.ok) {
+    PERR.payload = null; PERR.dismissedKey = "";
+    hidePlannerError(); pollStatus();
+    return;
+  }
+  if (data.planner_error) renderPlannerError(data.planner_error);
+  pollStatus();
+}
+$("#perrCheck").addEventListener("click", perrCheckAgain);
+$("#perrDismiss").addEventListener("click", () => {
+  if (PERR.payload) PERR.dismissedKey = perrKey(PERR.payload);
+  hidePlannerError();
+});
+$("#perrSettings").addEventListener("click", () => {
+  if (PERR.payload) PERR.dismissedKey = perrKey(PERR.payload);
+  hidePlannerError();
+  switchView("settings");
+  setTimeout(() => {
+    const el = $("#settingsProviders");
+    if (el) el.scrollIntoView({ block: "start" });
+  }, 400);
+});
+$("#perrUseModel").addEventListener("click", async () => {
+  const pe = PERR.payload; if (!pe) return;
+  const model = $("#perrModel").value;
+  if (!model) return;
+  perrFixMsg("");
+  try {
+    const url = pe.provider.startsWith("custom-")
+      ? "/api/custom-providers/" + pe.provider
+      : "/api/providers/" + pe.provider;
+    const res = await fetch(url, { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ model }) });
+    if (!res.ok)
+      throw new Error("the save failed (HTTP " + res.status + ")");
+  } catch (e) {
+    perrFixMsg("Couldn't save that model choice — " + e.message +
+      " Fix it in provider settings instead.");
+    return;
+  }
+  perrCheckAgain();
+});
+/* The download reuses the wizard's pull endpoint: NDJSON progress
+   from Ollama, streamed into this page's own progress bar.  On
+   success the page re-validates itself. */
+async function perrPullModel() {
+  const pe = PERR.payload; if (!pe || PERR.pulling) return;
+  const btn = $("#perrDownload"), msg = $("#perrPullMsg");
+  perrFixMsg("");
+  PERR.pulling = true;
+  btn.disabled = true;
+  $("#perrProgWrap").hidden = false;
+  $("#perrProg").style.width = "0%";
+  msg.textContent = "Contacting Ollama…";
+  try {
+    const res = await fetch("/api/providers/ollama/pull", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ model: pe.model }) });
+    if (!res.ok || !res.body)
+      throw new Error("The download failed to start (HTTP "
+        + res.status + ").");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", failure = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { continue; }
+        if (ev.error) { failure = ev.error; continue; }
+        if (ev.total)
+          $("#perrProg").style.width = Math.min(100,
+            Math.round((ev.completed || 0) / ev.total * 100)) + "%";
+        if (ev.status === "success")
+          $("#perrProg").style.width = "100%";
+        if (ev.status)
+          msg.textContent = ev.status + (ev.total
+            ? " — " + wizBytes(ev.completed || 0)
+              + " of " + wizBytes(ev.total) : "");
+      }
+    }
+    if (failure) {
+      perrFixMsg(failure + " Fix the problem and retry, or pick "
+        + "a model that is already installed.");
+      msg.textContent = "";
+    } else {
+      msg.textContent = "Downloaded — " + pe.model + " is ready.";
+      perrCheckAgain();
+    }
+  } catch (e) {
+    perrFixMsg(String(e.message || e) + " Retry, or pick a model "
+      + "that is already installed.");
+  } finally {
+    PERR.pulling = false;
+    btn.disabled = false;
+  }
+}
+$("#perrDownload").addEventListener("click", perrPullModel);
 
 $("#askBtn").addEventListener("click", async () => {
   const q = $("#askInput").value.trim();

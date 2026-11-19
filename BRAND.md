@@ -240,3 +240,18 @@ rule.
   correct in both palettes and re-skins live on the Appearance
   step. Errors are inline in the step that caused them (hairline
   red box), never a separate page.
+- **Planner error page** (v3.7): the third failure surface, for
+  the one case the other two don't cover — pre-run validation
+  finds a *definitive* planner setup problem (unknown provider
+  or model, model not installed, API key missing or rejected),
+  so the run cannot start at all. Same full-window takeover
+  pattern as the wizard: numbered section head (`!! PLANNER
+  PROBLEM`), one Oswald headline naming the problem in plain
+  words, a hairline panel carrying the configured planner, the
+  problem class in `bad` red, and the fixes on the page (model
+  picker, model download with the wizard's progress bar, a route
+  into provider settings), one lime primary (CHECK AGAIN). No
+  new tokens — correct in both palettes. The three surfaces
+  stay distinct by job: unreachable → the v3.3 connection modal;
+  definitive misconfiguration → this page; a wizard step's own
+  error → inline in the step.

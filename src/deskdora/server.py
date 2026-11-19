@@ -23,7 +23,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import connfail, diagnostics, estimates, filejournal, notify, sounds, voice
+from . import (connfail, diagnostics, estimates, filejournal, notify,
+               sounds, validation, voice)
 from .templates import TemplateStore, builtin_templates
 from .agent import Agent, describe_step
 from .apikey import ApiKeyStore, presented_key
@@ -316,6 +317,12 @@ class RunManager:
             # plan awaiting approval.  Both ride /api/status, which
             # is how the companion mirrors them.
             "connection_error": None, "pending_plan": None,
+            # Planner error-page payload (v3.7): a definitive setup
+            # problem found by pre-run validation.  Rides /api/status
+            # alongside connection_error; the UI routes on which of
+            # the two is set — page for definitive, pop-up for
+            # unreachable.
+            "planner_error": None,
             "source": "ui",
         }
         self.kill = KillSwitch()
@@ -441,6 +448,23 @@ class RunManager:
         with self.lock:
             if self.state["running"]:
                 raise HTTPException(409, "a run is already in progress")
+        # Planner validation (v3.7), BEFORE pre-flight: a
+        # definitive setup problem — unknown provider or model,
+        # model not installed, API key missing or rejected — is a
+        # full error page, not a pop-up, and the run never starts.
+        # Validation never changes the configured planner (no
+        # silent fallback, ever).  What it cannot decide —
+        # unreachable — returns None here and falls through to
+        # the pop-up path below, unchanged.
+        problem = validation.validate_planner(mode, cfg)
+        if problem is not None:
+            with self.lock:
+                self.state.update({
+                    "goal": goal, "source": source,
+                    "connection_error": None,
+                    "planner_error": {**problem, "goal": goal,
+                                      "planner": mode}})
+            return {"ok": False, "planner_error": problem}
         # Connection pre-flight (v3.3): an Ollama/cloud planner that
         # can't be reached fails HERE, in seconds, with a plain-
         # language payload for the pop-up — never as a cryptic log
@@ -450,6 +474,7 @@ class RunManager:
             with self.lock:
                 self.state.update({
                     "goal": goal, "source": source,
+                    "planner_error": None,
                     "connection_error": {**failure, "goal": goal,
                                          "planner": mode}})
             notify.notify("connection_failed", cfg,
@@ -459,6 +484,7 @@ class RunManager:
             self.state.update({"running": True, "goal": goal,
                                "result": None, "source": source,
                                "connection_error": None,
+                               "planner_error": None,
                                "pending_plan": None})
             self.progress = {"step_index": 0, "step_total": 0,
                              "done": 0, "current_action": "Planning",
@@ -837,7 +863,8 @@ class RunManager:
             self.state.update({"goal": "", "planner_mode": "",
                                "run_dir": None, "result": None,
                                "last_event": None, "source": "ui",
-                               "connection_error": None})
+                               "connection_error": None,
+                               "planner_error": None})
             self.progress = {"step_index": 0, "step_total": 0,
                              "done": 0, "current_action": ""}
         self.pause_gate.clear()
@@ -1692,6 +1719,36 @@ def config_post(cfg: dict):
             raise HTTPException(400, str(exc))
     save_config(merged)
     return public_config(merged)
+
+
+# ---------------------------------------------------------------------------
+# Planner validation (v3.7): the error page's "Check again".
+# ---------------------------------------------------------------------------
+
+class PlannerValidateRequest(BaseModel):
+    planner: str | None = None
+
+
+@app.post("/api/planner/validate")
+def planner_validate(req: PlannerValidateRequest | None = None):
+    """Re-run pre-run planner validation and mirror the verdict
+    into state: a definitive problem (re)raises the error page, a
+    pass clears it.  Validates the configured planner unless the
+    caller names the mode the failed run used (a per-run planner
+    override).  Changes nothing else — validation is read-only,
+    and the fixes themselves go through the provider endpoints."""
+    cfg = load_config()
+    mode = (req.planner if req else None) or cfg["planner"]
+    problem = validation.validate_planner(mode, cfg)
+    with MANAGER.lock:
+        if problem is not None:
+            MANAGER.state["planner_error"] = {
+                **problem, "planner": mode,
+                "goal": MANAGER.state.get("goal", "")}
+        else:
+            MANAGER.state["planner_error"] = None
+        current = MANAGER.state["planner_error"]
+    return {"ok": problem is None, "planner_error": current}
 
 
 # ---------------------------------------------------------------------------
