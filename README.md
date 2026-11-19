@@ -2,7 +2,7 @@
 
 # DeskDora
 
-**Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding with vision fallback, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action.**
+**Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action.**
 
 DeskDora operates your desktop for you. You type a task in plain words —
 *"Organise folder ~/Downloads by type"*, *"Fill the form: name=…, email=…,
@@ -17,8 +17,9 @@ select it, your goal and a text summary of your screen go to that
 provider — never otherwise, and never by default.
 
 It is also **Linux-only** — that is the whole mission. Xorg/X11 is
-the reference session; Wayland is supported through the desktop
-portals. There are no macOS or Windows versions, and none are
+the reference session; a Wayland driver exists through the desktop
+portals, implemented but not verified end-to-end (see Honest
+limits). There are no macOS or Windows versions, and none are
 planned: every driver, test and verification in this project targets
 Linux desktops.
 
@@ -31,8 +32,9 @@ constantly. DeskDora doesn't guess: it reads the desktop through the
 operating system's **accessibility tree (AT-SPI)** — every window, button,
 text field and menu as a numbered, labelled element — and the planner
 picks an element, the same trick that made browser automation reliable.
-A vision path (screenshot + OCR / vision model) exists as a fallback for
-surfaces the tree can't describe.
+There is no vision fallback: a surface the tree can't describe is a
+surface DeskDora cannot work with — and it reports that instead of
+guessing (see Honest limits).
 
 DeskDora also **fails honestly**: if it cannot find an element, cannot
 plan a goal, or a confirmation is denied, it stops and says why. It never
@@ -43,7 +45,7 @@ clicks randomly hoping something works.
 An agent that can operate your whole PC can also delete your files. So:
 
 - **Mandatory confirmation** before any action that deletes, sends,
-  submits, or installs — in the web UI, a dialog blocks the run until
+  submits, or installs — a dialog in the app blocks the run until
   *you* decide. This cannot be switched off.
 - **Application allow-list** — restrict which apps the agent may launch.
 - **Kill switch** — an always-visible button (and a stop file / signal)
@@ -58,7 +60,7 @@ An agent that can operate your whole PC can also delete your files. So:
 **Easiest — the installable app (Ubuntu 24.04):**
 
 ```bash
-sudo apt install ./deskdora_3.2.0_amd64.deb
+sudo apt install ./deskdora_3.7.1_amd64.deb
 ```
 
 Then launch **DeskDora** from your applications menu: it starts the local
@@ -76,7 +78,7 @@ sudo apt install python3-pyatspi python3-gi at-spi2-core xdotool scrot \
                  gir1.2-atspi-2.0 gir1.2-gtk-3.0 gir1.2-webkit2-4.1
 
 # DeskDora itself
-pip install deskdora        # or: pip install .  from a source checkout
+pip install .               # from a source checkout (not on PyPI)
 
 # Optional: a local LLM planner
 ollama pull qwen2.5:1.5b    # DeskDora works without it, too
@@ -89,7 +91,7 @@ deskdora serve
 ```
 
 > **Session support:** the reference session is **Xorg/X11** ("Ubuntu on
-> Xorg" on the login screen), where every feature is verified. A
+> Xorg" on the login screen), where DeskDora is developed and verified. A
 > **Wayland driver** (v1.1) works through xdg-desktop-portal —
 > AT-SPI perception, the Screenshot portal (with a ScreenCast/PipeWire
 > fallback), and RemoteDesktop input where the compositor's portal
@@ -97,7 +99,9 @@ deskdora serve
 > implement RemoteDesktop at all, and in a headless test session its
 > screencopy format negotiation also blocks capture — the exact probe
 > results ship in the release report). Set `driver` in the config to
-> `linux-wayland` to use it.
+> `linux-wayland` to use it. The Wayland driver is implemented and
+> probes its real level at runtime, but it has not been verified
+> end-to-end in the project's own testing.
 
 ## Planners
 
@@ -105,7 +109,7 @@ deskdora serve
 |---|---|---|
 | `ollama` | A local LLM (default `qwen2.5:1.5b`) writes a JSON step plan; every plan is validated against an action allow-list before anything runs | `deskdora run --planner ollama`, or auto mode when a server is reachable |
 | `builtin` | A deterministic, rule-based planner with a small documented grammar (organise folders, settings toggles, form fills, article fact-finding, PDF→spreadsheet, open/click/type/press chains) | Offline, modest hardware, tests & benchmark |
-| cloud providers | 20+ named providers (OpenAI, Google Gemini, Anthropic Claude, DeepSeek, Groq, Mistral, OpenRouter, xAI, Cohere, Azure OpenAI, LM Studio, …) over three wire protocols, using **your own API key** | Settings → AI Providers; select the provider as the planner |
+| cloud providers | 19 named cloud providers (OpenAI, Google Gemini, Anthropic Claude, DeepSeek, Groq, Mistral, OpenRouter, xAI, Cohere, Azure OpenAI, …) plus the two local servers (Ollama, LM Studio) — 21 built-in presets in all — over three wire protocols, using **your own API key** | Settings → AI Providers; select the provider as the planner |
 | custom | Your own endpoint: a name, a base URL, a protocol (OpenAI-compatible / Anthropic / Gemini-style) and a model ID | Settings → AI Providers → Custom provider |
 
 Cloud and custom planners are off by default and entirely optional —
@@ -124,11 +128,13 @@ are refused honestly rather than improvised.
   follow every step in the activity feed while it works
 - Whole-desktop control: file manager, settings, browser, office apps,
   terminal — anything exposing an accessibility tree
-- Hybrid grounding: accessibility tree first, vision fallback
+- Grounding: the accessibility tree only — the planner picks numbered
+  elements from the tree, never pixels guessed from a screenshot
 - **Linux drivers**: X11 (AT-SPI + xdotool — the reference driver,
   verified end-to-end) and Wayland (AT-SPI + xdg-desktop-portal,
-  v1.1; its real level depends on the compositor's portal backend
-  and is probed at runtime, never assumed)
+  v1.1; implemented but not verified end-to-end — its real level
+  depends on the compositor's portal backend and is probed at
+  runtime, never assumed)
 - **Chat history** (v3.2): every past task as a conversation-style
   thread — your goal, the plan, each step and the result — searchable,
   reopenable, with *Run again* and delete
@@ -238,7 +244,7 @@ are refused honestly rather than improvised.
 - **Per-category autonomy** (v3.0): files / apps / web / messages /
   money, each free-run, confirm-first, or never — enforced on every
   action, with a hard floor: money can never be set to free-run
-- Audit log with before/after screenshots and step-by-step replay
+- Audit log with a screenshot per step and step-by-step replay
 - **Resident memory** (v2.0): places, apps and habits learned from
   successful runs, consulted by the planner ("Organise folder my
   messy by type"), inspectable and deletable in the Memory view
@@ -292,17 +298,23 @@ Tools: `run_task`, `get_status`, `list_runs`, `get_run_log`,
 
 ## Honest limits
 
-- The X11 driver is the verified reference. The Wayland driver's
-  real-world level depends on the compositor's portal backend (see
-  the session note above). GNOME is the reference desktop; other
-  AT-SPI desktops (KDE, Cinnamon) are untested.
+- The X11 driver is the verified reference. The Wayland driver is
+  implemented but has not been verified end-to-end in the project's
+  own testing, and its real-world level depends on the compositor's
+  portal backend (see the session note above). GNOME is the reference
+  desktop; other AT-SPI desktops (KDE, Cinnamon) are untested.
 - The edge light's soft glow needs a compositor; without one it
   renders as a plain border.
 - Companion screen share runs at a few frames per second — enough
   to monitor a run, not smooth video.
 - Some widgets expose their rows poorly to the accessibility tree
-  (certain icon views); tasks depending on those can fail — the agent
-  reports the failure instead of working around it silently.
+  (certain icon views); tasks depending on those can fail. There is
+  no vision/OCR fallback — the agent reports the failure instead of
+  working around it silently.
+- Submitting a task from the companion and watching it complete has
+  not been verified end-to-end in the project's own test rig (the
+  rig has no browser). The companion's API and pages are covered by
+  the test suite.
 - The built-in planner understands a defined grammar, not arbitrary
   English, and its parsing is strict: a goal it cannot consume in
   full is refused ("I can't parse this goal") rather than partially

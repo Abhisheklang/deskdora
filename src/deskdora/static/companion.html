@@ -472,7 +472,7 @@ async function poll() {
 
     const mcp = await (await fetch("/api/mcp")).json();
     $("#mcpState").textContent = mcp.available
-      ? "SERVER AVAILABLE · STDIO · RUNS VIA MCP APPEAR HERE AND CAN BE STOPPED HERE"
+      ? "SERVER AVAILABLE · RUNS VIA MCP APPEAR HERE AND CAN BE STOPPED HERE"
       : "SERVER NOT FOUND ON THIS MACHINE";
     $("#mcpConfig").textContent =
       JSON.stringify(mcp.config, null, 2);

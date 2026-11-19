@@ -899,12 +899,12 @@ select:focus{outline:none;border-color:var(--lime-ink)}
 
   <!-- ======================= BENCHMARK VIEW ======================= -->
   <section id="view-benchmark" class="view" hidden>
-    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">BENCHMARK</span><span class="rule"></span><span class="sec-note">END-STATE VERIFIED</span></div>
+    <div class="sec-head"><span class="sec-no">01</span><span class="sec-name">BENCHMARK</span><span class="rule"></span><span class="sec-note">RESULTS CHECKED</span></div>
     <h2 class="view-head">Measured,<br>not promised<span class="lime-dot">.</span></h2>
     <div class="kpi-strip">
       <div class="kpi"><div class="kpi-num lime-n" id="kpiPass">—</div><div class="kpi-lab">Tasks passed</div></div>
       <div class="kpi"><div class="kpi-num" id="kpiFail">—</div><div class="kpi-lab">Tasks failed</div></div>
-      <div class="kpi"><div class="kpi-num" id="kpiVerified">—</div><div class="kpi-lab">Assertion-verified</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpiVerified">—</div><div class="kpi-lab">End states checked</div></div>
     </div>
     <div class="scorebar"><i id="scoreFill"></i></div>
     <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">TASKS</span><span class="rule"></span><span class="sec-note" id="benchNote">—</span></div>
@@ -958,7 +958,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
           <button type="button" data-theme-val="light">Light</button>
           <button type="button" data-theme-val="dark">Dark</button>
         </span>
-        <span class="hint">Applies immediately and is remembered. Light is the default — it reads better in screen recordings.</span></div>
+        <span class="hint">Applies immediately and is remembered. Light is the default.</span></div>
       <div class="frow2"><span class="mono-lab">Your name</span>
         <input type="text" id="cfgName" placeholder="e.g. Ada" autocomplete="name" maxlength="80">
         <span class="hint">From the setup wizard — used only to greet you there. Saved with SAVE SETTINGS.</span></div>
@@ -1063,7 +1063,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
           <button class="pill-btn ghosty" id="apiKeyRevoke">REVOKE</button>
           <span class="shot-lab" id="apiKeyMsg" style="margin-left:12px"></span></span></div>
         <div class="frow2"><span class="mono-lab">MCP server</span>
-          <span class="set-note">Connect an MCP client with the command <span class="mono">deskdora-mcp</span> (stdio) — setup in the README.</span></div>
+          <span class="set-note">Connect an MCP client with the command <span class="mono">deskdora-mcp</span> — setup in the README.</span></div>
         <div class="frow2"><span class="mono-lab">Screen share</span>
           <span><label class="switch"><input type="checkbox" id="shareToggle"><i></i></label>
           <span class="shot-lab" id="shareState" style="margin-left:12px">OFF</span></span>
@@ -1110,7 +1110,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
           <span class="hint">Same setting as Proactive &amp; Companion above.</span></div>
         <div class="frow2"><span class="mono-lab">Companion</span>
           <label class="switch"><input type="checkbox" id="featCompanion"><i></i></label>
-          <span class="hint">The phone companion page and its endpoints. Off refuses them all.</span></div>
+          <span class="hint">The phone companion page and phone control. Off refuses them all.</span></div>
         <div class="frow2"><span class="mono-lab">Screen share</span>
           <label class="switch"><input type="checkbox" id="featShare"><i></i></label>
           <span class="hint">Same setting as Access above — a paired companion can watch this screen.</span></div>
@@ -1284,7 +1284,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
       <h2 class="wiz-title">Pick a<br>look<span class="lime-dot">.</span></h2>
       <p class="wiz-lede">The whole app re-skins the moment you choose &mdash;
         this page included, so you see the result before you commit.
-        Light is the default; it reads better in screen recordings.</p>
+        Light is the default.</p>
       <div class="wiz-panel">
         <span class="seg" id="wizTheme" role="group" aria-label="Appearance theme">
           <button type="button" data-wiz-theme="light">Light</button>
@@ -1704,7 +1704,17 @@ async function pollStatus() {
       S.runId = st.state.run_dir.split("/").filter(Boolean).pop();
     const dismissed = !!S.dismissed && S.dismissed === S.runId;
     if (!dismissed) S.result = st.state.result || S.result;
-    if (st.state.goal && !S.goal && !dismissed) {  // page loaded mid-run
+    // Run composition sync (v3.7.1): the run panel stands for a run
+    // that exists — running now, or finished with a result.  A goal
+    // left in state by a FAILED attempt (planner / connection error)
+    // is not a run: the error page or pop-up carries it, and the
+    // entry form stays up.  Symmetrically, when the server returns
+    // to fully idle (a reset after failed attempts did exactly
+    // this), the form comes back — the panel must never strand the
+    // user on a stale "Now running" composition with no way back.
+    const hasRun = running || !!st.state.result ||
+      !!st.state.pending_plan;
+    if (st.state.goal && hasRun && !S.goal && !dismissed) {  // page loaded mid-run
       S.goal = st.state.goal;
       $("#cmdIdle").hidden = true; $("#cmdRun").hidden = false;
       $("#goalHead").textContent = S.goal;
@@ -1716,6 +1726,15 @@ async function pollStatus() {
         $("#runAgainBtn").hidden = false;
         backfill(S.runId);
       }
+    }
+    if (!running && !st.state.goal && !st.state.result &&
+        !st.state.pending_plan && !st.pending_confirmation &&
+        !$("#cmdRun").hidden) {
+      // Server idle and empty: settle back to the entry form.
+      $("#cmdRun").hidden = true; $("#cmdIdle").hidden = false;
+      $("#runAgainBtn").hidden = true;
+      S.goal = ""; S.result = null;
+      if (S.view === "run") $("#tsName").textContent = "Command";
     }
 
     // state pill / rail
@@ -2135,7 +2154,7 @@ function renderPlannerError(pe) {
     (pe.suggestion || "")).trim();
   $("#perrConfig").textContent = pe.provider_display || pe.provider || "";
   $("#perrClass").textContent =
-    PERR_CLASSES[pe.class] || pe.class || "";
+    PERR_CLASSES[pe.class] || "Setup problem";
   const models = Array.isArray(pe.models) ? pe.models : [];
   $("#perrModelRow").hidden = !models.length;
   if (models.length) {
@@ -2766,7 +2785,7 @@ async function loadBenchmark() {
     v => { $("#kpiFail").innerHTML = Math.round(v) + den; });
   tweenNum($("#kpiVerified"), data.length,
     v => { $("#kpiVerified").innerHTML = Math.round(v) + den; });
-  $("#benchNote").textContent = "REFERENCE RIG — EVERY VERDICT FROM AN EXTERNAL END-STATE ASSERTION";
+  $("#benchNote").textContent = "EVERY RESULT CHECKED AGAINST THE TASK'S END STATE";
   el.innerHTML = data.map((r, i) => `
     <div class="brow">
       <span class="b-idx">B—${pad2(i + 1)}</span>
@@ -3008,7 +3027,7 @@ async function fetchModels() {
       fillProviderForm(pid);
       $("#provMsg").textContent = body.models.length + " MODELS";
     } else {
-      $("#provMsg").textContent = "NO MODELS ENDPOINT — TYPE ANY MODEL ID";
+      $("#provMsg").textContent = "THIS PROVIDER LISTS NO MODELS — TYPE ANY MODEL ID";
     }
   } catch (e) { $("#provMsg").textContent = "FAILED — no response"; }
 }
