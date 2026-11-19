@@ -105,6 +105,14 @@ def overlay_enabled(config):
     return bool((config or {}).get("feature_overlay", True))
 
 
+def overlay_theme(config):
+    """Appearance (v3.5) for the floating window: the config theme,
+    normalised.  Only an exact "dark" is dark — a missing or
+    hand-edited value falls back to the product default, light,
+    so the overlay can never end up themeless."""
+    return "dark" if (config or {}).get("theme") == "dark" else "light"
+
+
 # ---------------------------------------------------------------------
 # Edge light: a click-through neon border around the screen edges.
 # Same state signal as the floating window:

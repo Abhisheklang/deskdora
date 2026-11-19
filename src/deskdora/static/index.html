@@ -6,6 +6,16 @@
 <title>DeskDora — Desktop Agent</title>
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png">
+<script>
+/* Appearance (v3.5): set data-theme before first paint so the
+   window never flashes the wrong theme.  The server config is the
+   source of truth (applied again from /api/status and Settings);
+   localStorage only caches the last-applied value as a paint
+   hint.  No hint yet -> the product default, light. */
+try { document.documentElement.dataset.theme =
+  localStorage.getItem("deskdora-theme") || "light"; }
+catch (e) { document.documentElement.dataset.theme = "light"; }
+</script>
 <style>
 /* =====================================================================
    DESKDORA — "CONTROL ROOM" (BRAND.md round 3)
@@ -32,6 +42,11 @@
   --line:rgba(92,92,91,.28); --line-soft:rgba(92,92,91,.14);
   --text:#F4F4F4; --text2:#9E9F9F; --text3:#5C5C5B;
   --lime:#CEDE62; --lime-live:#DAF64C; --lime-dim:#A4AF45;
+  /* "-ink" tokens: the accent used AS text/icon/border on a
+     surface (fills keep the bright values above).  Identical to
+     the fills in dark mode, so dark rendering is unchanged; the
+     light theme deepens them to readable olives (BRAND.md). */
+  --lime-ink:#CEDE62; --mustard-ink:#ECD06F;
   --mustard:#ECD06F; --ok:#06D6A0; --bad:#EF476F;
   --disp:"Oswald","Arial Narrow",sans-serif;
   --serif:"Newsreader",Georgia,serif;
@@ -39,6 +54,27 @@
   --mono:"JetBrains Mono",ui-monospace,monospace;
   --rail-w:76px; --tab-w:36px;
 }
+/* ---------- light theme (v3.5) — "Control Room, daylight" ----------
+   The same system on paper-white surfaces (BRAND.md documents both
+   palettes).  Layout, type, hairlines and structure are untouched;
+   only the surface/text tokens change.  The accent FILLS stay the
+   bright brand values (--lime, --lime-live, --mustard — always
+   paired with #040404 ink, 13.9:1), while the accent used as text,
+   icon or border deepens: --lime-ink #5C6B1C (>=4.7:1 on every
+   light surface), --mustard-ink #7D6318, --ok #067A5C, --bad
+   #C2254F, --lime-dim #66731F.  Bright #CEDE62 as text on white
+   would be 1.5:1 — it never appears as text in this theme. */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --void:#F2F2EC; --rail:#E7E7DD; --panel:#FFFFFF; --panel2:#F5F5EF; --panel3:#E3E3D8;
+  --line:rgba(92,92,91,.38); --line-soft:rgba(92,92,91,.20);
+  --text:#191A14; --text2:#54554C; --text3:#7E7E72;
+  --lime-dim:#66731F;
+  --lime-ink:#5C6B1C; --mustard-ink:#7D6318;
+  --ok:#067A5C; --bad:#C2254F;
+}
+:root[data-theme="light"] *{scrollbar-color:#C6C6B8 transparent}
+:root[data-theme="light"] ::-webkit-scrollbar-thumb{background:#C6C6B8}
 *{box-sizing:border-box}
 [hidden]{display:none !important}
 html,body{margin:0;padding:0}
@@ -47,7 +83,7 @@ body{background:var(--void);color:var(--text);font-family:var(--ui);
   min-height:100vh;overflow-x:hidden}
 ::selection{background:var(--lime);color:#040404}
 button{font-family:inherit}
-:focus-visible{outline:1.5px solid var(--lime);outline-offset:2px}
+:focus-visible{outline:1.5px solid var(--lime-ink);outline-offset:2px}
 .mono{font-family:var(--mono)}
 
 /* ---------- lime wipe (view transitions) ---------- */
@@ -72,7 +108,7 @@ button{font-family:inherit}
 .rnav.active{color:var(--text)}
 .rnav.active::before{content:"";position:absolute;left:0;top:18%;bottom:18%;
   width:3px;background:var(--lime)}
-.rnav.active svg{color:var(--lime)}
+.rnav.active svg{color:var(--lime-ink)}
 .rail-foot{margin-top:auto;border-top:1px solid var(--line-soft);
   padding:12px 6px 14px;display:flex;flex-direction:column;align-items:center;gap:9px}
 .rail-dot{width:11px;height:11px;border-radius:50%;background:var(--text3)}
@@ -84,12 +120,12 @@ button{font-family:inherit}
   letter-spacing:.12em;color:var(--text2);text-align:center;line-height:1.5}
 .rail-kill{font-family:var(--mono);font-size:8.5px;font-weight:600;
   letter-spacing:.12em;color:var(--text3);text-align:center;line-height:1.5}
-.rail-kill.tripped{color:var(--mustard)}
+.rail-kill.tripped{color:var(--mustard-ink)}
 
 /* ---------- pull-tab kill switch (breaks the grid, once) ---------- */
 #pullTab{position:fixed;right:0;top:0;bottom:0;width:var(--tab-w);z-index:60;
-  background:var(--rail);border:none;border-left:1.5px solid var(--mustard);
-  color:var(--mustard);cursor:pointer;display:flex;flex-direction:column;
+  background:var(--rail);border:none;border-left:1.5px solid var(--mustard-ink);
+  color:var(--mustard-ink);cursor:pointer;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:14px;padding:0;
   transition:background .18s ease,color .18s ease}
 #pullTab .pt-text{writing-mode:vertical-rl;font-family:var(--mono);
@@ -154,7 +190,7 @@ html.no-motion *,html.no-motion *::before,html.no-motion *::after{
 .grid12{display:grid;grid-template-columns:repeat(12,1fr);gap:28px}
 .col5{grid-column:span 5}.col7{grid-column:span 7}.col12{grid-column:span 12}
 .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
-.sec-no{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--lime);
+.sec-no{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--lime-ink);
   letter-spacing:.1em}
 .sec-name{font-family:var(--mono);font-size:11px;font-weight:600;
   letter-spacing:.22em;color:var(--text)}
@@ -163,19 +199,19 @@ html.no-motion *,html.no-motion *::before,html.no-motion *::after{
 .view-head{font-family:var(--disp);font-weight:600;text-transform:uppercase;
   font-size:clamp(38px,4.4vw,58px);line-height:.98;letter-spacing:-.025em;
   margin:2px 0 26px}
-.view-head .lime-dot{color:var(--lime)}
+.view-head .lime-dot{color:var(--lime-ink)}
 
 /* ---------- run: idle composition ---------- */
 .mega{font-family:var(--disp);font-weight:600;text-transform:uppercase;
   font-size:clamp(46px,4.9vw,70px);line-height:.96;letter-spacing:-.03em;margin:0}
-.mega .lime-dot{color:var(--lime)}
+.mega .lime-dot{color:var(--lime-ink)}
 .lede{color:var(--text2);font-size:15.5px;max-width:52ch;margin:18px 0 26px}
 .cmdline{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
 #goalInput,#queueInput{flex:1;min-width:280px;background:var(--panel);color:var(--text);
   border:1px solid var(--line);border-radius:4px;padding:16px 18px;
   font-family:var(--ui);font-size:16.5px;transition:border-color .15s ease}
 #goalInput::placeholder,#queueInput::placeholder{color:var(--text3)}
-#goalInput:focus,#queueInput:focus{outline:none;border-color:var(--lime)}
+#goalInput:focus,#queueInput:focus{outline:none;border-color:var(--lime-ink)}
 .run-btn{background:var(--lime);color:#040404;border:none;border-radius:999px;
   padding:0 30px;font-family:var(--disp);font-weight:600;font-size:19px;
   letter-spacing:.04em;text-transform:uppercase;cursor:pointer;
@@ -192,18 +228,18 @@ select,input[type=text],textarea{font-family:var(--ui)}
 select{background:var(--panel);color:var(--text);border:1px solid var(--line);
   border-radius:999px;padding:8px 14px;font-family:var(--mono);font-size:11px;
   letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
-select:focus{outline:none;border-color:var(--lime)}
+select:focus{outline:none;border-color:var(--lime-ink)}
 .chip{background:none;border:1px solid var(--line);color:var(--text2);
   border-radius:999px;padding:8px 15px;font-family:var(--mono);font-size:10.5px;
   font-weight:600;letter-spacing:.12em;cursor:pointer;transition:all .15s ease}
-.chip:hover{border-color:var(--lime);color:var(--lime)}
+.chip:hover{border-color:var(--lime-ink);color:var(--lime-ink)}
 .voice{font-family:var(--serif);font-style:italic;font-size:20px;
   color:var(--text);margin:26px 0 0;max-width:56ch;line-height:1.45}
 .voice::before{content:"";display:block;width:34px;height:1px;
-  background:var(--lime);margin-bottom:12px}
+  background:var(--lime-ink);margin-bottom:12px}
 
 /* ---------- run: running composition ---------- */
-#runKicker{color:var(--lime);margin-bottom:10px}
+#runKicker{color:var(--lime-ink);margin-bottom:10px}
 .goal-head{font-size:clamp(32px,3.5vw,56px);overflow-wrap:anywhere}
 .step-pill-row{margin:20px 0 14px}
 .step-pill{display:inline-block;background:var(--lime-live);color:#040404;
@@ -213,7 +249,7 @@ select:focus{outline:none;border-color:var(--lime)}
   vertical-align:top}
 .step-pill.done{background:var(--panel2);color:var(--ok);border:1px solid var(--ok)}
 .step-pill.failed{background:var(--panel2);color:var(--bad);border:1px solid var(--bad)}
-.step-pill.blocked{background:var(--panel2);color:var(--mustard);border:1px solid var(--mustard)}
+.step-pill.blocked{background:var(--panel2);color:var(--mustard-ink);border:1px solid var(--mustard-ink)}
 .segbar{display:flex;gap:2px;height:14px;margin-top:6px}
 .segbar i{flex:1;border-radius:999px;background:var(--panel3);
   box-shadow:inset 0 0 0 1px var(--line-soft);min-width:2px}
@@ -226,7 +262,7 @@ select:focus{outline:none;border-color:var(--lime)}
   border-radius:999px;padding:11px 22px;font-family:var(--mono);font-size:11px;
   font-weight:600;letter-spacing:.14em;cursor:pointer;margin-top:22px;
   transition:border-color .15s ease,color .15s ease}
-.ghost-btn:hover{border-color:var(--lime);color:var(--lime)}
+.ghost-btn:hover{border-color:var(--lime-ink);color:var(--lime-ink)}
 
 /* ---------- instrument panel ---------- */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:4px}
@@ -252,7 +288,7 @@ select:focus{outline:none;border-color:var(--lime)}
 .nextlist li{display:flex;gap:13px;padding:6.5px 0;font-size:13.5px;
   color:var(--text);align-items:baseline}
 .nextlist li::before{counter-increment:nx;content:counter(nx,decimal-leading-zero);
-  font-family:var(--mono);font-size:10.5px;color:var(--lime);flex:none}
+  font-family:var(--mono);font-size:10.5px;color:var(--lime-ink);flex:none}
 .nextlist li.dim{color:var(--text3)}
 .nextlist li.dim::before{color:var(--text3)}
 
@@ -272,8 +308,8 @@ select:focus{outline:none;border-color:var(--lime)}
 .tl-row.ok .tl-res{color:var(--ok)}
 .tl-row.err .tl-pill{border-color:var(--bad);color:var(--bad)}
 .tl-row.err .tl-res{color:var(--bad)}
-.tl-row.warn .tl-pill{border-color:var(--mustard);color:var(--mustard)}
-.tl-row.warn .tl-res{color:var(--mustard)}
+.tl-row.warn .tl-pill{border-color:var(--mustard-ink);color:var(--mustard-ink)}
+.tl-row.warn .tl-res{color:var(--mustard-ink)}
 .tl-row.quiet{opacity:.55}
 .tl-row.live{background:var(--lime-live);color:#040404}
 .tl-row.live .tl-time,.tl-row.live .tl-res{color:#040404}
@@ -318,7 +354,7 @@ select:focus{outline:none;border-color:var(--lime)}
 .ms-res{font-family:var(--mono);font-size:10px;font-weight:600;
   letter-spacing:.1em;margin-left:auto;flex:none}
 .msg.sys .msg-body{font-family:var(--mono);font-size:11px;
-  letter-spacing:.06em;color:var(--mustard)}
+  letter-spacing:.06em;color:var(--mustard-ink)}
 .thread-empty{color:var(--text3);font-size:13.5px;padding:14px 0}
 
 /* ---------- runs list ---------- */
@@ -339,8 +375,8 @@ select:focus{outline:none;border-color:var(--lime)}
   border:1px solid var(--line);color:var(--text2);white-space:nowrap}
 .pill.st-success,.pill.st-pass{border-color:var(--ok);color:var(--ok)}
 .pill.st-failed,.pill.st-fail{border-color:var(--bad);color:var(--bad)}
-.pill.st-running{border-color:var(--lime);color:var(--lime)}
-.pill.st-blocked,.pill.st-killed{border-color:var(--mustard);color:var(--mustard)}
+.pill.st-running{border-color:var(--lime-ink);color:var(--lime-ink)}
+.pill.st-blocked,.pill.st-killed{border-color:var(--mustard-ink);color:var(--mustard-ink)}
 
 /* ---------- replay ---------- */
 .replay-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:28px;align-items:start}
@@ -351,11 +387,11 @@ select:focus{outline:none;border-color:var(--lime)}
 .mini-btn{background:none;border:1px solid var(--line);color:var(--text);
   border-radius:999px;padding:7px 15px;font-family:var(--mono);font-size:10.5px;
   font-weight:600;letter-spacing:.1em;cursor:pointer}
-.mini-btn:hover{border-color:var(--lime);color:var(--lime)}
+.mini-btn:hover{border-color:var(--lime-ink);color:var(--lime-ink)}
 .fromrun{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
 .fromrun input{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);
   border-radius:4px;color:var(--text);padding:10px 13px;font-size:13.5px}
-.fromrun input:focus{outline:none;border-color:var(--lime)}
+.fromrun input:focus{outline:none;border-color:var(--lime-ink)}
 
 /* ---------- routines ---------- */
 .rrow{display:grid;grid-template-columns:52px 1fr auto;gap:18px;align-items:center;
@@ -363,7 +399,7 @@ select:focus{outline:none;border-color:var(--lime)}
   transition:background .12s ease}
 .rrow:hover{background:var(--panel)}
 .rrow:first-child{border-top:1px solid var(--line)}
-.rr-idx{font-family:var(--mono);font-size:11px;color:var(--lime)}
+.rr-idx{font-family:var(--mono);font-size:11px;color:var(--lime-ink)}
 .rr-name{font-family:var(--disp);font-weight:500;font-size:22px;
   text-transform:uppercase;letter-spacing:.005em}
 .rr-goal{color:var(--text2);font-size:13.5px;margin-top:2px;overflow-wrap:anywhere}
@@ -383,7 +419,7 @@ select:focus{outline:none;border-color:var(--lime)}
 .frow2 input[type=text],.frow2 textarea{background:var(--panel);
   border:1px solid var(--line);border-radius:4px;color:var(--text);
   padding:11px 14px;font-size:14px;width:100%}
-.frow2 input[type=text]:focus,.frow2 textarea:focus{outline:none;border-color:var(--lime)}
+.frow2 input[type=text]:focus,.frow2 textarea:focus{outline:none;border-color:var(--lime-ink)}
 .frow2 textarea{min-height:64px;resize:vertical}
 .frow2 .hint{grid-column:2;color:var(--text3);font-size:12px;margin-top:-4px}
 
@@ -394,7 +430,7 @@ select:focus{outline:none;border-color:var(--lime)}
 .kpi-num{font-family:var(--disp);font-weight:600;font-size:clamp(48px,5vw,64px);
   line-height:1;letter-spacing:-.02em}
 .kpi-num .kpi-den{color:var(--text3);font-size:.55em}
-.kpi-num.lime-n{color:var(--lime)}
+.kpi-num.lime-n{color:var(--lime-ink)}
 .kpi-lab{font-family:var(--mono);font-size:10px;font-weight:600;
   letter-spacing:.2em;color:var(--text2);margin-top:8px;text-transform:uppercase}
 .scorebar{height:18px;border-radius:999px;background:var(--panel3);
@@ -427,12 +463,22 @@ select:focus{outline:none;border-color:var(--lime)}
   border-radius:50%;background:var(--text2);transition:all .15s ease}
 .switch input:checked + i{background:var(--lime)}
 .switch input:checked + i::after{left:24px;background:#040404}
+/* Appearance segmented control (v3.5): capsule of mono options;
+   the active one is the sanctioned lime fill with dark ink. */
+.seg{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--line);
+  border-radius:999px;background:var(--panel)}
+.seg button{border:none;background:none;color:var(--text2);cursor:pointer;
+  font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;padding:7px 18px;border-radius:999px;
+  transition:background .15s ease,color .15s ease}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--lime);color:#040404}
 
 /* ---------- loader ---------- */
 #loader{position:fixed;inset:0;z-index:150;background:var(--void);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
 .ld-word{font-family:var(--mono);font-size:11px;font-weight:600;
-  letter-spacing:.34em;color:var(--lime)}
+  letter-spacing:.34em;color:var(--lime-ink)}
 .ld-num{font-family:var(--disp);font-weight:600;font-size:130px;line-height:1;
   letter-spacing:-.03em}
 .ld-sub{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--text3)}
@@ -446,7 +492,7 @@ select:focus{outline:none;border-color:var(--lime)}
 .modal.open .modal-panel{animation:modalIn .26s cubic-bezier(.22,.8,.24,1) both}
 @keyframes modalIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .m-eyebrow{font-family:var(--mono);font-size:10.5px;font-weight:600;
-  letter-spacing:.26em;color:var(--mustard);margin-bottom:16px}
+  letter-spacing:.26em;color:var(--mustard-ink);margin-bottom:16px}
 .m-question{font-family:var(--serif);font-size:32px;line-height:1.28;
   margin:0 0 18px;font-weight:500}
 .m-step{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px;
@@ -840,6 +886,12 @@ select:focus{outline:none;border-color:var(--lime)}
         <label class="switch"><input type="checkbox" id="cfgSandbox"><i></i></label></div>
       <div class="frow2"><span class="mono-lab">Voice updates</span>
         <label class="switch"><input type="checkbox" id="cfgVoice"><i></i></label></div>
+      <div class="frow2"><span class="mono-lab">Appearance</span>
+        <span class="seg" id="cfgTheme" role="group" aria-label="Appearance theme">
+          <button type="button" data-theme-val="light">Light</button>
+          <button type="button" data-theme-val="dark">Dark</button>
+        </span>
+        <span class="hint">Applies immediately and is remembered. Light is the default — it reads better in screen recordings.</span></div>
       <div class="frow2"><span class="mono-lab">Driver</span>
         <span class="set-note" id="cfgDriverNote">Auto — override with “driver” in the config file.</span></div>
       <div class="frow2"><span class="mono-lab">Confirmations</span>
@@ -1505,6 +1557,7 @@ async function pollStatus() {
       (label === "AWAITING CONFIRMATION" ? "WAITING" : label);
     document.documentElement.classList.toggle(
       "no-motion", st.config.feature_animations === false);
+    applyTheme(st.config.theme);
     $("#railKill").className = "rail-kill" + (st.kill_tripped ? " tripped" : "");
     $("#railKill").innerHTML = st.kill_tripped ? "KILL<br>TRIPPED" : "KILL<br>READY";
     $("#pullTab").classList.toggle("tripped", !!st.kill_tripped);
@@ -2368,6 +2421,20 @@ async function loadBenchmark() {
   }));
 }
 
+/* ================= appearance (v3.5) ================= */
+/* The server config is the source of truth; this applies it to
+   the document, refreshes the localStorage paint hint (read by
+   the head script before first paint), and syncs the Settings
+   segmented control.  Anything that is not exactly "dark" is
+   light — the product default. */
+function applyTheme(theme) {
+  const t = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("deskdora-theme", t); } catch (e) {}
+  document.querySelectorAll("#cfgTheme button").forEach(b =>
+    b.classList.toggle("on", b.dataset.themeVal === t));
+}
+
 /* ================= settings ================= */
 const AUT_CATS = ["files", "apps", "web", "messages", "money"];
 async function loadConfig() {
@@ -2382,6 +2449,7 @@ async function loadConfig() {
   $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
   $("#cfgPin").value = cfg.companion_pin || "";
   $("#cfgEdge").value = cfg.edge_light || "single";
+  applyTheme(cfg.theme);
   // Features panel (same keys as their home sections)
   $("#featOverlay").checked = cfg.feature_overlay !== false;
   $("#featEdge").value = cfg.edge_light || "single";
@@ -2641,6 +2709,14 @@ $("#cfgEdge").addEventListener("change", async (e) => {
   $("#featEdge").value = e.target.value;
   await postConfig({ edge_light: e.target.value });
 });
+/* Appearance: applies the moment it is tapped (the document
+   restyles with no reload), then persists through the config. */
+document.querySelectorAll("#cfgTheme button").forEach(b =>
+  b.addEventListener("click", async () => {
+    applyTheme(b.dataset.themeVal);
+    await postConfig({ theme: b.dataset.themeVal });
+    pollStatus();
+  }));
 /* Features panel: every switch writes its key immediately; twins
    (the same setting in its home section) are kept in step. */
 function featWire(id, key, twinId, twinProp) {

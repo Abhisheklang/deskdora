@@ -56,6 +56,56 @@ surface; mustard appears nowhere except the stop gesture and
 irreversible-action warnings; status colours are sampled
 sparingly, as pills, never as panel fills.
 
+## Light palette — v3.5: "Control Room, daylight"
+
+The same system on paper, added in v3.5 (user order, 2026-11-19).
+Light is the **default theme**: a fresh install — and any existing
+install, whose config predates the `theme` key — opens in light
+mode, because light reads better in screen recordings. Dark
+remains the palette above, byte-for-byte; the user switches in
+Settings → Appearance, the change applies immediately (no
+restart), persists in the config, and reaches every surface: the
+main window, the companion page, and the floating window.
+
+One structural rule makes the two themes possible without
+touching a single layout rule: **the accent exists in two forms.**
+As a *fill* it is always the bright brand value, always paired
+with `#040404` ink (`#CEDE62` fill + ink measures 13.9:1). As
+*text, icon or border* on a surface it uses the parallel `-ink`
+tokens — identical to the fills in dark mode, deepened in light
+mode, because bright `#CEDE62` as text on white measures 1.5:1
+and is forbidden there.
+
+| Token | Hex | Use |
+|---|---|---|
+| `paper` | `#F2F2EC` | App background (the light `void`) |
+| `rail-light` | `#E7E7DD` | Icon rail, shell chrome |
+| `panel-light` | `#FFFFFF` | Instrument panels |
+| `panel-2-light` | `#F5F5EF` | Raised rows, inputs |
+| `panel-3-light` | `#E3E3D8` | Tracks: progress, capacity, switch-off |
+| `hairline-light` | `#5C5C5B` @ 38% | All dividers and borders |
+| `hairline-soft-light` | `#5C5C5B` @ 20% | Secondary rules |
+| `ink` | `#191A14` | Primary text |
+| `ink-2` | `#54554C` | Secondary text, labels (7.6:1 on white) |
+| `ink-3` | `#7E7E72` | Faint text, placeholders (parity with dark `text-3`) |
+| `lime` (fill) | `#CEDE62` | Unchanged — tiles, pills, fills, with `#040404` ink |
+| `lime-live` (fill) | `#DAF64C` | Unchanged — the executing step |
+| **`lime-ink`** | **`#5C6B1C`** | **Lime as text/icon/border** (5.9:1 on white, ≥4.7:1 on every light surface) |
+| `lime-dim-light` | `#66731F` | Completed segments; lime as small text (5.2:1 on white) |
+| `mustard` (fill) | `#ECD06F` | Unchanged — stop fills, with `#040404` ink |
+| **`mustard-ink`** | **`#7D6318`** | **Mustard as text/border**: pull-tab, blocked pills (5.7:1 on white) |
+| `ok-light` | `#067A5C` | Success as text/border (5.3:1 on white) |
+| `bad-light` | `#C2254F` | Failure as text/border (5.7:1 on white) |
+| `overlay-card-light` | `#FBFBF7` | Floating window card, with a `#66731F` border and ink text |
+
+The **edge light does not follow the theme**: it paints lime /
+amber on the desktop itself, not on an app surface, and its job
+is to be seen against arbitrary desktop content in either mode.
+The kill switch keeps its meaning in both themes — mustard is
+still danger, only, and in light mode it speaks through
+`mustard-ink` whenever it is text or an outline rather than a
+fill.
+
 ## Typography
 
 Three voices, each with one job. All bundled locally as woff2 —

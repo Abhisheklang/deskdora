@@ -37,7 +37,7 @@ gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
 
 from deskdora.overlay import (edge_state, overlay_enabled,  # noqa: E402
-                              overlay_state)
+                              overlay_state, overlay_theme)
 
 DEFAULT_URL = "http://127.0.0.1:8765/"
 APP_TITLE = "DeskDora"
@@ -113,7 +113,7 @@ class DeskDoraWindow(Gtk.Window):
 # window manager that focuses it anyway, the agent's focus guard
 # sees an unexpected active window and fails the step safe instead
 # of typing into the wrong place — the designed behaviour.
-OVERLAY_CSS = """
+OVERLAY_CSS_DARK = """
 #overlay-card{background:#12140F;border:2px solid #CEDE62;
   border-radius:14px;padding:12px 14px;
   box-shadow:0 8px 28px rgba(0,0,0,.65), 0 0 18px rgba(206,222,98,.25)}
@@ -140,6 +140,46 @@ button.ov-resume{background:#CEDE62;border-color:#CEDE62;color:#040404;
   font-weight:700}
 button.ov-resume:hover{background:#DAF64C;color:#040404}
 """
+# Light theme (v3.5): the same card on a paper-white surface —
+# off-white fill, an olive border (bright lime on a light desktop
+# would wash out), ink text, and the deepened accent inks of the
+# light palette (BRAND.md).  The resume fill stays bright lime
+# with dark ink, the sanctioned filled-accent form in both themes.
+OVERLAY_CSS_LIGHT = """
+#overlay-card{background:#FBFBF7;border:2px solid #66731F;
+  border-radius:14px;padding:12px 14px;
+  box-shadow:0 8px 28px rgba(25,26,20,.30), 0 0 18px rgba(102,115,31,.16)}
+#ov-brand{color:#7E7E72;font-family:monospace;font-size:9px;
+  letter-spacing:2px}
+#ov-dot{color:#66731F;font-size:11px}
+#ov-status{color:#191A14;font-family:monospace;font-size:9px;
+  letter-spacing:1px}
+#ov-goal{color:#191A14;font-size:13px;font-weight:600}
+#ov-planner{color:#7E7E72;font-family:monospace;font-size:9px;
+  letter-spacing:1px}
+#ov-pct{color:#191A14;font-size:24px;font-weight:700}
+#ov-steps{color:#54554C;font-family:monospace;font-size:10px;
+  letter-spacing:1px}
+#ov-bar trough{background:#E3E3D8;border-radius:99px;min-height:6px}
+#ov-bar progress{background:#66731F;border-radius:99px;min-height:6px}
+button.ov-btn{font-family:monospace;font-size:10px;letter-spacing:1px;
+  padding:6px 12px;border-radius:99px;background:none;
+  border:1px solid rgba(92,92,91,.55);color:#191A14;box-shadow:none}
+button.ov-btn:hover{border-color:#5C6B1C;color:#5C6B1C}
+button.ov-stop{border-color:#7D6318;color:#7D6318}
+button.ov-stop:hover{background:#ECD06F;color:#040404}
+button.ov-resume{background:#CEDE62;border-color:#CEDE62;color:#040404;
+  font-weight:700}
+button.ov-resume:hover{background:#DAF64C;color:#040404}
+"""
+
+
+def overlay_css(theme):
+    """The floating window's stylesheet for a normalised theme
+    name (deskdora.overlay.overlay_theme maps config values)."""
+    return OVERLAY_CSS_LIGHT if theme == "light" else OVERLAY_CSS_DARK
+
+
 OVERLAY_POS_PATH = os.path.expanduser(
     "~/.local/share/deskdora/overlay.json")
 
@@ -187,10 +227,16 @@ class ControlOverlay(Gtk.Window):
             self.set_visual(visual)
         self.set_app_paintable(True)
 
-        provider = Gtk.CssProvider()
-        provider.load_from_data(OVERLAY_CSS.encode())
+        # Appearance (v3.5): start from the default theme; _apply
+        # reloads this provider the moment the polled config says
+        # otherwise, and again on every later switch.
+        self._theme = overlay_theme(None)
+        self._css_provider = Gtk.CssProvider()
+        self._css_provider.load_from_data(
+            overlay_css(self._theme).encode())
         Gtk.StyleContext.add_provider_for_screen(
-            screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            screen, self._css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
         card.set_name("overlay-card")
@@ -282,6 +328,13 @@ class ControlOverlay(Gtk.Window):
         # Features panel: the floating window's master switch.  Off
         # means the window never appears, whatever the agent does.
         cfg = (self._hub.status or {}).get("config") or {}
+        # Appearance (v3.5): follow the config theme live — a
+        # switch in Settings restyles the card on the next tick.
+        theme = overlay_theme(cfg)
+        if theme != self._theme:
+            self._theme = theme
+            self._css_provider.load_from_data(
+                overlay_css(theme).encode())
         if not overlay_enabled(cfg):
             if self.get_visible():
                 self.hide()

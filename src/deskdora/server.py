@@ -92,7 +92,21 @@ DEFAULT_CONFIG = {
     "notifications": json.loads(json.dumps(
         notify.DEFAULT_NOTIFICATIONS)),  # per-event toggles
     "feature_estimates": True,   # time-estimate display
+    # Appearance (v3.5): "light" | "dark".  Default LIGHT (user
+    # order, 2026-11-19: light reads better in screen recordings).
+    # Existing installs have no theme key, so they pick up this
+    # default until the user switches in Settings.
+    "theme": "light",
 }
+
+THEMES = ("light", "dark")
+
+
+def theme_of(cfg):
+    """The configured theme, normalised: anything that is not
+    exactly "dark" is "light" (the default), so a missing or
+    hand-edited config value can never strand the UI themeless."""
+    return "dark" if (cfg or {}).get("theme") == "dark" else "light"
 
 
 def planner_display(mode_label):
@@ -1628,6 +1642,8 @@ def config_get():
 
 @app.post("/api/config")
 def config_post(cfg: dict):
+    if "theme" in cfg and cfg["theme"] not in THEMES:
+        raise HTTPException(400, "theme must be 'light' or 'dark'")
     merged = load_config()
     for key in DEFAULT_CONFIG:
         if key in cfg:
