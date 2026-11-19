@@ -63,7 +63,7 @@ An agent that can operate your whole PC can also delete your files. So:
 **Easiest — the installable app (Ubuntu 24.04):**
 
 ```bash
-sudo apt install ./deskdora_3.7.1_amd64.deb
+sudo apt install ./deskdora_3.7.2_amd64.deb
 ```
 
 Then launch **DeskDora** from your applications menu: it starts the local
