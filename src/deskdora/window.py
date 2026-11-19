@@ -36,6 +36,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
 
+from deskdora.hotkey import HotkeyBinding  # noqa: E402
 from deskdora.overlay import (edge_state, overlay_enabled,  # noqa: E402
                               overlay_state, overlay_theme)
 
@@ -84,6 +85,22 @@ class DeskDoraWindow(Gtk.Window):
                     return
                 except Exception:
                     continue
+
+    def summon(self):
+        """Raise the main window and focus the goal box — the
+        global hotkey's action (v3.7.3).  Restores the window
+        when it is hidden to the floating state, then asks the
+        page to show the Run view with the goal input focused."""
+        self.show()
+        self.present()
+        try:
+            self.view.run_javascript(
+                "if (window.switchView) switchView('run');"
+                "var g = document.getElementById('goalInput');"
+                "if (g) { g.focus(); g.select(); }",
+                None, None)
+        except Exception:
+            pass
 
     def _on_load_failed(self, _view, _frame, _uri, _error):
         # The launcher waits for the service before opening us, but a
@@ -797,13 +814,41 @@ def _app_opened_tone(url):
     threading.Thread(target=_post, daemon=True).start()
 
 
+class HotkeyWatcher:
+    """Keeps the global hotkey binding in step with the config
+    the hub polls (v3.7.3): toggle off releases the grab, a new
+    combo re-binds, live.  Runs on the GTK main thread (a GLib
+    timeout), which is where Keybinder callbacks are serviced;
+    the binding's own callback marshals the summon back here
+    with GLib.idle_add.  On platforms where the backend is
+    unavailable (Wayland's compositor restrictions included),
+    sync() simply never registers — no fake binding."""
+
+    def __init__(self, hub, window):
+        self._hub = hub
+        self._window = window
+        self.binding = HotkeyBinding()
+        GLib.timeout_add(1500, self._sync)
+
+    def _summon(self, *_args):
+        GLib.idle_add(self._window.summon)
+        return True
+
+    def _sync(self):
+        status = self._hub.status or {}
+        config = status.get("config") or {}
+        self.binding.sync(config.get("hotkey"), self._summon)
+        return True
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     url = argv[0] if argv else DEFAULT_URL
     hub = StatusHub(url)
-    DeskDoraWindow(url)
+    window = DeskDoraWindow(url)
     ControlOverlay(hub)
     EdgeLight(hub)
+    HotkeyWatcher(hub, window)
     _app_opened_tone(url)
     Gtk.main()
     return 0

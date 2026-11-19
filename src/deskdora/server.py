@@ -33,8 +33,11 @@ from .audit import RunLog, list_runs, read_log
 from .autonomy import (DEFAULT_POLICY, AutonomyPolicy, PolicyError,
                       validate_policy)
 from .memory import MemoryStore, learn_from_log
+from .backup import (BackupError, build_backup, parse_backup,
+                     preview_backup)
 from .gguf import (GgufError, check_model_file,
                    model_name_from_filename, validate_model_name)
+from .hotkey import parse_combo
 from .planners import (PROVIDER_REGISTRY, OllamaPlanner, PlanError,
                        PullAggregator, get_planner,
                        make_provider_planner,
@@ -85,6 +88,9 @@ DEFAULT_CONFIG = {
     "proposals_enabled": True,   # proactive watcher scanning
     # v3.3 features
     "sounds": json.loads(json.dumps(sounds.DEFAULT_SOUNDS)),
+    # Global hotkey (v3.7.3): bound by the window process on X11
+    # while the app runs; see hotkey.py for the platform truth.
+    "hotkey": {"enabled": True, "combo": "Ctrl+Alt+D"},
     "dry_run_default": False,    # plan approval before runs, by default
     "app_deny_list": [],         # per-app permissions: denied app names
     "feature_app_permissions": True,  # master switch for the deny list
@@ -1770,6 +1776,18 @@ def config_post(cfg: dict):
     if "setup_complete" in cfg \
             and not isinstance(cfg["setup_complete"], bool):
         raise HTTPException(400, "setup_complete must be true or false")
+    if "hotkey" in cfg:
+        hk = cfg["hotkey"]
+        if not isinstance(hk, dict):
+            raise HTTPException(400, "hotkey must be an object")
+        if "enabled" in hk and not isinstance(hk["enabled"], bool):
+            raise HTTPException(400, "hotkey.enabled must be "
+                                     "true or false")
+        if "combo" in hk:
+            try:
+                parse_combo(hk["combo"])
+            except ValueError as exc:
+                raise HTTPException(400, f"hotkey: {exc}")
     merged = load_config()
     for key in DEFAULT_CONFIG:
         if key in cfg:
@@ -1799,6 +1817,13 @@ def config_post(cfg: dict):
                 current["events"][event] = \
                     sounds._migrate_value(event, value)
         merged["sounds"] = current
+    if isinstance(cfg.get("hotkey"), dict):
+        # Field-wise, like sounds: a partial update (just the
+        # toggle) must not drop the recorded combo.
+        stored_hk = {"enabled": True, "combo": "Ctrl+Alt+D"}
+        stored_hk.update(load_config().get("hotkey") or {})
+        stored_hk.update(cfg["hotkey"])
+        merged["hotkey"] = stored_hk
     if "autonomy" in cfg:
         try:
             merged["autonomy"] = validate_policy(cfg["autonomy"])
@@ -1814,6 +1839,141 @@ def config_post(cfg: dict):
 
 class PlannerValidateRequest(BaseModel):
     planner: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Settings backup: export / import (v3.7.3).  The document carries
+# setup only — config (secrets scrubbed by backup.py), routines,
+# personal templates.  Import is preview-then-confirm, and every
+# apply first snapshots the CURRENT state as a pre-import backup
+# the same section can restore.
+# ---------------------------------------------------------------------------
+
+def _backup_stores():
+    # The same stores the rest of the API reads and writes —
+    # one source of truth for routines and templates.
+    return MANAGER.routines, MANAGER.templates
+
+
+def _current_backup_doc():
+    routines, templates = _backup_stores()
+    return build_backup(load_config(), routines.list(),
+                        templates.list())
+
+
+def _read_backup_file(path):
+    path = (path or "").strip()
+    if not path:
+        raise HTTPException(400, "Enter the path to a backup file.")
+    if not os.path.isfile(path):
+        raise HTTPException(400, f"No file exists at {path}.")
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception:
+        raise HTTPException(
+            400, "That file couldn't be read as a backup — it "
+                 "isn't valid JSON.")
+    try:
+        return parse_backup(data)
+    except BackupError as exc:
+        raise HTTPException(400, str(exc))
+
+
+def _apply_backup(doc):
+    """Snapshot current state, then apply the backup.  Returns
+    the pre-import snapshot's path."""
+    routines, templates = _backup_stores()
+    backup_dir = os.path.join(DATA_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    pre_path = os.path.join(backup_dir, f"pre-import-{stamp}.json")
+    with open(pre_path, "w") as fh:
+        json.dump(_current_backup_doc(), fh, indent=2)
+    # Config: the backup's config over the defaults, through the
+    # same validators the settings endpoint applies.
+    new_config = json.loads(json.dumps(DEFAULT_CONFIG))
+    new_config.update(doc["config"])
+    if "theme" in new_config and new_config["theme"] not in THEMES:
+        raise HTTPException(400, "theme must be 'light' or 'dark'")
+    if isinstance(new_config.get("sounds"), dict):
+        new_config["sounds"] = sounds.sounds_config(new_config)
+    if "hotkey" in new_config:
+        try:
+            parse_combo((new_config["hotkey"] or {}).get("combo")
+                        or "")
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(400, f"hotkey: {exc}")
+    if "autonomy" in new_config:
+        try:
+            new_config["autonomy"] = validate_policy(
+                new_config["autonomy"])
+        except PolicyError as exc:
+            raise HTTPException(400, str(exc))
+    save_config(new_config)
+    # Routines: replace the set with the backup's definitions.
+    for existing in routines.list():
+        routines.delete(existing["name"])
+    for routine in doc["routines"]:
+        routines.save(routine["name"], routine["goal"],
+                      planner_mode=routine.get("planner_mode")
+                      or "",
+                      schedule=routine.get("schedule"),
+                      trigger=routine.get("trigger"),
+                      goal_template=routine.get("goal_template"),
+                      params=routine.get("params") or [])
+    templates.replace_all(doc["templates"])
+    return pre_path
+
+
+@app.get("/api/backup/export")
+def backup_export():
+    doc = _current_backup_doc()
+    return JSONResponse(
+        doc, headers={"Content-Disposition":
+                      'attachment; filename="deskdora-backup.json"'})
+
+
+class BackupPathRequest(BaseModel):
+    path: str | None = None
+    confirm: bool = False
+
+
+@app.post("/api/backup/preview")
+def backup_preview(req: BackupPathRequest):
+    return preview_backup(_read_backup_file(req.path))
+
+
+@app.post("/api/backup/import")
+def backup_import(req: BackupPathRequest):
+    if not req.confirm:
+        raise HTTPException(
+            400, "Import needs the confirmation step — preview "
+                 "the backup and confirm before applying it.")
+    doc = _read_backup_file(req.path)
+    pre_path = _apply_backup(doc)
+    return {"ok": True, "pre_import_backup": pre_path,
+            "preview": preview_backup(doc)}
+
+
+@app.post("/api/backup/restore-preimport")
+def backup_restore_preimport():
+    backup_dir = os.path.join(DATA_DIR, "backups")
+    try:
+        candidates = sorted(
+            f for f in os.listdir(backup_dir)
+            if f.startswith("pre-import-")
+            and f.endswith(".json"))
+    except FileNotFoundError:
+        candidates = []
+    if not candidates:
+        raise HTTPException(
+            400, "There is no pre-import backup to restore yet.")
+    doc = _read_backup_file(
+        os.path.join(backup_dir, candidates[-1]))
+    pre_path = _apply_backup(doc)
+    return {"ok": True, "restored": candidates[-1],
+            "pre_import_backup": pre_path}
 
 
 @app.post("/api/planner/validate")

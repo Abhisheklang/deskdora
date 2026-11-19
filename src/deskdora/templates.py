@@ -90,3 +90,26 @@ class TemplateStore:
             return False
         self._save(kept)
         return True
+
+    def replace_all(self, items):
+        """Replace the whole personal-template set (backup
+        import, v3.7.3).  Only well-formed entries survive —
+        a name and a goal are the minimum a template is."""
+        kept = []
+        for it in items or []:
+            if not isinstance(it, dict):
+                continue
+            name = " ".join(str(it.get("name") or "").split()).strip()
+            goal = str(it.get("goal") or "").strip()
+            if not name or not goal:
+                continue
+            slug = re.sub(r"[^a-z0-9]+", "-",
+                          name.lower()).strip("-") or "template"
+            kept.append({
+                "id": it.get("id") or f"personal-{slug}",
+                "name": name, "goal": goal,
+                "note": it.get("note") or "Your template.",
+                "builtin": False,
+                "created_at": it.get("created_at") or time.time()})
+        self._save(kept)
+        return kept
