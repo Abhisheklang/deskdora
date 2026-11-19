@@ -323,6 +323,15 @@ class RunManager:
             # the two is set — page for definitive, pop-up for
             # unreachable.
             "planner_error": None,
+            # Completion payload (v3.7.2): set ONLY when a run
+            # finishes successfully — goal, steps executed and
+            # elapsed time as measured here, never guessed by the
+            # client.  The Run view's "work done" card and the
+            # floating window's DONE state render this; a failed or
+            # killed run never sets it and keeps its own end state.
+            # Cleared by the next run, by reset, and by the dismiss
+            # endpoint.
+            "completion": None,
             "source": "ui",
         }
         self.kill = KillSwitch()
@@ -485,6 +494,7 @@ class RunManager:
                                "result": None, "source": source,
                                "connection_error": None,
                                "planner_error": None,
+                               "completion": None,
                                "pending_plan": None})
             self.progress = {"step_index": 0, "step_total": 0,
                              "done": 0, "current_action": "Planning",
@@ -658,6 +668,28 @@ class RunManager:
                     if generation == self._run_generation:
                         self.state["running"] = False
                         self.state["result"] = result
+                        if result.get("status") == "success":
+                            # The completion moment (v3.7.2): a
+                            # successful finish is its own state,
+                            # with the numbers as measured here —
+                            # the UIs render this payload instead of
+                            # reconstructing an ending from client-
+                            # side step tracking.  Failed and killed
+                            # runs never reach this branch.
+                            started = self.progress.get("started_at")
+                            finished_at = time.time()
+                            self.state["completion"] = {
+                                "goal": goal,
+                                "steps": int(result.get(
+                                    "steps_executed",
+                                    self.progress.get("done", 0))
+                                    or 0),
+                                "elapsed_seconds": (
+                                    round(finished_at - started, 1)
+                                    if started else None),
+                                "finished_at": finished_at,
+                                "answer": result.get("answer") or "",
+                            }
                         if self._run_cancel is cancel_event:
                             self._run_cancel = None
 
@@ -864,11 +896,24 @@ class RunManager:
                                "run_dir": None, "result": None,
                                "last_event": None, "source": "ui",
                                "connection_error": None,
-                               "planner_error": None})
+                               "planner_error": None,
+                               "completion": None})
             self.progress = {"step_index": 0, "step_total": 0,
                              "done": 0, "current_action": ""}
         self.pause_gate.clear()
         self.kill.reset()
+        return {"ok": True}
+
+    def dismiss_completion(self):
+        """Dismiss the completion state (v3.7.2): the user has seen
+        the "work done" moment and moved on.  Only the completion
+        marker clears — the run's result stays for History and the
+        state pill until reset or the next run, exactly as before.
+        A live run refuses: there is nothing to dismiss yet."""
+        with self.lock:
+            if self.state["running"]:
+                raise HTTPException(409, "a run is in progress")
+            self.state["completion"] = None
         return {"ok": True}
 
     def progress_payload(self):
@@ -1130,6 +1175,13 @@ def resume():
 def reset():
     """Clear a finished/stopped run back to idle."""
     return MANAGER.reset_state()
+
+
+@app.post("/api/completion/dismiss")
+def completion_dismiss():
+    """Dismiss the success completion state (v3.7.2) — the user
+    has seen the "work done" moment and moved on."""
+    return MANAGER.dismiss_completion()
 
 
 @app.post("/api/confirmations/{cid}")

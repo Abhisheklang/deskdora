@@ -14,6 +14,10 @@ as the companion):
   A kill-stopped run itself is never resumed; it offers Reset.
 * Reset clears a finished/stopped run back to idle, which hides
   the overlay.
+* A successful finish shows a DONE state (goal + steps + time)
+  from the server's completion payload (v3.7.2) — it stays until
+  Reset (its dismiss) or the next run.  Failed and killed runs
+  keep the plain finished state; DONE is success-only.
 """
 from __future__ import annotations
 
@@ -56,6 +60,37 @@ def overlay_state(status):
             "can_freeze": not paused,
             "can_resume": paused,
             "can_reset": False,
+        }
+
+    completion = state.get("completion")
+    if completion:
+        # DONE (v3.7.2): a successful finish gets its own state,
+        # rendered from the server's completion payload — goal,
+        # steps and elapsed as measured by the service.  It stays
+        # until Reset (the overlay's dismiss) or the next run.
+        steps = int(completion.get("steps") or 0)
+        steps_text = f"{steps} STEP" + ("" if steps == 1 else "S")
+        elapsed = completion.get("elapsed_seconds")
+        if elapsed:
+            mins, secs = divmod(int(round(elapsed)), 60)
+            steps_text += f" · {mins}:{secs:02d}"
+        queue_waiting = bool(progress.get("queue_total")) and bool(
+            progress.get("queue_halted")
+            or progress.get("queue_paused"))
+        return {
+            "visible": True,
+            "mode": "done",
+            "goal": completion.get("goal") or goal,
+            "percent": 100,
+            "steps_text": steps_text,
+            "status_text": "DONE",
+            "planner_display": disp,
+            "can_stop": False,
+            "can_freeze": False,
+            # Same rule as the finished state: resume only ever
+            # continues a waiting queue, never this run.
+            "can_resume": queue_waiting,
+            "can_reset": True,
         }
 
     if result:

@@ -704,6 +704,11 @@ select:focus{outline:none;border-color:var(--lime-ink)}
           <div class="seg-meta"><span id="segText">STEPS 0 / 0</span><span id="segPct"></span></div>
           <p class="voice" id="voiceRun">&ldquo;Working on it.&rdquo;</p>
           <button class="ghost-btn" id="runAgainBtn" hidden>Run another task</button>
+          <div id="doneCard" hidden style="margin-top:26px">
+            <div class="sec-head"><span class="sec-no">&#10003;</span><span class="sec-name">WORK DONE</span><span class="rule"></span><span class="sec-note" id="doneMeta"></span></div>
+            <p class="hint" style="margin:8px 0 0">The full story — every step, with screenshots — is in the log below.</p>
+            <div style="margin-top:12px"><button class="ghost-btn" id="doneDismissBtn">Dismiss</button></div>
+          </div>
         </div>
 
         <div id="planCard" hidden style="margin-top:26px">
@@ -1694,6 +1699,14 @@ async function syncEvents(runId) {
 }
 
 /* ================= status polling ================= */
+function fmtElapsed(s) {
+  if (s == null) return "—";
+  s = Math.round(s);
+  const m = Math.floor(s / 60), ss = s % 60;
+  if (m >= 60) return Math.floor(m / 60) + " H " + (m % 60) + " MIN";
+  return m ? m + " MIN " + ss + " SEC" : ss + " SEC";
+}
+
 async function pollStatus() {
   try {
     const st = await (await fetch("/api/status")).json();
@@ -1712,8 +1725,14 @@ async function pollStatus() {
     // to fully idle (a reset after failed attempts did exactly
     // this), the form comes back — the panel must never strand the
     // user on a stale "Now running" composition with no way back.
+    // A completion (v3.7.2) implies a result, so it changes nothing
+    // here — it is named anyway so the interplay stays explicit:
+    // while a completion stands, the settle-to-idle branch below
+    // cannot fire (it requires no result), and the entry form only
+    // returns when the user dismisses the completion or starts
+    // something new.
     const hasRun = running || !!st.state.result ||
-      !!st.state.pending_plan;
+      !!st.state.completion || !!st.state.pending_plan;
     if (st.state.goal && hasRun && !S.goal && !dismissed) {  // page loaded mid-run
       S.goal = st.state.goal;
       $("#cmdIdle").hidden = true; $("#cmdRun").hidden = false;
@@ -1843,6 +1862,34 @@ async function pollStatus() {
       $("#runAgainBtn").hidden = false;
       if (S.runId) { S.backfilledFor = null; backfill(S.runId); }
     }
+
+    // Completion card (v3.7.2): a successful finish is a server
+    // state of its own — goal, steps and elapsed as the service
+    // measured them — and this renders exactly that payload, on
+    // every poll, so the moment survives reloads and runs started
+    // from elsewhere.  It stands until the next run starts, a
+    // reset, or Dismiss.  Failed and killed runs never set it:
+    // they keep the finished composition above, unchanged.
+    const comp = st.state.completion;
+    if (comp && !running) {
+      $("#runKicker").textContent = "Work done";
+      $("#goalHead").textContent = comp.goal || st.state.goal || "";
+      const cpill = $("#stepPill");
+      cpill.textContent = "Complete — " + comp.steps + " steps";
+      cpill.className = "step-pill done";
+      $("#segText").textContent =
+        "STEPS " + comp.steps + " / " + comp.steps;
+      setVoice("&ldquo;Done" +
+        (comp.answer ? " — " + esc(comp.answer) : "") + ".&rdquo;");
+      $("#doneMeta").textContent = comp.steps + " STEPS · TOOK " +
+        fmtElapsed(comp.elapsed_seconds) + (comp.finished_at
+          ? " · FINISHED " + new Date(comp.finished_at * 1000)
+              .toLocaleTimeString("en-GB") : "");
+      $("#doneCard").hidden = false;
+      $("#runAgainBtn").hidden = false;
+    } else {
+      $("#doneCard").hidden = true;
+    }
     if (running && S.runId) syncEvents(S.runId);
 
     // confirmation modal
@@ -1905,10 +1952,22 @@ document.querySelectorAll(".chip").forEach(chip =>
     $("#goalInput").value = chip.dataset.goal; $("#goalInput").focus();
   }));
 $("#runAgainBtn").addEventListener("click", () => {
+  // Moving on clears the completion state server-side too, so the
+  // status payload (and the floating window) agree with the view.
+  fetch("/api/completion/dismiss", { method: "POST" }).catch(() => {});
   $("#cmdRun").hidden = true; $("#cmdIdle").hidden = false;
   S.goal = ""; S.result = null; S.dismissed = S.runId;
   if (S.view === "run") $("#tsName").textContent = "Command";
   $("#goalInput").focus();
+});
+$("#doneDismissBtn").addEventListener("click", async () => {
+  try { await fetch("/api/completion/dismiss", { method: "POST" }); }
+  catch (e) { /* next poll settles it */ }
+  $("#doneCard").hidden = true;
+  $("#cmdRun").hidden = true; $("#cmdIdle").hidden = false;
+  S.goal = ""; S.result = null; S.dismissed = S.runId;
+  if (S.view === "run") $("#tsName").textContent = "Command";
+  pollStatus();
 });
 $("#pullTab").addEventListener("click", async () => {
   await fetch("/api/kill", { method: "POST" });
