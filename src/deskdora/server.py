@@ -97,6 +97,13 @@ DEFAULT_CONFIG = {
     # Existing installs have no theme key, so they pick up this
     # default until the user switches in Settings.
     "theme": "light",
+    # First-run setup (v3.6): the setup wizard is required until
+    # the user finishes or skips it once; setup_complete is that
+    # marker.  user_name is the optional name from wizard step 1 —
+    # used for the wizard's finish greeting and editable later in
+    # Settings.  Nothing else reads it.
+    "setup_complete": False,
+    "user_name": "",
 }
 
 THEMES = ("light", "dark")
@@ -107,6 +114,15 @@ def theme_of(cfg):
     exactly "dark" is "light" (the default), so a missing or
     hand-edited config value can never strand the UI themeless."""
     return "dark" if (cfg or {}).get("theme") == "dark" else "light"
+
+
+def setup_required(cfg):
+    """True when the first-run setup wizard (v3.6) must run: the
+    config carries no completed-setup marker.  Every pre-v3.6
+    install has no marker, so it sees the wizard exactly once —
+    finishing or skipping sets setup_complete and it never
+    auto-appears again (Settings can re-open it on demand)."""
+    return not (cfg or {}).get("setup_complete")
 
 
 def planner_display(mode_label):
@@ -1644,10 +1660,19 @@ def config_get():
 def config_post(cfg: dict):
     if "theme" in cfg and cfg["theme"] not in THEMES:
         raise HTTPException(400, "theme must be 'light' or 'dark'")
+    if "user_name" in cfg and not isinstance(cfg["user_name"], str):
+        raise HTTPException(400, "user_name must be text")
+    if "setup_complete" in cfg \
+            and not isinstance(cfg["setup_complete"], bool):
+        raise HTTPException(400, "setup_complete must be true or false")
     merged = load_config()
     for key in DEFAULT_CONFIG:
         if key in cfg:
             merged[key] = cfg[key]
+    if "user_name" in cfg:
+        # Stored trimmed and length-capped; blank is a legitimate
+        # value (the wizard's name step is optional).
+        merged["user_name"] = cfg["user_name"].strip()[:80]
     if isinstance(cfg.get("sounds"), dict):
         # Sounds merge field-wise so a partial update can't drop
         # event toggles it didn't mention.
@@ -1780,6 +1805,40 @@ def providers_models(pid: str):
     except PlanError as exc:
         raise HTTPException(400, str(exc))
     return {"provider": pid, "models": models}
+
+
+class PullRequest(BaseModel):
+    model: str | None = None
+
+
+@app.post("/api/providers/ollama/pull")
+def providers_pull_ollama(req: PullRequest):
+    """Stream an Ollama model download as NDJSON progress events
+    (v3.6, built for the setup wizard's AI step).
+
+    Each line is one Ollama pull event (status, and total/completed
+    byte counts while a layer downloads).  A failure — Ollama down,
+    model unknown — arrives as a final {"error": ...} event rather
+    than a hung or half-dead stream, so the wizard can show it
+    inline and offer retry/skip.  Local path only: cloud providers
+    have nothing to download."""
+    cfg = load_config()
+    stored = (cfg.get("providers") or {}).get("ollama") or {}
+    model = (req.model or "").strip() \
+        or stored.get("model") or cfg["model"]
+    host = stored.get("base_url") \
+        or PROVIDER_REGISTRY["ollama"]["base_url"]
+    planner = OllamaPlanner(model=model, host=host)
+
+    def events():
+        try:
+            for event in planner.pull():
+                yield json.dumps(event) + "\n"
+        except PlanError as exc:
+            yield json.dumps({"error": str(exc)}) + "\n"
+
+    return StreamingResponse(events(),
+                             media_type="application/x-ndjson")
 
 
 @app.post("/api/custom-providers")

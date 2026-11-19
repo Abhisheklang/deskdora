@@ -224,6 +224,59 @@ class OllamaPlanner:
         plan = _extract_json_plan(content)
         return validate_plan(plan, element_count=len(observation.elements))
 
+    def pull(self, model=None):
+        """Stream a model download (Ollama POST /api/pull).
+
+        Yields Ollama's progress events as dicts, in order: status
+        lines ("pulling manifest", "downloading", ...), layer
+        lines carrying total/completed byte counts, and a final
+        {"status": "success"}.  Raises PlanError when Ollama is
+        unreachable or answers with an error, so the caller can
+        show the failure instead of hanging on a dead stream.
+        """
+        name = (model or self.model or "").strip()
+        if not name:
+            raise PlanError("No model named for the download.")
+        body = {"model": name, "name": name, "stream": True}
+        req = urllib.request.Request(
+            self.host + "/api/pull",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            # The timeout bounds socket inactivity, not the whole
+            # download: progress lines keep arriving while bytes
+            # flow, and a stalled server gives up within 2 minutes.
+            resp = urllib.request.urlopen(req, timeout=120)
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = json.loads(
+                    exc.read().decode("utf-8", "replace")).get(
+                        "error", "")
+            except Exception:
+                pass
+            raise PlanError(
+                f"Ollama refused the download of {name}: "
+                f"{detail or exc.reason or exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise PlanError(
+                f"Ollama is not reachable at {self.host} — start "
+                f"Ollama first, then retry the download. ({exc})"
+            ) from exc
+        with resp:
+            for raw in resp:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get("error"):
+                    raise PlanError(
+                        f"Ollama download failed: {event['error']}")
+                yield event
+
 
 def _user_prompt(goal, observation, memory=None, history=None):
     """The user message every LLM planner (local or cloud) sends:

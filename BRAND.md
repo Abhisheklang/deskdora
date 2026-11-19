@@ -230,3 +230,13 @@ rule.
   width: same tokens, same pills, one card per concern, the stop
   control mustard-outlined. It is a *client of the same service*,
   not a second design.
+- **First-run setup wizard** (v3.6): a full-window takeover, not
+  a modal — the numbered section head counts the steps
+  (`01 WELCOME` … `05 ALL SET`), each step is one Oswald headline
+  and one hairline panel, and the footer carries a five-segment
+  progress rule (segments fill lime as steps complete), a ghost
+  SKIP SETUP, and one lime primary. No new tokens: the wizard is
+  built entirely from the active theme's variables, so it is
+  correct in both palettes and re-skins live on the Appearance
+  step. Errors are inline in the step that caused them (hairline
+  red box), never a separate page.

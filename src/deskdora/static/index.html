@@ -510,6 +510,51 @@ select:focus{outline:none;border-color:var(--lime-ink)}
 .m-note{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
   color:var(--text3);margin:16px 0 0;text-align:center}
 
+/* ---------- first-run setup wizard (v3.6) ----------
+   A full-window takeover in the same Control Room system:
+   numbered section head, Oswald headline, hairlines, one lime
+   primary per screen.  Every colour is a theme token, so the
+   wizard is correct in light and dark — and re-skins live when
+   the theme step flips the document theme. */
+#wizard{position:fixed;inset:0;z-index:145;background:var(--void);
+  overflow:auto;padding:38px 22px 52px}
+.wiz-wrap{max-width:760px;margin:0 auto}
+.wiz-title{font-family:var(--disp);font-weight:600;font-size:46px;
+  line-height:1.03;text-transform:uppercase;margin:20px 0 12px}
+.wiz-lede{color:var(--text2);font-size:15.5px;line-height:1.6;
+  max-width:56ch;margin:0}
+.wiz-panel{border-top:1px solid var(--line);padding:24px 0 8px;
+  margin-top:24px}
+.wiz-panel p{color:var(--text2);font-size:15px;line-height:1.65;
+  max-width:60ch}
+.wiz-panel p strong{color:var(--text)}
+.wiz-input{width:100%;background:var(--panel);border:1px solid var(--line);
+  border-radius:4px;color:var(--text);padding:11px 14px;
+  font-family:var(--ui);font-size:14.5px}
+.wiz-input:focus{outline:none;border-color:var(--lime-ink)}
+.wiz-err{display:none;border:1px solid var(--bad);color:var(--bad);
+  border-radius:4px;padding:11px 14px;margin-top:16px;font-size:13.5px;
+  line-height:1.5}
+.wiz-err.show{display:block}
+.wiz-prog{height:10px;border-radius:99px;background:var(--panel3);
+  overflow:hidden;margin-top:16px}
+.wiz-prog i{display:block;height:100%;width:0;background:var(--lime);
+  transition:width .25s ease}
+.wiz-foot{display:flex;align-items:center;gap:12px;margin-top:34px;
+  border-top:1px solid var(--line);padding-top:22px;flex-wrap:wrap}
+.wiz-foot .spacer{flex:1}
+.wiz-dots{display:flex;gap:6px;align-items:center}
+.wiz-dots i{width:22px;height:4px;border-radius:99px;background:var(--panel3)}
+.wiz-dots i.on{background:var(--lime)}
+.wiz-btn{border-radius:999px;padding:11px 22px;font-family:var(--mono);
+  font-size:11.5px;font-weight:600;letter-spacing:.12em;cursor:pointer;
+  background:none;border:1px solid var(--line);color:var(--text2)}
+.wiz-btn:hover{border-color:var(--text2);color:var(--text)}
+.wiz-btn.primary{background:var(--lime);border-color:var(--lime);
+  color:#040404}
+.wiz-btn.primary:hover{background:var(--lime-live);color:#040404}
+.wiz-btn[disabled]{opacity:.45;cursor:default}
+
 /* ---------- skeletons ---------- */
 .skl{border-radius:4px;background:linear-gradient(100deg,var(--panel) 40%,
   var(--panel3) 50%,var(--panel) 60%);background-size:200% 100%;
@@ -892,6 +937,9 @@ select:focus{outline:none;border-color:var(--lime-ink)}
           <button type="button" data-theme-val="dark">Dark</button>
         </span>
         <span class="hint">Applies immediately and is remembered. Light is the default — it reads better in screen recordings.</span></div>
+      <div class="frow2"><span class="mono-lab">Your name</span>
+        <input type="text" id="cfgName" placeholder="e.g. Ada" autocomplete="name" maxlength="80">
+        <span class="hint">From the setup wizard — used only to greet you there. Saved with SAVE SETTINGS.</span></div>
       <div class="frow2"><span class="mono-lab">Driver</span>
         <span class="set-note" id="cfgDriverNote">Auto — override with “driver” in the config file.</span></div>
       <div class="frow2"><span class="mono-lab">Confirmations</span>
@@ -899,6 +947,9 @@ select:focus{outline:none;border-color:var(--lime-ink)}
       <div class="frow2"><span class="mono-lab"></span>
         <span><button class="pill-btn lime" id="cfgSave">SAVE SETTINGS</button>
         <span class="shot-lab" id="cfgMsg" style="margin-left:12px"></span></span></div>
+      <div class="frow2"><span class="mono-lab">Setup wizard</span>
+        <span><button class="pill-btn ghosty" id="cfgRunSetup">RUN SETUP AGAIN</button>
+        <span class="hint">Re-opens the first-run setup: name, appearance, AI provider.</span></span></div>
     </div>
 
     <div style="margin-top:38px">
@@ -1153,6 +1204,85 @@ select:focus{outline:none;border-color:var(--lime-ink)}
       <button class="m-cancel" id="confirmNo">CANCEL — STOP THE RUN</button>
     </div>
     <p class="m-note">NO ANSWER IN 5 MINUTES = NO</p>
+  </div>
+</div>
+
+<!-- ======================= FIRST-RUN SETUP WIZARD (v3.6) ======================= -->
+<div id="wizard" hidden role="dialog" aria-modal="true" aria-label="First-run setup">
+  <div class="wiz-wrap">
+    <div class="sec-head"><span class="sec-no" id="wizStepNo">01</span><span class="sec-name" id="wizStepName">WELCOME</span><span class="rule"></span><span class="sec-note">FIRST-RUN SETUP</span></div>
+
+    <section class="wiz-step" data-wiz-step="0">
+      <h2 class="wiz-title">Welcome to<br>DeskDora<span class="lime-dot">.</span></h2>
+      <p class="wiz-lede">Four quick things and you&rsquo;re running: your name,
+        how it should look, which AI does the thinking, and how the safety
+        net works. Every step is optional &mdash; skip and the defaults stand.</p>
+      <div class="wiz-panel">
+        <div class="frow2"><span class="mono-lab">Your name</span>
+          <input type="text" id="wizName" placeholder="e.g. Ada" autocomplete="name" maxlength="80"></div>
+        <p class="hint">Only used to greet you, here and on the last page of
+          this setup. Leave it blank if you prefer.</p>
+      </div>
+    </section>
+
+    <section class="wiz-step" data-wiz-step="1" hidden>
+      <h2 class="wiz-title">Pick a<br>look<span class="lime-dot">.</span></h2>
+      <p class="wiz-lede">The whole app re-skins the moment you choose &mdash;
+        this page included, so you see the result before you commit.
+        Light is the default; it reads better in screen recordings.</p>
+      <div class="wiz-panel">
+        <span class="seg" id="wizTheme" role="group" aria-label="Appearance theme">
+          <button type="button" data-wiz-theme="light">Light</button>
+          <button type="button" data-wiz-theme="dark">Dark</button>
+        </span>
+      </div>
+    </section>
+
+    <section class="wiz-step" data-wiz-step="2" hidden>
+      <h2 class="wiz-title">Choose the<br>brain<span class="lime-dot">.</span></h2>
+      <p class="wiz-lede">DeskDora plans with a local model by default &mdash;
+        nothing leaves this machine. Cloud providers are opt-in and use
+        your own API key.</p>
+      <div class="wiz-panel">
+        <div class="frow2"><span class="mono-lab">Provider</span>
+          <span><select id="wizProvider" class="wiz-input" aria-label="AI provider"></select></span></div>
+        <div id="wizAiBody"></div>
+        <div class="wiz-err" id="wizAiError" role="alert"></div>
+      </div>
+    </section>
+
+    <section class="wiz-step" data-wiz-step="3" hidden>
+      <h2 class="wiz-title">How the safety<br>net works<span class="lime-dot">.</span></h2>
+      <div class="wiz-panel">
+        <p><strong>DeskDora asks before it acts.</strong> Before anything
+          risky &mdash; deleting, sending, submitting, installing &mdash; it
+          stops and shows you the exact step. Nothing happens until you say
+          yes, and no answer means no.</p>
+        <p><strong>Money always asks.</strong> Payments and purchases can
+          never be set to run on their own; a person approves every one,
+          every time.</p>
+        <p><strong>Every action is on the record.</strong> Each step is
+          written to an audit log with a screenshot, so you can replay
+          exactly what happened &mdash; and the stop control is always on
+          screen if you want it halted now.</p>
+        <p class="hint">There is no switch that turns the asking off. You can
+          loosen or tighten it per kind of task later, in Settings.</p>
+      </div>
+    </section>
+
+    <section class="wiz-step" data-wiz-step="4" hidden>
+      <h2 class="wiz-title" id="wizGreeting">You&rsquo;re set<span class="lime-dot">.</span></h2>
+      <p class="wiz-lede" id="wizSummary"></p>
+      <p class="voice">&ldquo;Ready when you are.&rdquo;</p>
+    </section>
+
+    <div class="wiz-foot">
+      <button type="button" class="wiz-btn" id="wizSkip">SKIP SETUP</button>
+      <span class="wiz-dots" id="wizDots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span class="spacer"></span>
+      <button type="button" class="wiz-btn" id="wizBack" hidden>BACK</button>
+      <button type="button" class="wiz-btn primary" id="wizNext">CONTINUE</button>
+    </div>
   </div>
 </div>
 
@@ -2444,6 +2574,7 @@ async function loadConfig() {
   $("#cfgAllow").value = (cfg.allow_apps || []).join("\n");
   $("#cfgSandbox").checked = !!cfg.sandbox_mode;
   $("#cfgVoice").checked = !!cfg.voice_updates;
+  $("#cfgName").value = cfg.user_name || "";
   const aut = cfg.autonomy || {};
   AUT_CATS.forEach(c => { $("#cfgAut-" + c).value = aut[c] || "confirm"; });
   $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
@@ -2482,6 +2613,7 @@ async function saveConfig(msgEl) {
     allow_apps: $("#cfgAllow").value.split("\n").map(s => s.trim()).filter(Boolean),
     sandbox_mode: $("#cfgSandbox").checked,
     voice_updates: $("#cfgVoice").checked,
+    user_name: $("#cfgName").value.trim(),
     autonomy,
     watch_folders: $("#cfgWatch").value.split("\n").map(s => s.trim()).filter(Boolean),
     app_deny_list: $("#cfgDenyApps").value.split("\n").map(s => s.trim()).filter(Boolean),
@@ -2804,6 +2936,312 @@ async function proposalAct(id, verb) {
   pollStatus();
 }
 setInterval(loadProposals, 5000);
+
+/* ================= first-run setup wizard (v3.6) =================
+   Required while the config has no completed-setup marker; the
+   server config is the source of truth (setup_complete rides
+   /api/config and /api/status).  Finishing or skipping writes
+   setup_complete once, and the wizard never auto-appears again;
+   Settings → RUN SETUP AGAIN re-opens it on demand.  Choices
+   persist as they are made (theme applies and saves the moment
+   it is tapped, like Settings), so a skip keeps whatever was
+   already chosen and defaults fill the rest. */
+const WIZ = { step: 0, providerDirty: false, pulling: false,
+              plannerChosen: "", cfgAtOpen: null };
+const WIZ_NAMES = ["WELCOME", "APPEARANCE", "AI PLANNER", "SAFETY",
+                   "ALL SET"];
+let WIZPROV = null;
+
+async function openWizard() {
+  WIZ.step = 0; WIZ.providerDirty = false; WIZ.plannerChosen = "";
+  try {
+    WIZ.cfgAtOpen = await (await fetch("/api/config")).json();
+    $("#wizName").value = WIZ.cfgAtOpen.user_name || "";
+    wizSyncThemeSeg(WIZ.cfgAtOpen.theme);
+  } catch (e) { WIZ.cfgAtOpen = null; }
+  try { WIZPROV = await (await fetch("/api/providers")).json(); }
+  catch (e) { WIZPROV = null; }
+  fillWizardProviders();
+  wizShow(0);
+  $("#wizard").hidden = false;
+}
+
+function closeWizard() { $("#wizard").hidden = true; }
+
+function wizShow(n) {
+  WIZ.step = n;
+  document.querySelectorAll(".wiz-step").forEach(s =>
+    s.hidden = Number(s.dataset.wizStep) !== n);
+  $("#wizStepNo").textContent = pad2(n + 1);
+  $("#wizStepName").textContent = WIZ_NAMES[n];
+  document.querySelectorAll("#wizDots i").forEach((d, i) =>
+    d.classList.toggle("on", i <= n));
+  $("#wizBack").hidden = n === 0 || n === 4;
+  $("#wizSkip").hidden = n === 4;
+  $("#wizNext").textContent = n === 3 ? "FINISH"
+    : (n === 4 ? "START USING DESKDORA" : "CONTINUE");
+  if (n === 4) wizFinishSummary();
+  $("#wizard").scrollTop = 0;
+}
+
+function wizFinishSummary() {
+  const name = $("#wizName").value.trim();
+  $("#wizGreeting").innerHTML = name
+    ? "You&rsquo;re set, " + esc(name) + "<span class=\"lime-dot\">.</span>"
+    : "You&rsquo;re set<span class=\"lime-dot\">.</span>";
+  const theme = document.documentElement.dataset.theme === "dark"
+    ? "Dark" : "Light";
+  const pid = WIZ.plannerChosen
+    || (WIZ.cfgAtOpen || {}).planner || "auto";
+  let planner = "Auto (Ollama if available, else built-in)";
+  if (pid === "builtin") planner = "Built-in planner";
+  else if (WIZPROV) {
+    const spec = WIZPROV.registry.find(p => p.id === pid);
+    if (spec) planner = spec.label.replace(/ \(local\)$/, "")
+      + " · " + wizModelValue();
+  }
+  $("#wizSummary").textContent = "Appearance: " + theme
+    + ". Planner: " + planner
+    + ". Change any of it any time in Settings.";
+}
+
+/* Persist what the wizard has collected.  The provider's own
+   settings (model / API key) go through the providers endpoint —
+   the same path Settings uses, with the same key masking — and
+   choosing a provider in the wizard makes it the planner. */
+async function wizFlush(done) {
+  const sel = $("#wizProvider");
+  const pid = sel ? sel.value : "";
+  if (WIZ.providerDirty && pid) {
+    const body = { model: wizModelValue() };
+    const keyEl = $("#wizKey");
+    if (keyEl && keyEl.value) body.api_key = keyEl.value;
+    try {
+      await fetch("/api/providers/" + pid, { method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body) });
+      WIZ.plannerChosen = pid;
+    } catch (e) { /* the provider can be fixed later in Settings;
+                    a failed save must not strand the setup */ }
+    WIZ.providerDirty = false;
+  }
+  const patch = { user_name: $("#wizName").value.trim() };
+  if (WIZ.plannerChosen) patch.planner = WIZ.plannerChosen;
+  if (done) patch.setup_complete = true;
+  await postConfig(patch);
+}
+
+async function wizNext() {
+  if (WIZ.pulling) return;
+  const n = WIZ.step;
+  if (n === 4) { closeWizard(); pollStatus(); return; }
+  if (n === 0 || n === 2) await wizFlush(false);
+  if (n === 3) await wizFlush(true);
+  wizShow(n + 1);
+}
+
+async function wizSkip() {
+  if (WIZ.pulling) return;
+  await wizFlush(true);
+  closeWizard();
+  pollStatus();
+}
+
+$("#wizNext").addEventListener("click", wizNext);
+$("#wizSkip").addEventListener("click", wizSkip);
+$("#wizBack").addEventListener("click", () => {
+  if (WIZ.step > 0) wizShow(WIZ.step - 1);
+});
+$("#cfgRunSetup").addEventListener("click", openWizard);
+
+/* --- step 2: theme — re-skins the whole app (this wizard
+   included) the moment it is tapped, and persists at once,
+   exactly like the Settings control. --- */
+function wizSyncThemeSeg(theme) {
+  const t = theme === "dark" ? "dark" : "light";
+  document.querySelectorAll("#wizTheme button").forEach(b =>
+    b.classList.toggle("on", b.dataset.wizTheme === t));
+}
+document.querySelectorAll("#wizTheme button").forEach(b =>
+  b.addEventListener("click", async () => {
+    applyTheme(b.dataset.wizTheme);
+    wizSyncThemeSeg(b.dataset.wizTheme);
+    await postConfig({ theme: b.dataset.wizTheme });
+  }));
+
+/* --- step 3: AI provider --- */
+function fillWizardProviders() {
+  const sel = $("#wizProvider");
+  sel.innerHTML = "";
+  if (!WIZPROV) { sel.disabled = true; wizRenderAi(); return; }
+  sel.disabled = false;
+  WIZPROV.registry.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.label; sel.appendChild(o);
+  });
+  const cur = (WIZ.cfgAtOpen || {}).planner;
+  sel.value = WIZPROV.registry.some(p => p.id === cur) ? cur : "ollama";
+  wizRenderAi();
+}
+
+function wizModelValue() {
+  const custom = $("#wizModelCustom");
+  if (custom && custom.value.trim()) return custom.value.trim();
+  const sel = $("#wizModel");
+  return sel ? sel.value : "";
+}
+
+function wizAiError(text) {
+  const el = $("#wizAiError");
+  el.textContent = text || "";
+  el.classList.toggle("show", !!text);
+}
+
+function wizRenderAi() {
+  const body = $("#wizAiBody");
+  wizAiError("");
+  const pid = $("#wizProvider").value;
+  const spec = WIZPROV
+    ? WIZPROV.registry.find(p => p.id === pid) : null;
+  if (!spec) {
+    body.innerHTML = "<p class=\"hint\">Provider list unavailable — "
+      + "you can configure the AI later in Settings.</p>";
+    return;
+  }
+  const st = (WIZPROV.state || {})[pid] || {};
+  const cur = st.model || spec.default_model;
+  const opts = (spec.models || []).map(m =>
+    `<option value="${esc(m)}"${m === cur ? " selected" : ""}>`
+    + `${esc(m)}</option>`).join("");
+  let html = `<div class="frow2"><span class="mono-lab">Model</span>
+      <span><select id="wizModel" class="wiz-input" aria-label="Model">${opts}</select></span></div>
+    <div class="frow2"><span class="mono-lab">Custom model ID</span>
+      <input type="text" id="wizModelCustom" placeholder="Optional — overrides the list above"></div>`;
+  if (spec.protocol === "ollama") {
+    html += `<div class="frow2"><span class="mono-lab">Download</span>
+      <span><button type="button" class="pill-btn lime" id="wizPull">DOWNLOAD MODEL</button></span></div>
+      <p class="hint">The model runs on this machine; downloads are
+      several GB, so this can take a while. Skip it if you like —
+      you can download later from Settings → AI Providers.</p>
+      <div class="wiz-prog" id="wizProgWrap" hidden><i id="wizProg"></i></div>
+      <p class="hint" id="wizPullMsg"></p>`;
+  } else if (spec.local) {
+    html += `<p class="hint">LM Studio serves the models it has
+      downloaded itself — pick above the one you have loaded there.
+      There is nothing to download from here.</p>`;
+  } else {
+    const keyNote = st.has_key
+      ? `A key is already saved (ends ${esc(st.key_last4 || "")}) — leave blank to keep it.`
+      : "Stored only in DeskDora's config file on this machine — "
+        + "never logged, never shown again in full.";
+    html += `<div class="frow2"><span class="mono-lab">API key</span>
+      <input type="password" id="wizKey" class="wiz-input" placeholder="Paste API key" autocomplete="off">
+      <span class="hint">${keyNote}</span></div>
+      <p class="hint">Using a cloud planner sends your goal and a text
+      summary of your screen to that provider.</p>`;
+  }
+  body.innerHTML = html;
+  const pull = $("#wizPull");
+  if (pull) pull.addEventListener("click", wizPullModel);
+  ["wizModel", "wizModelCustom", "wizKey"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("change", () => { WIZ.providerDirty = true; });
+      el.addEventListener("input", () => { WIZ.providerDirty = true; });
+    }
+  });
+}
+
+$("#wizProvider").addEventListener("change", () => {
+  WIZ.providerDirty = true;
+  wizRenderAi();
+});
+
+function wizBytes(n) {
+  if (!n && n !== 0) return "";
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + " GB";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + " MB";
+  return Math.round(n / 1e3) + " KB";
+}
+
+/* The download streams NDJSON progress from the server (which
+   streams Ollama's own pull API).  Any failure lands in the
+   step's inline error box with the way out — retry, or continue
+   without downloading.  (The full provider error page is a
+   separate, later build.) */
+async function wizPullModel() {
+  const btn = $("#wizPull"), msg = $("#wizPullMsg");
+  const model = wizModelValue();
+  wizAiError("");
+  WIZ.pulling = true;
+  btn.disabled = true;
+  $("#wizNext").disabled = true;
+  $("#wizSkip").disabled = true;
+  $("#wizProgWrap").hidden = false;
+  $("#wizProg").style.width = "0%";
+  msg.textContent = "Contacting Ollama…";
+  try {
+    const res = await fetch("/api/providers/ollama/pull", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ model }) });
+    if (!res.ok || !res.body)
+      throw new Error("The download failed to start (HTTP "
+        + res.status + ").");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", failure = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { continue; }
+        if (ev.error) { failure = ev.error; continue; }
+        if (ev.total)
+          $("#wizProg").style.width = Math.min(100,
+            Math.round((ev.completed || 0) / ev.total * 100)) + "%";
+        if (ev.status === "success")
+          $("#wizProg").style.width = "100%";
+        if (ev.status)
+          msg.textContent = ev.status + (ev.total
+            ? " — " + wizBytes(ev.completed || 0)
+              + " of " + wizBytes(ev.total) : "");
+      }
+    }
+    if (failure) {
+      wizAiError(failure + " Fix the problem and retry, or continue "
+        + "without downloading — the model can be fetched later.");
+      msg.textContent = "";
+    } else {
+      msg.textContent = "Downloaded — " + model + " is ready.";
+      WIZ.providerDirty = true;
+    }
+  } catch (e) {
+    wizAiError(String(e.message || e) + " Retry, or continue without "
+      + "downloading.");
+  } finally {
+    WIZ.pulling = false;
+    btn.disabled = false;
+    $("#wizNext").disabled = false;
+    $("#wizSkip").disabled = false;
+  }
+}
+
+/* First-run gate: open the wizard on load while setup is
+   incomplete.  Runs once; the wizard's own finish/skip is what
+   sets the marker, and pollStatus never re-opens it. */
+async function checkFirstRun() {
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    if (!cfg.setup_complete) openWizard();
+  } catch (e) { /* no config reachable — no gate */ }
+}
+checkFirstRun();
 </script>
 </body>
 </html>
