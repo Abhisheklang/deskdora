@@ -130,9 +130,35 @@ def load_config():
 
 
 def save_config(cfg):
+    """Persist config.json atomically (v3.4.4).
+
+    The pre-3.4.4 code truncated config.json in place: a failed
+    write (crash, full disk, write block) left an empty file, and
+    load_config's silent fallback then reset the user to defaults
+    — one bad write blanked their settings.  Write to a temp file
+    in the SAME directory as CONFIG_PATH, fsync, then os.replace()
+    onto the real path: on POSIX the replace is atomic, so
+    config.json always holds a complete old or new document,
+    never a partial one.  A temp file orphaned by a crash is
+    harmless — load_config only ever reads CONFIG_PATH.
+    """
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(CONFIG_PATH, "w") as fh:
-        json.dump(cfg, fh, indent=2)
+    config_dir = os.path.dirname(CONFIG_PATH) or "."
+    os.makedirs(config_dir, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=config_dir,
+                                    prefix="config-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(cfg, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, CONFIG_PATH)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 # DeskDora's own API key (v3.1) — hash-only store next to the config.
@@ -780,7 +806,8 @@ class RunManager:
                 raise HTTPException(409, "a run is in progress")
             self.state.update({"goal": "", "planner_mode": "",
                                "run_dir": None, "result": None,
-                               "last_event": None, "source": "ui"})
+                               "last_event": None, "source": "ui",
+                               "connection_error": None})
             self.progress = {"step_index": 0, "step_total": 0,
                              "done": 0, "current_action": ""}
         self.pause_gate.clear()
