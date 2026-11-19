@@ -24,7 +24,52 @@ the reference session; a Wayland driver exists through the desktop
 portals. There are no macOS or Windows versions, and none are
 planned: every driver in this project targets Linux desktops.
 
-![DeskDora app window](docs/screenshots/ui-run.png)
+![DeskDora app window](docs/screenshots/main-window.png)
+
+## See it in action
+
+A complete run, start to finish — DeskDora launched from the
+desktop, the setup wizard, and a folder organised end to end:
+
+![DeskDora organising a folder](docs/media/deskdora-demo.gif)
+
+*The GIF above is the organise run itself. The full recording —
+wizard, run and the WORK DONE finish — is
+[here](docs/media/deskdora-demo.mp4) (4 min 37 s, no sound).*
+
+### Screenshots
+
+**The setup wizard's AI step** — the offline / online choice,
+explained before you pick:
+
+![Setup wizard AI step](docs/screenshots/wizard-ai-step.png)
+
+**A run in progress** — the activity feed stepping, the edge light
+lit around the screen, the floating window in the corner:
+
+![Run in progress](docs/screenshots/run-in-progress.png)
+
+**Finished** — the WORK DONE card, with the step count and the time
+it took:
+
+![Work done](docs/screenshots/work-done.png)
+
+**Appearance** — light and dark themes, in Settings:
+
+![Settings appearance](docs/screenshots/settings-appearance.png)
+
+**Sounds** — every event with its own tone, picked and previewed in
+Settings:
+
+![Settings sounds](docs/screenshots/settings-sounds.png)
+
+**History** — every past task as a thread you can reopen:
+
+![History](docs/screenshots/history.png)
+
+**Diagnostics** — this machine, measured live:
+
+![Diagnostics](docs/screenshots/diagnostics.png)
 
 ## Why it works (and when it doesn't)
 
