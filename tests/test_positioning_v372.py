@@ -103,6 +103,37 @@ def test_wizard_copy_is_scoped_and_discloses():
         in _flat(html)
 
 
+def test_wizard_ai_step_explains_the_choice_before_picking():
+    # User order, 2026-11-19 (~17:12): the wizard's AI step must
+    # EXPLAIN the offline/online choice before the user picks —
+    # framing at the top, a grouped picker, one line per group.
+    html = _read(os.path.join(STATIC, "index.html"))
+    flat = _flat(html)
+    # Framing at the top of the step.
+    assert "brain can run offline on this computer, or online " \
+           "through a cloud provider with your own API key" in flat
+    assert "Offline is the default" in flat
+    # The two group labels, in the wizard picker and in the
+    # planner selects (where the built-in planner appears).
+    assert html.count("Offline — on this computer") >= 2
+    assert html.count("Online — cloud, your API key") >= 2
+    # One-line explanation per group.
+    assert "runs locally, nothing leaves the machine" in flat
+    assert "Ollama needs a one-time model download" in flat
+    assert "Needs internet and your own key" in flat
+    # The grouping is by the registry's own local flag, and
+    # Ollama stays the preselected default.
+    assert "groups[p.local ? 0 : 1]" in html
+    assert 'cur : "ollama"' in html
+    assert 'id="wizAiGroups"' in html
+    # Settings → AI Providers mirrors the same one-line framing,
+    # ahead of the disclosure sentence it already carried.
+    assert "The brain can run offline on this computer — " \
+           "Ollama, LM Studio, or the built-in planner — or " \
+           "online through a cloud provider with your own API " \
+           "key." in flat
+
+
 def test_companion_copy_has_no_offline_claim():
     html = _read(os.path.join(STATIC, "companion.html"))
     assert "offline-only" not in html

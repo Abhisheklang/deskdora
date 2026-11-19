@@ -981,7 +981,7 @@ select:focus{outline:none;border-color:var(--lime-ink)}
 
     <div style="margin-top:38px" id="settingsProviders">
       <div class="sec-head"><span class="sec-no">02</span><span class="sec-name">AI PROVIDERS</span><span class="rule"></span><span class="sec-note">OPT-IN — YOUR OWN KEYS</span></div>
-      <p class="set-note" style="margin:0 0 14px">When a cloud planner is active, your goal and a text summary of your screen are sent to that provider.</p>
+      <p class="set-note" style="margin:0 0 14px">The brain can run offline on this computer — Ollama, LM Studio, or the built-in planner — or online through a cloud provider with your own API key. When a cloud planner is active, your goal and a text summary of your screen are sent to that provider.</p>
       <div class="form-rows">
         <div class="frow2"><span class="mono-lab">Provider</span>
           <span><select id="provSelect" aria-label="Provider to configure"></select></span>
@@ -1300,13 +1300,22 @@ select:focus{outline:none;border-color:var(--lime-ink)}
 
     <section class="wiz-step" data-wiz-step="2" hidden>
       <h2 class="wiz-title">Choose the<br>brain<span class="lime-dot">.</span></h2>
-      <p class="wiz-lede">DeskDora plans with a local model by default &mdash;
-        nothing leaves this machine unless you choose a cloud provider.
-        Cloud providers are opt-in, use your own API key, and receive
-        your goal and a text summary of your screen.</p>
+      <p class="wiz-lede">DeskDora&rsquo;s brain can run offline on this
+        computer, or online through a cloud provider with your own API
+        key &mdash; the choice is yours, and you can change it later.
+        Offline is the default: nothing leaves this machine unless you
+        choose a cloud provider.</p>
       <div class="wiz-panel">
         <div class="frow2"><span class="mono-lab">Provider</span>
           <span><select id="wizProvider" class="wiz-input" aria-label="AI provider"></select></span></div>
+        <div id="wizAiGroups">
+          <p class="hint"><strong>Offline &mdash; on this computer:</strong>
+            runs locally, nothing leaves the machine. Ollama needs a
+            one-time model download.</p>
+          <p class="hint"><strong>Online &mdash; cloud, your API key:</strong>
+            cloud providers receive your goal and a text summary of your
+            screen. Needs internet and your own key.</p>
+        </div>
         <div id="wizAiBody"></div>
         <div class="wiz-err" id="wizAiError" role="alert"></div>
       </div>
@@ -2951,8 +2960,9 @@ const PROTOCOL_LABEL = { openai: "OpenAI-compatible protocol",
 function fillPlannerSelect(el, autoValue) {
   if (!el || !PROV) return;
   const current = el.value;
-  const groups = [["Local", [[autoValue, "Auto"], ["builtin", "Built-in"]]],
-                  ["Cloud", []], ["Custom", []]];
+  const groups = [["Offline — on this computer",
+                   [[autoValue, "Auto"], ["builtin", "Built-in"]]],
+                  ["Online — cloud, your API key", []], ["Custom", []]];
   PROV.registry.forEach(p => groups[p.local ? 0 : 1][1].push(
     [p.id, p.label.replace(/ \(local\)$/, "")]));
   PROV.customs.forEach(c => groups[2][1].push([c.id, c.name]));
@@ -3387,9 +3397,24 @@ function fillWizardProviders() {
   sel.innerHTML = "";
   if (!WIZPROV) { sel.disabled = true; wizRenderAi(); return; }
   sel.disabled = false;
-  WIZPROV.registry.forEach(p => {
-    const o = document.createElement("option");
-    o.value = p.id; o.textContent = p.label; sel.appendChild(o);
+  /* The picker is grouped the way the step explains the choice:
+     Offline — on this computer (the local servers) and Online —
+     cloud, your API key (the cloud presets).  Ollama stays the
+     preselected default; grouping changes nothing about what is
+     chosen, only that the choice is explained before it is made. */
+  const groups = [["Offline — on this computer", []],
+                  ["Online — cloud, your API key", []]];
+  WIZPROV.registry.forEach(p =>
+    groups[p.local ? 0 : 1][1].push(p));
+  groups.forEach(([label, providers]) => {
+    if (!providers.length) return;
+    const g = document.createElement("optgroup");
+    g.label = label;
+    providers.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.id; o.textContent = p.label; g.appendChild(o);
+    });
+    sel.appendChild(g);
   });
   const cur = (WIZ.cfgAtOpen || {}).planner;
   sel.value = WIZPROV.registry.some(p => p.id === cur) ? cur : "ollama";
