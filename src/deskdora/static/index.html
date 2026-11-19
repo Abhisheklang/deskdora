@@ -1193,6 +1193,38 @@ select:focus{outline:none;border-color:var(--lime-ink)}
       <div class="form-rows" id="ntfRows"></div>
       <p class="hint" style="margin-top:10px">Saved with SAVE SETTINGS. The master switch is Features → Notifications above.</p>
     </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">10</span><span class="sec-name">GLOBAL HOTKEY</span><span class="rule"></span><span class="sec-note">SUMMON DESKDORA FROM ANYWHERE</span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Hotkey</span>
+          <label class="switch"><input type="checkbox" id="hkEnabled"><i></i></label>
+          <span class="hint">Master switch — off releases the shortcut completely.</span></div>
+        <div class="frow2"><span class="mono-lab">Shortcut</span>
+          <span><input type="text" id="hkCombo" readonly style="max-width:220px">
+          <button class="pill-btn ghosty" id="hkRecord" type="button">RECORD</button></span>
+          <span class="hint">Press RECORD, then the key combination. It raises the DeskDora window with the goal box focused. Works on X11 while DeskDora is running; under Wayland, global hotkeys are restricted by the compositor and the shortcut may not register there. Saved with SAVE SETTINGS.</span></div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px">
+      <div class="sec-head"><span class="sec-no">11</span><span class="sec-name">BACKUP</span><span class="rule"></span><span class="sec-note">YOUR SETUP, IN ONE FILE</span></div>
+      <div class="form-rows">
+        <div class="frow2"><span class="mono-lab">Export</span>
+          <span><a class="pill-btn lime" href="/api/backup/export" download="deskdora-backup.json" style="text-decoration:none;display:inline-block">EXPORT BACKUP</a></span>
+          <span class="hint">Downloads deskdora-backup.json: your settings, provider configuration, routines and templates. API keys and the companion PIN are NOT included — you&rsquo;ll re-enter them after an import. Audit logs and run history aren&rsquo;t setup, so they aren&rsquo;t included.</span></div>
+        <div class="frow2"><span class="mono-lab">Import</span>
+          <input type="text" id="bkPath" placeholder="Path to deskdora-backup.json on this computer">
+          <span class="hint">Point at a backup file, preview what it would change, then confirm. Before anything is applied, your current setup is saved as a pre-import backup.</span></div>
+        <div class="frow2"><span class="mono-lab"></span>
+          <span><button class="pill-btn ghosty" id="bkPreviewBtn" type="button">PREVIEW IMPORT</button>
+          <button class="pill-btn lime" id="bkImportBtn" type="button" hidden>CONFIRM IMPORT</button>
+          <button class="pill-btn ghosty" id="bkRestoreBtn" type="button">RESTORE PRE-IMPORT BACKUP</button>
+          <span class="shot-lab" id="bkMsg" style="margin-left:12px"></span></span></div>
+        <div class="frow2" id="bkPreviewRow" hidden><span class="mono-lab">This backup</span>
+          <span class="set-note" id="bkPreview"></span></div>
+      </div>
+    </div>
   </section>
   </main>
 </div>
@@ -1318,6 +1350,28 @@ select:focus{outline:none;border-color:var(--lime-ink)}
         </div>
         <div id="wizAiBody"></div>
         <div class="wiz-err" id="wizAiError" role="alert"></div>
+        <div id="wizCustomBlock">
+          <p class="hint" style="margin-top:20px"><strong>Add a custom
+            provider</strong> — a provider that isn&rsquo;t in the list?
+            Add its API address and your key.</p>
+          <div class="frow2"><span class="mono-lab">Name</span>
+            <input type="text" id="wizCustName" placeholder="e.g. My gateway"></div>
+          <div class="frow2"><span class="mono-lab">Protocol</span>
+            <span><select id="wizCustProtocol" class="wiz-input" aria-label="Custom provider protocol">
+              <option value="openai">OpenAI-compatible</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Gemini-style</option>
+            </select></span></div>
+          <div class="frow2"><span class="mono-lab">API address</span>
+            <input type="text" id="wizCustBase" placeholder="https://…"></div>
+          <div class="frow2"><span class="mono-lab">API key</span>
+            <input type="password" id="wizCustKey" placeholder="Paste API key" autocomplete="off"></div>
+          <div class="frow2"><span class="mono-lab">Model name</span>
+            <input type="text" id="wizCustModel" placeholder="Model ID"></div>
+          <div class="frow2"><span class="mono-lab"></span>
+            <span><button type="button" class="pill-btn ghosty" id="wizCustAdd">ADD PROVIDER</button>
+            <span class="hint" id="wizCustMsg"></span></span></div>
+        </div>
       </div>
     </section>
 
@@ -2990,6 +3044,8 @@ async function loadConfig() {
   $("#featEstimates").checked = cfg.feature_estimates !== false;
   buildNotifyRows(cfg.notifications || {});
   buildSoundRows(cfg.sounds || {});
+  $("#hkEnabled").checked = (cfg.hotkey || {}).enabled !== false;
+  $("#hkCombo").value = (cfg.hotkey || {}).combo || "Ctrl+Alt+D";
   $("#askSection").hidden = cfg.feature_ask_screen === false;
   loadProviders();
   loadAccess();
@@ -3007,6 +3063,8 @@ async function saveConfig(msgEl) {
     app_deny_list: $("#cfgDenyApps").value.split("\n").map(s => s.trim()).filter(Boolean),
     notifications: { events: collectNotifyEvents() },
     sounds: collectSounds(),
+    hotkey: { enabled: $("#hkEnabled").checked,
+              combo: $("#hkCombo").value.trim() },
     companion_pin: $("#cfgPin").value.trim() };
   const res = await fetch("/api/config", { method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
@@ -3016,6 +3074,93 @@ async function saveConfig(msgEl) {
 }
 $("#cfgSave").addEventListener("click", () => saveConfig($("#cfgMsg")));
 $("#cfgSave2").addEventListener("click", () => saveConfig($("#cfgMsg2")));
+
+/* ================= global hotkey recorder (v3.7.3) ================= */
+let hkRecording = false;
+$("#hkRecord").addEventListener("click", () => {
+  hkRecording = true;
+  $("#hkRecord").textContent = "PRESS KEYS… ESC CANCELS";
+});
+document.addEventListener("keydown", (e) => {
+  if (!hkRecording) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.key === "Escape") {
+    hkRecording = false;
+    $("#hkRecord").textContent = "RECORD";
+    return;
+  }
+  if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+  const mods = [];
+  if (e.ctrlKey) mods.push("Ctrl");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Super");
+  let key = e.key;
+  if (key === " ") key = "Space";
+  else if (key.length === 1) key = key.toUpperCase();
+  $("#hkCombo").value = [...mods, key].join("+");
+  hkRecording = false;
+  $("#hkRecord").textContent = "RECORD";
+}, true);
+
+/* ================= settings backup (v3.7.3) ================= */
+$("#bkPreviewBtn").addEventListener("click", async () => {
+  const msg = $("#bkMsg");
+  msg.textContent = "READING…";
+  const res = await fetch("/api/backup/preview", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ path: $("#bkPath").value.trim() }) });
+  if (!res.ok) {
+    msg.textContent = "REFUSED — " + (await res.text()).slice(0, 140);
+    $("#bkPreviewRow").hidden = true;
+    $("#bkImportBtn").hidden = true;
+    return;
+  }
+  const p = await res.json();
+  const when = p.exported_at
+    ? new Date(p.exported_at * 1000).toLocaleString() : "unknown date";
+  $("#bkPreview").textContent = "Exported " + when + ". Importing "
+    + "replaces your settings (" + p.config_sections + " sections), "
+    + "provider configuration ("
+    + (p.providers.join(", ") || "none") + "), " + p.routines
+    + " routines and " + p.templates + " templates. API keys are "
+    + "not in the file — you'll re-enter them.";
+  $("#bkPreviewRow").hidden = false;
+  $("#bkImportBtn").hidden = false;
+  msg.textContent = "PREVIEWED — CONFIRM WHEN READY";
+});
+$("#bkImportBtn").addEventListener("click", async () => {
+  const msg = $("#bkMsg");
+  msg.textContent = "IMPORTING…";
+  const res = await fetch("/api/backup/import", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ path: $("#bkPath").value.trim(),
+                            confirm: true }) });
+  if (!res.ok) {
+    msg.textContent = "REFUSED — " + (await res.text()).slice(0, 140);
+    return;
+  }
+  const data = await res.json();
+  msg.textContent = "IMPORTED — your previous setup was saved to "
+    + data.pre_import_backup;
+  $("#bkImportBtn").hidden = true;
+  loadConfig();
+  pollStatus();
+});
+$("#bkRestoreBtn").addEventListener("click", async () => {
+  const msg = $("#bkMsg");
+  msg.textContent = "RESTORING…";
+  const res = await fetch("/api/backup/restore-preimport",
+    { method: "POST" });
+  if (!res.ok) {
+    msg.textContent = "REFUSED — " + (await res.text()).slice(0, 140);
+    return;
+  }
+  const data = await res.json();
+  msg.textContent = "RESTORED " + data.restored;
+  loadConfig();
+  pollStatus();
+});
 
 /* ================= AI providers & access (v3.1) ================= */
 let PROV = null;
@@ -3461,7 +3606,12 @@ async function wizFlush(done) {
     const keyEl = $("#wizKey");
     if (keyEl && keyEl.value) body.api_key = keyEl.value;
     try {
-      await fetch("/api/providers/" + pid, { method: "POST",
+      /* Saved customs save through their own endpoint — the
+         same split Settings uses; one record, one code path. */
+      const url = pid.startsWith("custom-")
+        ? "/api/custom-providers/" + pid
+        : "/api/providers/" + pid;
+      await fetch(url, { method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(body) });
       WIZ.plannerChosen = pid;
@@ -3538,8 +3688,21 @@ function fillWizardProviders() {
     });
     sel.appendChild(g);
   });
+  /* Saved custom providers (v3.7.3) ride along as their own
+     group — the same records Settings manages. */
+  const customs = WIZPROV.customs || [];
+  if (customs.length) {
+    const g = document.createElement("optgroup");
+    g.label = "Custom — your providers";
+    customs.forEach(c => {
+      const o = document.createElement("option");
+      o.value = c.id; o.textContent = c.name; g.appendChild(o);
+    });
+    sel.appendChild(g);
+  }
   const cur = (WIZ.cfgAtOpen || {}).planner;
-  sel.value = WIZPROV.registry.some(p => p.id === cur) ? cur : "ollama";
+  sel.value = (WIZPROV.registry.some(p => p.id === cur)
+    || customs.some(c => c.id === cur)) ? cur : "ollama";
   wizRenderAi();
 }
 
@@ -3562,21 +3725,25 @@ function wizRenderAi() {
   const pid = $("#wizProvider").value;
   const spec = WIZPROV
     ? WIZPROV.registry.find(p => p.id === pid) : null;
-  if (!spec) {
+  const custom = WIZPROV
+    ? (WIZPROV.customs || []).find(c => c.id === pid) : null;
+  if (!spec && !custom) {
     body.innerHTML = "<p class=\"hint\">Provider list unavailable — "
       + "you can configure the AI later in Settings.</p>";
     return;
   }
   const st = (WIZPROV.state || {})[pid] || {};
-  const cur = st.model || spec.default_model;
-  const opts = (spec.models || []).map(m =>
+  const cur = spec ? (st.model || spec.default_model)
+    : custom.model;
+  const opts = (spec ? (spec.models || []) : [custom.model])
+    .map(m =>
     `<option value="${esc(m)}"${m === cur ? " selected" : ""}>`
     + `${esc(m)}</option>`).join("");
   let html = `<div class="frow2"><span class="mono-lab">Model</span>
       <span><select id="wizModel" class="wiz-input" aria-label="Model">${opts}</select></span></div>
     <div class="frow2"><span class="mono-lab">Custom model ID</span>
       <input type="text" id="wizModelCustom" placeholder="Optional — overrides the list above"></div>`;
-  if (spec.protocol === "ollama") {
+  if (spec && spec.protocol === "ollama") {
     html += `<div id="wizDownloadBlock">
       <div class="frow2"><span class="mono-lab">Download</span>
       <span><button type="button" class="pill-btn lime" id="wizPull">DOWNLOAD MODEL</button></span></div>
@@ -3601,10 +3768,21 @@ function wizRenderAi() {
       <span><button type="button" class="pill-btn ghosty" id="wizImportBtn">IMPORT MODEL FILE</button></span></div>
       <div class="wiz-prog" id="wizImportProgWrap" hidden><i id="wizImportProg"></i></div>
       <p class="hint" id="wizImportMsg"></p>`;
-  } else if (spec.local) {
+  } else if (spec && spec.local) {
     html += `<p class="hint">LM Studio serves the models it has
       downloaded itself — pick above the one you have loaded there.
       There is nothing to download from here.</p>`;
+  } else if (custom) {
+    const keyNote = custom.has_key
+      ? `Its key is saved (ends ${esc(custom.key_last4 || "")}).`
+      : "No key saved for it yet — add one in Settings → "
+        + "AI Providers.";
+    html += `<p class="hint">Added by you as a custom provider —
+      it speaks the ${esc(custom.protocol)} protocol via
+      ${esc(custom.base_url)}. ${keyNote} Edit it any time in
+      Settings → AI Providers.</p>
+      <p class="hint">Using a cloud planner sends your goal and a text
+      summary of your screen to that provider.</p>`;
   } else {
     const keyNote = st.has_key
       ? `A key is already saved (ends ${esc(st.key_last4 || "")}) — leave blank to keep it.`
@@ -3626,7 +3804,8 @@ function wizRenderAi() {
       el.addEventListener("input", () => { WIZ.providerDirty = true; });
     }
   });
-  if (spec.protocol === "ollama") wizInitOllamaStep(spec, cur);
+  if (spec && spec.protocol === "ollama")
+    wizInitOllamaStep(spec, cur);
 }
 
 /* --- step 3 (Ollama): downloaded models, grouping, import ---
@@ -3789,6 +3968,45 @@ $("#wizProvider").addEventListener("change", () => {
   WIZ.providerDirty = true;
   wizRenderAi();
 });
+
+/* Add a custom provider from the wizard (v3.7.3): the SAME
+   POST /api/custom-providers Settings uses — one save path,
+   one record, keys masked by the same public view.  On
+   success the provider joins the picker and is selected, so
+   finishing the wizard can make it the active planner. */
+async function wizAddCustom() {
+  const msg = $("#wizCustMsg");
+  const body = { name: $("#wizCustName").value.trim(),
+    protocol: $("#wizCustProtocol").value,
+    base_url: $("#wizCustBase").value.trim(),
+    model: $("#wizCustModel").value.trim(),
+    api_key: $("#wizCustKey").value };
+  msg.textContent = "ADDING…";
+  try {
+    const res = await fetch("/api/custom-providers", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body) });
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json()).detail || ""; }
+      catch (e) { /* fall through to the generic line */ }
+      throw new Error(detail || "the provider was refused");
+    }
+    const created = await res.json();
+    $("#wizCustKey").value = "";
+    try {
+      WIZPROV = await (await fetch("/api/providers")).json();
+    } catch (e) { /* the picker refreshes on the next open */ }
+    fillWizardProviders();
+    $("#wizProvider").value = created.id;
+    WIZ.providerDirty = true;
+    wizRenderAi();
+    msg.textContent = "ADDED — SELECTED ABOVE";
+  } catch (e) {
+    msg.textContent = "REFUSED — " + String(e.message || e);
+  }
+}
+$("#wizCustAdd").addEventListener("click", wizAddCustom);
 
 /* ============ pull / import progress (v3.7.2) ============
    One renderer + one stream reader for every model transfer —
