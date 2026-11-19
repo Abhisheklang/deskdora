@@ -255,3 +255,12 @@ rule.
   stay distinct by job: unreachable → the v3.3 connection modal;
   definitive misconfiguration → this page; a wizard step's own
   error → inline in the step.
+- **Positioning line** (v3.7.2): the product line every surface
+  carries — *local-first by default, with optional online paths*.
+  By default nothing leaves the machine (Ollama or the built-in
+  planner); the online paths are opt-in only — cloud planners
+  with the user's own API key (which receive the goal and a text
+  summary of the screen, as Settings discloses), and the phone
+  companion over the local network behind its pairing PIN, with
+  no cloud relay. Copy must never call DeskDora offline-only or
+  imply an "online version": it is one app, local by default.

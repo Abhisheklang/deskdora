@@ -2,7 +2,7 @@
 
 # DeskDora
 
-**Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding, Ollama-powered planning, a mandatory-confirmation safety layer, and a complete audit log of every action.**
+**Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding, Ollama-powered planning with optional cloud planners via your own API key, a mandatory-confirmation safety layer, and a complete audit log of every action.**
 
 DeskDora operates your desktop for you. You type a task in plain words —
 *"Organise folder ~/Downloads by type"*, *"Fill the form: name=…, email=…,
@@ -11,10 +11,13 @@ opening apps, pressing buttons, filling fields, reading pages back to you.
 
 It is **local-first**: by default, planning runs on your machine (a
 local model via Ollama, or a built-in deterministic planner that needs
-no model at all), and nothing leaves the machine. Cloud planners are
-**opt-in** (v3.1): if you add your own API key for a provider and
-select it, your goal and a text summary of your screen go to that
-provider — never otherwise, and never by default.
+no model at all), and nothing leaves the machine by default. Two
+online paths exist, both **opt-in**: cloud planners (v3.1) — if you
+add your own API key for a provider and select it, your goal and a
+text summary of your screen go to that provider, never otherwise and
+never by default — and the phone companion (v3.0), which reaches
+DeskDora over your local network only, behind a pairing PIN, with no
+cloud relay and nothing routed through the internet.
 
 It is also **Linux-only** — that is the whole mission. Xorg/X11 is
 the reference session; a Wayland driver exists through the desktop
@@ -86,7 +89,8 @@ ollama pull qwen2.5:1.5b    # DeskDora works without it, too
 # Run one task from the terminal
 deskdora run "Organise folder ~/Downloads by type"
 
-# Or start the web UI (local only, 127.0.0.1:8765)
+# Or start the service (127.0.0.1:8765 by default — add --host to
+# serve the phone companion on your local network)
 deskdora serve
 ```
 
