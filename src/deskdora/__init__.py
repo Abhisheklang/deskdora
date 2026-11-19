@@ -7,4 +7,4 @@ deterministic planner, and performs the clicking and typing itself —
 asking for confirmation before anything risky and logging every action.
 """
 
-__version__ = "3.4.3"
+__version__ = "3.4.4"
