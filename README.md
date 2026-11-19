@@ -103,7 +103,10 @@ An agent that can operate your whole PC can also delete your files. So:
 
 ## Quick start (Ubuntu 22.04 / 24.04, GNOME, Xorg session)
 
-**Easiest — the installable app (Ubuntu 24.04):**
+**Easiest — the installable app (Ubuntu 24.04):** download
+`deskdora_3.7.3_amd64.deb` from the
+[Releases page](https://github.com/Abhisheklang/deskdora/releases),
+then:
 
 ```bash
 sudo apt install ./deskdora_3.7.3_amd64.deb
