@@ -4,20 +4,23 @@
 
 **Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding, Ollama-powered planning with optional cloud planners via your own API key, a mandatory-confirmation safety layer, and a complete audit log of every action.**
 
-DeskDora operates your desktop for you. You type a task in plain words —
+DeskDora controls your whole PC for you. You type a task in plain words —
 *"Organise folder ~/Downloads by type"*, *"Fill the form: name=…, email=…,
 city=… and submit"* — and DeskDora does the clicking and typing itself:
 opening apps, pressing buttons, filling fields, reading pages back to you.
 
+It runs **both ways — offline and online — and you pick, per task**.
 It is **local-first**: by default, planning runs on your machine (a
 local model via Ollama, or a built-in deterministic planner that needs
-no model at all), and nothing leaves the machine by default. Two
-online paths exist, both **opt-in**: cloud planners (v3.1) — if you
+no model at all), and nothing leaves the machine by default. The
+online paths are **opt-in**: cloud planners (v3.1) — if you
 add your own API key for a provider and select it, your goal and a
 text summary of your screen go to that provider, never otherwise and
 never by default — and the phone companion (v3.0), which reaches
 DeskDora over your local network only, behind a pairing PIN, with no
-cloud relay and nothing routed through the internet.
+cloud relay and nothing routed through the internet. Local-first
+means the choice is yours — the same app and the same safety layer
+either way, never a separate "online version".
 
 It is also **Linux-only** — that is the whole mission. Xorg/X11 is
 the reference session; a Wayland driver exists through the desktop
@@ -132,6 +135,10 @@ pip install .               # from a source checkout (not on PyPI)
 # Optional: a local LLM planner
 ollama pull qwen2.5:1.5b    # DeskDora works without it, too
 
+# Or go online instead — no local model needed: add your own API
+# key for a cloud provider in Settings → AI Providers, select it,
+# and planning runs online. Everything else stays the same.
+
 # Run one task from the terminal
 deskdora run "Organise folder ~/Downloads by type"
 
@@ -155,6 +162,12 @@ deskdora serve
 
 ## Planners
 
+**Offline or online — both are first-class.** The local planners
+(Ollama, built-in) run entirely on this computer; the cloud and
+custom planners run online with your own key. Switch per task in
+Settings → AI Providers or the setup wizard; the UI badge and the
+run log always name the planner that actually did the work.
+
 | Planner | What it is | When it's used |
 |---|---|---|
 | `ollama` | A local LLM (default `qwen2.5:1.5b`) writes a JSON step plan; every plan is validated against an action allow-list before anything runs | `deskdora run --planner ollama`, or auto mode when a server is reachable |
@@ -176,6 +189,10 @@ are refused honestly rather than improvised.
 
 - Native desktop app window (GTK/WebKit): give the agent a task and
   follow every step in the activity feed while it works
+- **Offline or online, per task**: plan on this computer (Ollama or
+  the built-in planner) or online through 19 cloud providers with
+  your own API key — switchable in Settings or the wizard, and the
+  active planner is badged in the UI and recorded in every run log
 - **First-run setup wizard** (v3.6.0): on first launch, a short
   guided setup — your name, light or dark theme, your AI (the
   offline / online choice explained before you pick), and the
