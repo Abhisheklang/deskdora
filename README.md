@@ -74,6 +74,18 @@ Settings:
 
 ![Diagnostics](docs/screenshots/diagnostics.png)
 
+**Phone companion — live run** — the same agent, watched and
+controlled from a phone on your local network: progress, step
+count, and Freeze / Resume / Reset / Stop:
+
+![Companion live run](docs/screenshots/companion-live-run.png)
+
+**Phone companion — confirmation** — a destructive step pauses
+the run and asks on the phone first; nothing happens until you
+tap Confirm:
+
+![Companion confirmation](docs/screenshots/companion-confirmation.png)
+
 ## Why it works (and when it doesn't)
 
 Most computer-use agents guess pixels from screenshots and misclick
