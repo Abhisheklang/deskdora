@@ -13,6 +13,14 @@ optional online paths, not a separate "online version".  The
 disclosure standard is the one Settings already carries: when a
 cloud planner is active, your goal and a text summary of your
 screen are sent to that provider.
+
+Amendment (user order, 2026-11-20): the description line was
+reworded — it now leads with whole-PC control and says the
+planning "runs fully offline" as a scoped capability, with the
+optional online paths named in the same sentence. The guards
+below pin that exact line on every surface, and keep
+"offline-only" — and any other "fully offline" — out of the
+README.
 """
 import os
 
@@ -25,11 +33,12 @@ INIT = os.path.join(ROOT, "src", "deskdora", "__init__.py")
 STATIC = os.path.join(ROOT, "src", "deskdora", "static")
 
 DESCRIPTION = (
-    "Local-first desktop agent for Linux (Ubuntu/GNOME): "
-    "accessibility-tree grounding, Ollama-powered planning with "
-    "optional cloud planners via your own API key, a "
-    "mandatory-confirmation safety layer, and a complete audit "
-    "log of every action.")
+    "Local-first desktop agent for Linux (Ubuntu/GNOME) that "
+    "controls your entire PC: accessibility-tree grounding, "
+    "Ollama-powered planning that runs fully offline, optional "
+    "cloud planners via your own API key, a phone companion on "
+    "your local network, a mandatory-confirmation safety layer, "
+    "and a complete audit log of every action.")
 
 
 def _read(path):
@@ -80,7 +89,11 @@ def test_readme_intro_scopes_the_offline_claim():
 def test_readme_never_calls_the_app_offline_only():
     text = _read(README)
     assert "offline-only" not in text
-    assert "fully offline" not in text
+    # Amended 2026-11-20 on the user's order: the synced
+    # description line says the planning "runs fully offline" as
+    # one scoped capability, in the same sentence as the online
+    # paths. The phrase stays banned everywhere else.
+    assert "fully offline" not in text.replace(DESCRIPTION, "")
 
 
 # ----------------------------------------------------------------------

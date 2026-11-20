@@ -2,7 +2,7 @@
 
 # DeskDora
 
-**Local-first desktop agent for Linux (Ubuntu/GNOME): accessibility-tree grounding, Ollama-powered planning with optional cloud planners via your own API key, a mandatory-confirmation safety layer, and a complete audit log of every action.**
+**Local-first desktop agent for Linux (Ubuntu/GNOME) that controls your entire PC: accessibility-tree grounding, Ollama-powered planning that runs fully offline, optional cloud planners via your own API key, a phone companion on your local network, a mandatory-confirmation safety layer, and a complete audit log of every action.**
 
 DeskDora controls your whole PC for you. You type a task in plain words —
 *"Organise folder ~/Downloads by type"*, *"Fill the form: name=…, email=…,
