@@ -28,6 +28,7 @@ import math  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 import urllib.request  # noqa: E402
+import webbrowser  # noqa: E402
 
 import gi  # noqa: E402
 
@@ -64,6 +65,7 @@ class DeskDoraWindow(Gtk.Window):
         settings.set_property("enable-developer-extras", False)
         settings.set_property("media-playback-requires-user-gesture", False)
         self.view.connect("load-failed", self._on_load_failed)
+        self.view.connect("create", self._on_create_web_view)
         self.view.load_uri(url)
         self.add(self.view)
         self.connect("destroy", Gtk.main_quit)
@@ -101,6 +103,22 @@ class DeskDoraWindow(Gtk.Window):
                 None, None)
         except Exception:
             pass
+
+    def _on_create_web_view(self, _view, navigation_action):
+        # Links that ask for a new window (target="_blank") open in the
+        # system browser instead of inside the app window, so the app
+        # UI is never navigated away from. Returning None tells
+        # WebKit not to create a new view.
+        try:
+            uri = navigation_action.get_request().get_uri()
+        except Exception:
+            uri = None
+        if uri:
+            try:
+                webbrowser.open(uri)
+            except Exception:
+                pass
+        return None
 
     def _on_load_failed(self, _view, _frame, _uri, _error):
         # The launcher waits for the service before opening us, but a
