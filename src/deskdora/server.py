@@ -2090,22 +2090,24 @@ def _current_backup_doc():
 
 
 def _read_backup_file(path):
+    # Every read failure gets the same response (S6): distinct
+    # messages for a missing file, a non-JSON file and a JSON file
+    # with the wrong format stamp turned this into a path-existence
+    # oracle for any caller who can reach the endpoint.  One
+    # uniform refusal reveals none of that; a file that IS a valid
+    # backup still previews and imports with full detail.
     path = (path or "").strip()
     if not path:
         raise HTTPException(400, "Enter the path to a backup file.")
-    if not os.path.isfile(path):
-        raise HTTPException(400, f"No file exists at {path}.")
     try:
+        if not os.path.isfile(path):
+            raise BackupError("unusable backup path")
         with open(path) as fh:
             data = json.load(fh)
-    except Exception:
-        raise HTTPException(
-            400, "That file couldn't be read as a backup — it "
-                 "isn't valid JSON.")
-    try:
         return parse_backup(data)
-    except BackupError as exc:
-        raise HTTPException(400, str(exc))
+    except Exception:
+        raise HTTPException(400, "That path can't be used as a "
+                                 "backup.")
 
 
 def _capture_apply_state(routines, templates):
