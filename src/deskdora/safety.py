@@ -39,10 +39,16 @@ def classify_step(step):
     before it runs.  Launch steps are destructive by this measure:
     launching a program runs a command on the user's machine, so it
     is always significant (BugHunter C3, vibe S1)."""
+    if not isinstance(step, dict):
+        # Fail closed: an unclassifiable step shape confirms
+        # rather than crashing the classifier (DD-A4).
+        return "destructive"
     action = step.get("action")
     if action == "launch":
         return "destructive"
-    if action == "key" and step.get("key", "").lower() in ("delete", "shift+delete"):
+    key_value = step.get("key")
+    if action == "key" and isinstance(key_value, str) \
+            and key_value.lower() in ("delete", "shift+delete"):
         # A bare Delete keypress in a file manager deletes the selection.
         if step.get("context") == "files":
             return "destructive"
@@ -54,8 +60,20 @@ def classify_step(step):
         return "destructive"
     if action in ("click", "double_click"):
         target = step.get("target") or {}
-        name = (target.get("name_contains") or target.get("exact_name")
-                or target.get("label_contains") or "").lower()
+        if not isinstance(target, dict):
+            target = {}
+        # Only string name fields can prove anything about the
+        # target; a typed value (123, a list) proves nothing, so
+        # the click stays unproven and therefore destructive
+        # (DD-A4 - fail closed, exactly as for an unnamed click).
+        name = ""
+        for field in ("name_contains", "exact_name",
+                      "label_contains"):
+            value = target.get(field)
+            if isinstance(value, str) and value:
+                name = value
+                break
+        name = name.lower()
         if any(hint in name for hint in DESTRUCTIVE_NAME_HINTS):
             return "destructive"
         if not name:

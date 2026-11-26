@@ -56,12 +56,25 @@ class PlanError(ValueError):
     pass
 
 
+TARGET_TEXT_KEYS = ("role", "name_contains", "exact_name",
+                    "label_contains", "app_contains")
+
+
 def _check_target(target, where):
     if not isinstance(target, dict):
         raise PlanError(f"{where}: target must be an object")
     unknown = set(target) - TARGET_KEYS
     if unknown:
-        raise PlanError(f"{where}: unknown target keys {sorted(unknown)}")
+        raise PlanError(
+            f"{where}: unknown target keys "
+            f"{sorted(unknown, key=repr)}")
+    # The name fields are matched as text downstream (autonomy
+    # and the classifier call .lower() on them): a typed value
+    # like {"name_contains": 123} must be refused HERE with a
+    # PlanError, not crash the run later (DD-A4).
+    for key in TARGET_TEXT_KEYS:
+        if key in target and not isinstance(target[key], str):
+            raise PlanError(f"{where}: target.{key} must be a string")
     if "nth" in target and (not isinstance(target["nth"], int)
                             or isinstance(target["nth"], bool)):
         raise PlanError(f"{where}: target.nth must be an int")
@@ -82,7 +95,11 @@ def validate_plan(plan, element_count=None):
         if not isinstance(step, dict):
             raise PlanError(f"{where}: step must be an object")
         action = step.get("action")
-        if action not in ALLOWED_ACTIONS:
+        # A non-string action (a list or dict from a planner's
+        # JSON) must be refused with PlanError: the bare set
+        # membership test raises TypeError on unhashable values
+        # instead (DD-A4).
+        if not isinstance(action, str) or action not in ALLOWED_ACTIONS:
             raise PlanError(f"{where}: action {action!r} is not allow-listed")
         if action == "launch":
             if not isinstance(step.get("command"), str) or not step["command"].strip():

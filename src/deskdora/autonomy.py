@@ -83,6 +83,8 @@ class AutonomyPolicy:
 def _step_text(step):
     parts = []
     target = step.get("target") or {}
+    if not isinstance(target, dict):
+        target = {}
     for key in ("name_contains", "exact_name", "label_contains",
                 "app_contains", "role"):
         if target.get(key):
@@ -115,7 +117,9 @@ def categorise_step(step, context="", element_app=""):
         # destructive check so the category still reflects what is
         # being launched; significance comes from the one shared
         # classifier in safety.classify_step (vibe S1/V3).
-        command = (step.get("command") or "").lower()
+        raw_command = step.get("command")
+        command = raw_command.lower() \
+            if isinstance(raw_command, str) else ""
         if any(b in command for b in BROWSER_APPS):
             return "web", True
         if any(f in command for f in FILE_APPS):
