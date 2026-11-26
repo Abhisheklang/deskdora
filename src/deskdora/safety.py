@@ -32,10 +32,23 @@ def classify_step(step):
         if step.get("context") == "files":
             return "destructive"
         return "safe"
-    if action == "click":
+    if action == "click_at":
+        # A coordinate click carries no element name at all, so
+        # there is nothing to prove it is not a Delete/Send/Pay
+        # button.  Treat it as destructive (confirmation required).
+        return "destructive"
+    if action in ("click", "double_click"):
         target = step.get("target") or {}
-        name = (target.get("name_contains") or target.get("exact_name") or "").lower()
+        name = (target.get("name_contains") or target.get("exact_name")
+                or target.get("label_contains") or "").lower()
         if any(hint in name for hint in DESTRUCTIVE_NAME_HINTS):
+            return "destructive"
+        if not name:
+            # No resolvable name: an element-index click (the main
+            # shape planners emit) or a role-only target.  The gate
+            # check runs before the element is resolved, so an
+            # unnamed click cannot be proven safe - it must confirm
+            # like a destructive one.
             return "destructive"
     return "safe"
 

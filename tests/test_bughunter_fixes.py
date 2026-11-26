@@ -56,3 +56,51 @@ def test_c1_pin_still_settable_and_blank_keeps_current(pin_set):
     res = local.post("/api/config", json={"companion_pin": ""})
     assert res.status_code == 200
     assert server.load_config()["companion_pin"] == "987654"
+
+
+# ---------------------------------------------------------------- C2
+# Clicks with no resolvable name (element index, coordinates) must
+# pass the mandatory confirmation gate.
+
+def test_c2_unnamed_clicks_are_destructive():
+    from deskdora.safety import classify_step
+    assert classify_step({"action": "click", "element": 3}) == "destructive"
+    assert classify_step({"action": "double_click",
+                          "element": 3}) == "destructive"
+    assert classify_step({"action": "click_at", "x": 10,
+                          "y": 10}) == "destructive"
+    assert classify_step({"action": "click",
+                          "target": {"role": "push button"}}) == "destructive"
+
+
+def test_c2_named_clicks_unchanged():
+    from deskdora.safety import classify_step
+    assert classify_step({"action": "click",
+                          "target": {"name_contains": "Save"}}) == "safe"
+    assert classify_step({"action": "click",
+                          "target": {"label_contains": "Open"}}) == "safe"
+    assert classify_step({"action": "click",
+                          "target": {"name_contains": "Delete"}}) == \
+        "destructive"
+
+
+def test_c2_unnamed_clicks_require_confirmation_by_default():
+    from deskdora.autonomy import evaluate
+    for step in ({"action": "click", "element": 3},
+                 {"action": "double_click", "element": 3},
+                 {"action": "click_at", "x": 10, "y": 10}):
+        decision, _category, significant = evaluate(None, step)
+        assert decision == "confirm", step
+        assert significant is True, step
+    # A named safe click still runs without confirmation.
+    decision, _category, significant = evaluate(
+        None, {"action": "click", "target": {"name_contains": "Save"}})
+    assert decision == "allow" and significant is False
+
+
+def test_c2_gate_is_consulted_for_element_click():
+    from deskdora.safety import ConfirmationGate, deny_all
+    gate = ConfirmationGate(deny_all)
+    assert gate.check({"action": "click", "element": 3},
+                      "click element 3") is False
+    assert gate.history and gate.history[0]["approved"] is False
