@@ -37,6 +37,8 @@ class RoutineStore:
     def save(self, name, goal, planner_mode="", schedule=None,
              source_run=None, trigger=None, goal_template=None,
              params=None):
+        if schedule:
+            validate_cron(schedule)
         path, safe = self._path(name)
         data = {
             "name": safe, "goal": goal, "planner_mode": planner_mode,
@@ -108,6 +110,12 @@ def _field_matches(field, value, lo, hi):
             return True
         if part.startswith("*/"):
             step = int(part[2:])
+            if step <= 0:
+                # "*/0" used to raise ZeroDivisionError, which is
+                # not a ValueError, escaped the scheduler's
+                # per-routine catch and silently stopped every
+                # scheduled routine (vibe CR1).
+                raise ValueError(f"cron step must be positive: {part!r}")
             if (value - lo) % step == 0:
                 return True
             continue
@@ -121,19 +129,56 @@ def _field_matches(field, value, lo, hi):
     return False
 
 
+def validate_cron(expression):
+    """Raise ValueError if a five-field cron expression is malformed.
+
+    Called when a schedule is saved, so a bad expression is refused
+    at the door instead of failing silently in the scheduler loop
+    forever (vibe CR1)."""
+    fields = (expression or "").split()
+    if len(fields) != 5:
+        raise ValueError("cron expression needs five fields")
+    bounds = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 6))
+    for field, (lo, hi) in zip(fields, bounds):
+        for part in field.split(","):
+            part = part.strip()
+            if part == "*":
+                continue
+            if part.startswith("*/"):
+                step = int(part[2:])  # ValueError if not a number
+                if step <= 0:
+                    raise ValueError(
+                        f"cron step must be positive: {part!r}")
+                continue
+            if "-" in part:
+                a, b = part.split("-", 1)
+                if not (lo <= int(a) <= int(b) <= hi):
+                    raise ValueError(f"cron range out of bounds: {part!r}")
+                continue
+            if not (lo <= int(part) <= hi):
+                raise ValueError(f"cron value out of bounds: {part!r}")
+    return expression
+
+
 def cron_matches(expression, when=None):
     when = when or datetime.now()
     fields = expression.split()
     if len(fields) != 5:
         raise ValueError("cron expression needs five fields")
     dow = (when.weekday() + 1) % 7  # cron: Sunday=0
-    return (
-        _field_matches(fields[0], when.minute, 0, 59)
-        and _field_matches(fields[1], when.hour, 0, 23)
-        and _field_matches(fields[2], when.day, 1, 31)
-        and _field_matches(fields[3], when.month, 1, 12)
-        and _field_matches(fields[4], dow, 0, 6)
-    )
+    if not (_field_matches(fields[0], when.minute, 0, 59)
+            and _field_matches(fields[1], when.hour, 0, 23)
+            and _field_matches(fields[3], when.month, 1, 12)):
+        return False
+    dom_restricted = fields[2] != "*"
+    dow_restricted = fields[4] != "*"
+    dom_ok = _field_matches(fields[2], when.day, 1, 31)
+    dow_ok = _field_matches(fields[4], dow, 0, 6)
+    if dom_restricted and dow_restricted:
+        # Standard cron semantics: when both day fields are
+        # restricted, a match on either one fires (vibe CR1).
+        return dom_ok or dow_ok
+    return dom_ok and dow_ok
 
 
 def due_routines(store, when=None):

@@ -59,8 +59,18 @@ class ProposalStore:
         try:
             with open(self.path) as fh:
                 self.items = json.load(fh)
-        except Exception:
+        except FileNotFoundError:
             self.items = []
+        except Exception:
+            # A corrupt proposals file must not be silently treated
+            # as empty: the next save would overwrite the history.
+            # Quarantine it, the pattern memory.py already uses
+            # (vibe V4).
+            self.items = []
+            try:
+                os.replace(self.path, self.path + ".corrupt")
+            except OSError:
+                pass
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)

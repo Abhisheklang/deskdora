@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -2466,7 +2467,9 @@ def _watcher_loop():
         try:
             _watcher_tick()
         except Exception:
-            pass  # a bad folder must never kill the watcher
+            # A bad folder must never kill the watcher, but the
+            # failure is logged, not swallowed silently (vibe V4).
+            logging.getLogger(__name__).exception("watcher tick failed")
         time.sleep(45)
 
 

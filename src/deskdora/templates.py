@@ -57,7 +57,16 @@ class TemplateStore:
             with open(self.path) as fh:
                 data = json.load(fh)
             return data if isinstance(data, list) else []
+        except FileNotFoundError:
+            return []
         except Exception:
+            # Quarantine a corrupt templates file instead of
+            # silently returning empty and letting the next save
+            # destroy it (vibe V4, same pattern as memory.py).
+            try:
+                os.replace(self.path, self.path + ".corrupt")
+            except OSError:
+                pass
             return []
 
     def _save(self, items):

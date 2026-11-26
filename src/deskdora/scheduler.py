@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 import threading
 import time
 from datetime import datetime
@@ -104,6 +105,9 @@ class Scheduler:
                     try:
                         due = cron_matches(schedule, now)
                     except ValueError:
+                        logging.getLogger(__name__).warning(
+                            "routine %r has an invalid schedule %r; "
+                            "skipping it", name, schedule)
                         due = False
                     if due:
                         self._last_fired[name] = minute_key
@@ -145,8 +149,11 @@ class Scheduler:
                 try:
                     self.tick()
                 except Exception:
-                    # A bad routine must never kill the scheduler.
-                    pass
+                    # A bad routine must never kill the scheduler,
+                    # but the failure must be visible, not swallowed
+                    # silently forever (vibe V4).
+                    logging.getLogger(__name__).exception(
+                        "scheduler tick failed")
                 self._stop.wait(self.poll_seconds)
 
         self._thread = threading.Thread(target=loop, daemon=True,
