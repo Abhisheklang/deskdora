@@ -1552,7 +1552,6 @@ def routines_from_run_parameterized(req: FromRunRequest):
                                     run_dir, schedule=req.schedule)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return {"ok": True, "deleted": name}
 
 
 # ---------------------------------------------------------------------------
