@@ -1329,8 +1329,12 @@ def _safe_run_dir(run_id: str) -> str:
 
 
 @app.get("/api/runs")
-def runs():
-    out = list_runs(RUNS_DIR)
+def runs(limit: int = 200):
+    # Summary only, capped: the full event list of every run ever
+    # recorded used to ride this polling endpoint (vibe V1).  The
+    # detail endpoint below serves one run's events on demand.
+    out = list_runs(RUNS_DIR, include_events=False,
+                    limit=max(1, min(limit, 1000)))
     for r in out:
         r["planner_display"] = planner_display(r.get("planner_mode"))
     return out
