@@ -2252,7 +2252,11 @@ def backup_import(req: BackupPathRequest):
 
 
 @app.post("/api/backup/restore-preimport")
-def backup_restore_preimport():
+def backup_restore_preimport(confirm: bool = False):
+    # Restoring replaces the whole live setup: destructive, so
+    # it takes the same explicit confirmation as the other S5
+    # endpoints (DD-A3, residual wave 3 S5 scope).
+    _require_confirmed(confirm)
     backup_dir = os.path.join(DATA_DIR, "backups")
     try:
         candidates = sorted(
@@ -2580,13 +2584,20 @@ def access_get():
 
 
 @app.post("/api/access/key/generate")
-def access_generate():
+def access_generate(confirm: bool = False):
+    # Generating rotates the key: the previous key stops working
+    # at once, so rotation is destructive and takes the same
+    # explicit confirmation as the other S5 endpoints (DD-A3).
+    _require_confirmed(confirm)
     key = API_KEYS.generate()
     return {"key": key, **API_KEYS.status()}
 
 
 @app.post("/api/access/key/revoke")
-def access_revoke():
+def access_revoke(confirm: bool = False):
+    # Revoking breaks every API/MCP integration until a new key
+    # is generated: destructive, confirmation required (DD-A3).
+    _require_confirmed(confirm)
     API_KEYS.revoke()
     return {"ok": True, **API_KEYS.status()}
 

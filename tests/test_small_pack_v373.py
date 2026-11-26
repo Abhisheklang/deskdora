@@ -228,6 +228,8 @@ def test_backup_round_trip_and_preimport_snapshot(client, tmp_path):
     # Restore-preimport brings back the mutated state.
     client.post("/api/config", json={"user_name": "Again"})
     r = client.post("/api/backup/restore-preimport")
+    assert r.status_code == 409  # DD-A3: confirmation required
+    r = client.post("/api/backup/restore-preimport?confirm=true")
     assert r.status_code == 200
     assert client.get("/api/config").json()["user_name"] == \
         "Changed"
@@ -259,7 +261,7 @@ def test_backup_rejects_bad_files(client, tmp_path):
 
 
 def test_restore_without_snapshot_is_plain_refusal(client):
-    r = client.post("/api/backup/restore-preimport")
+    r = client.post("/api/backup/restore-preimport?confirm=true")
     assert r.status_code == 400
     assert "no pre-import backup" in r.json()["detail"]
 

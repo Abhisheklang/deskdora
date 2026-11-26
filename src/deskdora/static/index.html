@@ -3174,7 +3174,7 @@ $("#bkImportBtn").addEventListener("click", async () => {
 $("#bkRestoreBtn").addEventListener("click", async () => {
   const msg = $("#bkMsg");
   msg.textContent = "RESTORING…";
-  const res = await fetch("/api/backup/restore-preimport",
+  const res = await fetch("/api/backup/restore-preimport?confirm=true",
     { method: "POST" });
   if (!res.ok) {
     msg.textContent = "REFUSED — " + (await res.text()).slice(0, 140);
@@ -3495,7 +3495,7 @@ $("#shareToggle").addEventListener("change", async (e) => {
   pollStatus();
 });
 $("#apiKeyGen").addEventListener("click", async () => {
-  const res = await fetch("/api/access/key/generate", { method: "POST" });
+  const res = await fetch("/api/access/key/generate?confirm=true", { method: "POST" });
   const body = await res.json();
   $("#apiKeyShowRow").hidden = false;
   $("#apiKeyShow").value = body.key;
@@ -3504,7 +3504,7 @@ $("#apiKeyGen").addEventListener("click", async () => {
   loadAccess();
 });
 $("#apiKeyRevoke").addEventListener("click", async () => {
-  await fetch("/api/access/key/revoke", { method: "POST" });
+  await fetch("/api/access/key/revoke?confirm=true", { method: "POST" });
   $("#apiKeyShowRow").hidden = true;
   $("#apiKeyMsg").textContent = "REVOKED";
   loadAccess();

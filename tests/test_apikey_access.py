@@ -63,7 +63,7 @@ def test_api_key_middleware_sequence(key_store):
     # No key configured at all: remote mutation is refused.
     assert remote.post("/api/kill").status_code == 401
     # Generate through the local (loopback) API.
-    res = client.post("/api/access/key/generate")
+    res = client.post("/api/access/key/generate?confirm=true")
     assert res.status_code == 200
     key = res.json()["key"]
     assert res.json()["last4"] == key[-4:]
@@ -80,7 +80,8 @@ def test_api_key_middleware_sequence(key_store):
     # Reads were never gated.
     assert remote.get("/api/status").status_code == 200
     # Revoked key -> 401 again.
-    assert client.post("/api/access/key/revoke").status_code == 200
+    assert client.post(
+        "/api/access/key/revoke?confirm=true").status_code == 200
     assert remote.post(
         "/api/kill", headers={"X-Api-Key": key}).status_code == 401
 
