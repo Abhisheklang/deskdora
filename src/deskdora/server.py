@@ -1746,8 +1746,25 @@ def _screen_auth_ok(request):
         _pin_clear(request.client.host if request.client else "")
         return True
     token = request.cookies.get("dd_companion_session")
-    return bool(token
-                and MANAGER.companion_sessions.get(token, 0) > time.time())
+    if not token:
+        return False
+    if MANAGER.companion_sessions.get(token, 0) > time.time():
+        return True
+    # Expired (or unknown) token: drop the row instead of leaving
+    # it behind forever (CR5).
+    MANAGER.companion_sessions.pop(token, None)
+    return False
+
+
+def _prune_companion_sessions():
+    """Drop every expired companion session (CR5).  Called on each
+    new login, so the table can only ever hold live sessions plus
+    whatever expired since the last login."""
+    now = time.time()
+    expired = [tok for tok, expiry
+               in MANAGER.companion_sessions.items() if expiry <= now]
+    for tok in expired:
+        MANAGER.companion_sessions.pop(tok, None)
 
 
 @app.post("/api/companion/auth")
@@ -1765,6 +1782,7 @@ def companion_auth(request: Request):
             _pin_record_failure(client)
         raise HTTPException(401, "companion PIN required")
     _pin_clear(client)
+    _prune_companion_sessions()
     token = secrets.token_urlsafe(24)
     MANAGER.companion_sessions[token] = time.time() + 12 * 3600
     MANAGER.emit_tone("companion_connected", load_config())
