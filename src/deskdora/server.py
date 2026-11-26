@@ -161,11 +161,26 @@ def planner_display(mode_label):
     return f"{head} · {model}" if sep else mode_label
 
 
+_config_cache = {"key": None, "data": None}
+
+
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     try:
+        # Cache the parsed file on mtime+size: /api/status polls
+        # this every 2.5 s and used to re-read and re-parse the
+        # file on every poll (vibe CR3).  save_config replaces the
+        # file atomically, so a changed mtime always invalidates.
+        st = os.stat(CONFIG_PATH)
+        key = (st.st_mtime_ns, st.st_size)
+        if _config_cache["key"] == key:
+            cfg.update(_config_cache["data"])
+            return cfg
         with open(CONFIG_PATH) as fh:
-            cfg.update(json.load(fh))
+            data = json.load(fh)
+        _config_cache["key"] = key
+        _config_cache["data"] = data
+        cfg.update(data)
     except Exception:
         pass
     return cfg
@@ -1273,10 +1288,26 @@ def _require_confirmed(confirm):
                  "confirm it explicitly")
 
 
+_ollama_probe_cache = {"ts": 0.0, "available": False}
+
+
+def _ollama_available(model):
+    """Ollama reachability, cached for 10 s: /api/status is polled
+    every 2.5 s and the probe is a synchronous HTTP call with a 3 s
+    timeout, so an uncached probe stalls a worker on every poll
+    exactly when Ollama is down (vibe CR3)."""
+    now = time.time()
+    if now - _ollama_probe_cache["ts"] < 10:
+        return _ollama_probe_cache["available"]
+    available = OllamaPlanner(model=model).available()
+    _ollama_probe_cache.update(ts=now, available=available)
+    return available
+
+
 @app.get("/api/status")
 def status():
     cfg = load_config()
-    ollama = OllamaPlanner(model=cfg["model"])
+    ollama = None  # probe goes through the cache below
     pending = None
     if MANAGER.pending:
         p = MANAGER.pending
@@ -1287,7 +1318,7 @@ def status():
                   if k != "last_event"},
         "last_event": MANAGER.state["last_event"],
         "config": public_config(cfg),
-        "ollama_available": ollama.available(),
+        "ollama_available": _ollama_available(cfg["model"]),
         "pending_confirmation": pending,
         "kill_tripped": MANAGER.kill.is_tripped(),
         "progress": MANAGER.progress_payload(),
@@ -1889,8 +1920,23 @@ def voice_render(req: SayRequest):
 async def voice_transcribe(file: UploadFile = File(...)):
     import tempfile
     suffix = os.path.splitext(file.filename or "clip.wav")[1] or ".wav"
+    # Stream with a hard cap (vibe CR4): the whole upload used to
+    # be read into memory with no limit.  25 MB is far beyond any
+    # voice clip this endpoint exists for.
+    max_bytes = 25 * 1024 * 1024
+    written = 0
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await file.read())
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > max_bytes:
+                tmp.close()
+                os.unlink(tmp.name)
+                raise HTTPException(
+                    413, "audio upload too large (25 MB limit)")
+            tmp.write(chunk)
         tmp_path = tmp.name
     try:
         text = voice.transcribe(tmp_path)
