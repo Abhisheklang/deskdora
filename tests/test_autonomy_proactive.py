@@ -39,9 +39,11 @@ def test_categorisation():
                           "name_contains": "Install"}}
     assert categorise_step(install) == ("apps", True)
     launch_browser = {"action": "launch", "command": "chromium http://x"}
-    assert categorise_step(launch_browser) == ("web", False)
+    # Launch is significant since the BugHunter C3 fix: running a
+    # command always requires confirmation under a confirm policy.
+    assert categorise_step(launch_browser) == ("web", True)
     launch_term = {"action": "launch", "command": "xfce4-terminal"}
-    assert categorise_step(launch_term) == ("apps", False)
+    assert categorise_step(launch_term) == ("apps", True)
     wait = {"action": "wait", "seconds": 1}
     assert categorise_step(wait)[1] is False
 

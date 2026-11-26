@@ -7,6 +7,7 @@ re-observe after every single action and verify what actually happened.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import time
 
@@ -48,9 +49,17 @@ def scroll(x, y, direction="down", clicks=3):
 
 
 def launch(command, wait=1.5):
-    """Launch a GUI application detached from our process group."""
+    """Launch a GUI application detached from our process group.
+
+    The command is parsed with shlex and executed as an argv list
+    with no shell, so shell metacharacters in a planner-supplied
+    command are inert arguments, never shell syntax (BugHunter C3).
+    """
+    argv = shlex.split(command)
+    if not argv:
+        raise ValueError("launch needs a non-empty command")
     env = dict(os.environ)
-    subprocess.Popen(command, shell=True, env=env,
+    subprocess.Popen(argv, shell=False, env=env,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True)
     if wait:

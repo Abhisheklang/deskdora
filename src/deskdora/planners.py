@@ -83,6 +83,14 @@ def validate_plan(plan, element_count=None):
         if action == "launch":
             if not isinstance(step.get("command"), str) or not step["command"].strip():
                 raise PlanError(f"{where}: launch needs a non-empty command")
+            # Launch runs without a shell (actions.launch uses an
+            # argv list), so shell syntax has no legitimate use in a
+            # launch command - reject it at validation time instead
+            # of letting it through as inert-looking arguments.
+            if any(ch in step["command"] for ch in ";&|`$()<>\n\r"):
+                raise PlanError(
+                    f"{where}: launch command contains shell "
+                    "metacharacters, which are not allowed")
         elif action in ("click", "double_click"):
             if "element" in step:
                 idx = step["element"]

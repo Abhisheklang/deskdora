@@ -119,12 +119,15 @@ def categorise_step(step, context="", element_app=""):
             return "apps", True
         return "files", True
     if action == "launch":
+        # Launching a program is always significant: it runs a
+        # command on the user's machine, so the default all-confirm
+        # policy must ask first (BugHunter C3).
         command = (step.get("command") or "").lower()
         if any(b in command for b in BROWSER_APPS):
-            return "web", False
+            return "web", True
         if any(f in command for f in FILE_APPS):
-            return "files", False
-        return "apps", False
+            return "files", True
+        return "apps", True
     if any(b in app for b in BROWSER_APPS):
         return "web", False
     if any(f in app for f in FILE_APPS):

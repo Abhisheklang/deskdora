@@ -104,3 +104,52 @@ def test_c2_gate_is_consulted_for_element_click():
     assert gate.check({"action": "click", "element": 3},
                       "click element 3") is False
     assert gate.history and gate.history[0]["approved"] is False
+
+
+# ---------------------------------------------------------------- C3
+# Launch steps: confirmation by default, no shell, no metacharacters.
+
+def test_c3_launch_requires_confirmation_by_default():
+    from deskdora.autonomy import categorise_step, evaluate
+    step = {"action": "launch", "command": "xfce4-terminal"}
+    assert categorise_step(step) == ("apps", True)
+    assert evaluate(None, step)[0] == "confirm"
+    assert evaluate(None, {"action": "launch",
+                           "command": "thunar /tmp"})[0] == "confirm"
+
+
+def test_c3_validate_plan_rejects_shell_metacharacters():
+    from deskdora.planners import PlanError, validate_plan
+    bad = ["xterm -e rm; echo done",
+           "gedit & rm file", "cat a | tee b", "echo `id`",
+           "echo $(id)", "prog > /tmp/x", "prog < /tmp/x",
+           "prog\nrm file", "a && b", "a || b"]
+    for command in bad:
+        with pytest.raises(PlanError):
+            validate_plan([{"action": "launch", "command": command},
+                           {"action": "done", "answer": "x"}])
+
+
+def test_c3_normal_launch_still_validates():
+    from deskdora.planners import validate_plan
+    plan = [{"action": "launch", "command": "thunar /home/user/Downloads"},
+            {"action": "done", "answer": "opened"}]
+    assert validate_plan(plan) is plan
+    plan2 = [{"action": "launch", "command": "gedit --new-window notes.txt"},
+             {"action": "done", "answer": "opened"}]
+    assert validate_plan(plan2) is plan2
+
+
+def test_c3_launch_executes_argv_without_shell(monkeypatch):
+    from deskdora import actions
+    calls = {}
+
+    def fake_popen(argv, **kw):
+        calls["argv"] = argv
+        calls["kw"] = kw
+
+    monkeypatch.setattr(actions.subprocess, "Popen", fake_popen)
+    actions.launch('thunar "/tmp/some dir"', wait=0)
+    # shlex parsing: the quoted path stays one argument, no shell.
+    assert calls["argv"] == ["thunar", "/tmp/some dir"]
+    assert calls["kw"].get("shell") is False
