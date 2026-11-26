@@ -1035,7 +1035,11 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="DeskDora", version=__version__, lifespan=_lifespan)
+# Docs and the OpenAPI schema are disabled entirely: served by
+# default, they handed any unauthenticated LAN client a complete
+# map of the control surface (vibe S3).  The UIs never use them.
+app = FastAPI(title="DeskDora", version=__version__, lifespan=_lifespan,
+              docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.middleware("http")
@@ -1136,6 +1140,29 @@ async def _companion_guard(request, call_next):
     # non-loopback clients.  Every other GET under /api/ requires
     # the same authentication as the screen stream (API key, PIN
     # header, or a valid companion session cookie) - BugHunter C4.
+    # CSRF / drive-by defence (vibe S4): a web page the user
+    # visits must not be able to fire state-changing requests at
+    # the loopback or LAN server.  Browsers always send Origin on
+    # cross-origin POSTs, so a state-changing /api/ request whose
+    # Origin does not match this server's own host, or that the
+    # browser itself labels cross-site, is refused.  Requests with
+    # no Origin (the desktop shell, curl, local processes, the
+    # companion app) are unaffected: the loopback trust choice for
+    # local processes stands, but a browser page is not a local
+    # process.
+    if request.method in ("POST", "DELETE", "PUT", "PATCH") \
+            and request.url.path.startswith("/api/"):
+        origin = request.headers.get("origin")
+        fetch_site = request.headers.get("sec-fetch-site")
+        if fetch_site == "cross-site" or (origin and origin != "null"):
+            from urllib.parse import urlparse
+            origin_host = urlparse(origin).netloc if origin else ""
+            if fetch_site == "cross-site" or \
+                    origin_host != request.headers.get("host", ""):
+                return JSONResponse(
+                    {"detail": "cross-origin state-changing requests "
+                               "are refused"},
+                    status_code=403)
     if request.method == "GET" \
             and request.url.path.startswith("/api/") \
             and request.url.path != "/api/status":
