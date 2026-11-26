@@ -60,6 +60,144 @@ TARGET_TEXT_KEYS = ("role", "name_contains", "exact_name",
                     "label_contains", "app_contains")
 
 
+_BRACE_QUANTIFIER = re.compile(r"\{(\d+)(?:,(\d*))?\}")
+
+
+def _quantifier_repeat_many(pattern, i):
+    """If a quantifier starts at pattern[i], return (end, repeat_many):
+    end is the index just past it, repeat_many says whether it can
+    repeat its target two or more times.  None if no quantifier
+    starts there (a bare { that is not a quantifier is literal)."""
+    ch = pattern[i]
+    if ch in "*+":
+        return i + 1, True
+    if ch == "?":
+        return i + 1, False
+    if ch == "{":
+        m = _BRACE_QUANTIFIER.match(pattern, i)
+        if not m:
+            return None
+        first, second = m.group(1), m.group(2)
+        if second is None:
+            return m.end(), int(first) >= 2
+        if second == "":
+            return m.end(), True
+        return m.end(), int(second) >= 2
+    return None
+
+
+def _has_nested_quantifier(pattern):
+    """True for the catastrophic-backtracking shape: a group that
+    contains a quantifier is itself repeated two or more times,
+    e.g. (a+)+ or (x|y+)*.  A single optional group such as
+    (?:\\.[0-9]{2})? is fine - it cannot re-partition its input.
+    Escapes and character classes are honoured, so quantifier
+    characters used literally never count."""
+    # One frame per open group; inner_q records whether a quantifier
+    # has appeared directly inside that group.
+    frames = [{"inner_q": False}]
+    prev_closed_inner = None   # inner_q of the just-closed group
+    i, n = 0, len(pattern)
+    while i < n:
+        ch = pattern[i]
+        if ch == "\\":
+            i += 2
+            prev_closed_inner = None
+            continue
+        if ch == "[":
+            i += 1
+            if i < n and pattern[i] == "^":
+                i += 1
+            if i < n and pattern[i] == "]":
+                i += 1
+            while i < n and pattern[i] != "]":
+                i += 2 if pattern[i] == "\\" else 1
+            i += 1
+            prev_closed_inner = None
+            continue
+        if pattern.startswith("(?#", i):
+            end = pattern.find(")", i + 3)
+            i = n if end == -1 else end + 1
+            prev_closed_inner = None
+            continue
+        if ch == "(":
+            frames.append({"inner_q": False})
+            prev_closed_inner = None
+            i += 1
+            # Skip a group prefix ((?:, (?=, (?P<name>, (?flags: ...)
+            # so its characters are never mistaken for quantifiers.
+            if i < n and pattern[i] == "?":
+                j = i + 1
+                if j < n and pattern[j] == "P":
+                    end = pattern.find(">", j)
+                    i = n if end == -1 else end + 1
+                elif j < n and pattern[j] in "=!":
+                    i = j + 1
+                elif j < n and pattern[j] == "<":
+                    if j + 1 < n and pattern[j + 1] in "=!":
+                        i = j + 2
+                    else:
+                        end = pattern.find(">", j)
+                        i = n if end == -1 else end + 1
+                else:
+                    end = j
+                    while end < n and (pattern[end].isalpha()
+                                       or pattern[end] == "-"):
+                        end += 1
+                    if end < n and pattern[end] == ")":
+                        # (?flags) with no body: not a group at all.
+                        frames.pop()
+                        i = end + 1
+                    else:
+                        i = end + 1 if end < n else end
+            continue
+        if ch == ")":
+            frame = frames.pop() if len(frames) > 1 \
+                else {"inner_q": False}
+            # A group contains every quantifier inside it, nested
+            # groups included: ((a+))+ is the same shape as (a+)+.
+            if frames:
+                frames[-1]["inner_q"] = frames[-1]["inner_q"] \
+                    or frame["inner_q"]
+            prev_closed_inner = frame["inner_q"]
+            i += 1
+            continue
+        quant = _quantifier_repeat_many(pattern, i) \
+            if ch in "*+?{" else None
+        if quant is not None:
+            end, repeat_many = quant
+            if repeat_many and prev_closed_inner:
+                return True
+            frames[-1]["inner_q"] = True
+            i = end
+            if i < n and pattern[i] in "?+":   # lazy / possessive mark
+                i += 1
+            prev_closed_inner = None
+            continue
+        prev_closed_inner = None
+        i += 1
+    return False
+
+
+def extract_pattern_problem(pattern):
+    """Why an extract pattern is unsafe to run, or None if it is
+    fine.  Extract patterns come from the user's chosen planner,
+    not from the user directly, so a pathological pattern must not
+    be able to hang the agent thread (EXTRACT-REGEX): reject
+    patterns that do not compile and nested-quantifier patterns
+    outright; the executor additionally runs what passes under a
+    wall-clock budget."""
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        return f"bad regex: {exc}"
+    if _has_nested_quantifier(pattern):
+        return ("extract pattern has nested quantifiers, which can "
+                "backtrack catastrophically; rewrite it without a "
+                "quantifier inside a repeated group")
+    return None
+
+
 def _check_target(target, where):
     if not isinstance(target, dict):
         raise PlanError(f"{where}: target must be an object")
@@ -155,10 +293,9 @@ def validate_plan(plan, element_count=None):
             pattern = step.get("pattern")
             if not isinstance(pattern, str) or not pattern:
                 raise PlanError(f"{where}: extract needs a pattern")
-            try:
-                re.compile(pattern)
-            except re.error as exc:
-                raise PlanError(f"{where}: bad regex: {exc}")
+            problem = extract_pattern_problem(pattern)
+            if problem:
+                raise PlanError(f"{where}: {problem}")
         elif action == "build_sheet":
             if step.get("source") != "clipboard":
                 raise PlanError(f"{where}: build_sheet source must be 'clipboard'")

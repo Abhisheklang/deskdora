@@ -9,16 +9,64 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
 import time
 
 from .drivers import get_driver
 from .drivers.base import DriverError
-from .planners import PlanError, validate_plan
+from .planners import PlanError, extract_pattern_problem, validate_plan
 from .autonomy import evaluate as autonomy_evaluate
 
 
 class StepFailure(Exception):
     pass
+
+
+# Extract-step safety bounds (EXTRACT-REGEX): the pattern comes
+# from the user's chosen planner, so it is never run unbounded.
+# Nested quantifiers are refused before anything runs, each text
+# is capped, and the search itself runs on a daemon worker thread
+# under a hard wall-clock budget - a pattern that outlives the
+# budget fails the step instead of hanging the agent thread (the
+# abandoned worker is a daemon and its result is discarded; the
+# kill switch is only checked between steps, so the budget is
+# what keeps a bad pattern from wedging the whole run).
+EXTRACT_TIMEOUT_SECONDS = 2.0
+EXTRACT_MAX_TEXT_CHARS = 200_000
+
+
+def _bounded_extract_search(pattern, texts):
+    """Search texts for pattern under the extract safety bounds.
+    Returns the match object, or None when nothing matches.
+    Raises StepFailure for a refused or timed-out pattern."""
+    problem = extract_pattern_problem(pattern)
+    if problem:
+        raise StepFailure(f"extract pattern refused: {problem}")
+    outcome = {}
+
+    def run():
+        try:
+            compiled = re.compile(pattern)
+            for text in texts:
+                match = compiled.search(text[:EXTRACT_MAX_TEXT_CHARS])
+                if match:
+                    outcome["match"] = match
+                    return
+        except Exception as exc:   # never let the worker die silently
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(EXTRACT_TIMEOUT_SECONDS)
+    if worker.is_alive():
+        raise StepFailure(
+            f"extract pattern timed out after "
+            f"{EXTRACT_TIMEOUT_SECONDS:g}s and was abandoned: "
+            f"{pattern}")
+    if "error" in outcome:
+        raise StepFailure(
+            f"extract pattern failed: {outcome['error']}")
+    return outcome.get("match")
 
 
 def describe_step(step):
@@ -531,13 +579,12 @@ class Agent:
             return f"waited {step.get('seconds', 1)}s"
         if action == "extract":
             obs = self.d.observe()
-            haystacks = list(obs.texts.values())
-            for text in haystacks:
-                m = re.search(step["pattern"], text)
-                if m:
-                    value = m.group(1) if m.groups() else m.group(0)
-                    self.answers[step.get("name", "answer")] = value.strip()
-                    return f"extracted {step.get('name')} = {value.strip()!r}"
+            m = _bounded_extract_search(step["pattern"],
+                                        list(obs.texts.values()))
+            if m:
+                value = m.group(1) if m.groups() else m.group(0)
+                self.answers[step.get("name", "answer")] = value.strip()
+                return f"extracted {step.get('name')} = {value.strip()!r}"
             raise StepFailure(f"extract pattern not found: {step['pattern']}")
         if action == "read_clipboard":
             try:
