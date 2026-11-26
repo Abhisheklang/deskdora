@@ -2177,7 +2177,7 @@ $("#runAgainBtn2").addEventListener("click", () => {
 });
 $("#runDeleteBtn").addEventListener("click", async () => {
   if (!replayRunId) return;
-  const res = await fetch("/api/runs/" + replayRunId, { method: "DELETE" });
+  const res = await fetch("/api/runs/" + replayRunId + "?confirm=true", { method: "DELETE" });
   if (res.ok) {
     $("#replayWrap").hidden = true;
     replayRunId = "";
@@ -2409,7 +2409,7 @@ $("#askInput").addEventListener("keydown", (e) => {
 
 $("#runUndoBtn").addEventListener("click", async () => {
   if (!replayRunId) return;
-  const res = await fetch(`/api/runs/${replayRunId}/undo`, { method: "POST" });
+  const res = await fetch(`/api/runs/${replayRunId}/undo?confirm=true`, { method: "POST" });
   const msg = $("#undoMsg");
   if (!res.ok) { msg.textContent = "UNDO REFUSED — " + (await res.text()).slice(0, 60); return; }
   const r = await res.json();
@@ -2648,7 +2648,7 @@ function useTemplate(id) {
   updateEstimate();
 }
 async function deleteTemplate(id) {
-  await fetch("/api/templates/" + encodeURIComponent(id), { method: "DELETE" });
+  await fetch("/api/templates/" + encodeURIComponent(id) + "?confirm=true", { method: "DELETE" });
   loadTemplates();
 }
 $("#fromTplSave").addEventListener("click", async () => {
@@ -2793,7 +2793,7 @@ $("#queueResumeBtn").addEventListener("click", async () => {
   queueJSON = ""; syncQueue();
 });
 $("#queueClearBtn").addEventListener("click", async () => {
-  await fetch("/api/queue/clear", { method: "POST" });
+  await fetch("/api/queue/clear?confirm=true", { method: "POST" });
   queueJSON = ""; syncQueue();
 });
 $("#queueItBtn").addEventListener("click", async () => {
@@ -2872,7 +2872,7 @@ async function runRoutine(name) {
   pollStatus();
 }
 async function deleteRoutine(name) {
-  await fetch(`/api/routines/${encodeURIComponent(name)}`, { method: "DELETE" });
+  await fetch(`/api/routines/${encodeURIComponent(name)}?confirm=true`, { method: "DELETE" });
   loadRoutines();
 }
 $("#routineSave").addEventListener("click", async () => {
@@ -2957,7 +2957,7 @@ $("#placeSave").addEventListener("click", async () => {
   loadMemory();
 });
 $("#memoryClear").addEventListener("click", async () => {
-  await fetch("/api/memory/clear", { method: "POST" });
+  await fetch("/api/memory/clear?confirm=true", { method: "POST" });
   $("#memoryMsg").textContent = "MEMORY CLEARED";
   loadMemory();
 });

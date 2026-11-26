@@ -188,8 +188,8 @@ def test_templates_api(tmp_path, monkeypatch):
                           json={"name": "Mine", "goal": "Do x"})
     assert created.status_code == 200
     tid = created.json()["id"]
-    assert client.delete(f"/api/templates/{tid}").status_code == 200
-    assert client.delete(f"/api/templates/{tid}").status_code == 404
+    assert client.delete(f"/api/templates/{tid}?confirm=true").status_code == 200
+    assert client.delete(f"/api/templates/{tid}?confirm=true").status_code == 404
 
 
 def test_estimate_endpoint_no_history(monkeypatch, tmp_path):

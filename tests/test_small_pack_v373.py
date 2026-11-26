@@ -194,7 +194,7 @@ def test_backup_round_trip_and_preimport_snapshot(client, tmp_path):
     path.write_text(json.dumps(doc))
     # Mutate everything the backup should restore.
     client.post("/api/config", json={"user_name": "Changed"})
-    client.delete("/api/routines/Morning sort")
+    client.delete("/api/routines/Morning sort?confirm=true")
     # Preview reports the change set without applying it.
     r = client.post("/api/backup/preview",
                     json={"path": str(path)})

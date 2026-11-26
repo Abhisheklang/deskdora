@@ -1261,6 +1261,18 @@ class SayRequest(BaseModel):
     text: str
 
 
+def _require_confirmed(confirm):
+    """Explicit per-action confirmation for destructive endpoints
+    (vibe S5): transport auth alone is not a confirmation.  The
+    caller must pass confirm=true, which the UIs do only from the
+    button the user pressed for exactly this action (the desktop
+    UI asks in a dialog first where it has one)."""
+    if confirm is not True:
+        raise HTTPException(
+            409, "this action is destructive: pass confirm=true to "
+                 "confirm it explicitly")
+
+
 @app.get("/api/status")
 def status():
     cfg = load_config()
@@ -1392,8 +1404,9 @@ def run_screenshot(run_id: str, name: str):
 
 
 @app.delete("/api/runs/{run_id}")
-def run_delete(run_id: str):
+def run_delete(run_id: str, confirm: bool = False):
     """Delete one run's history record (its log + screenshots)."""
+    _require_confirmed(confirm)
     path = _safe_run_dir(run_id)
     if not os.path.isdir(path):
         raise HTTPException(404, "run not found")
@@ -1425,7 +1438,8 @@ def approve_plan(req: ApprovePlanRequest):
 
 
 @app.post("/api/runs/{run_id}/undo")
-def run_undo(run_id: str):
+def run_undo(run_id: str, confirm: bool = False):
+    _require_confirmed(confirm)
     """Undo a run's journaled file changes (moves only).  Conflicts
     are reported, never silently overwritten."""
     cfg = load_config()
@@ -1552,7 +1566,8 @@ def templates_create(req: TemplateRequest):
 
 
 @app.delete("/api/templates/{template_id}")
-def templates_delete(template_id: str):
+def templates_delete(template_id: str, confirm: bool = False):
+    _require_confirmed(confirm)
     if not MANAGER.templates.delete(template_id):
         raise HTTPException(404, "template not found")
     return {"ok": True}
@@ -1661,7 +1676,8 @@ def queue_resume():
 
 
 @app.post("/api/queue/clear")
-def queue_clear():
+def queue_clear(confirm: bool = False):
+    _require_confirmed(confirm)
     removed = MANAGER.queue.clear()
     return {"ok": True, "removed": removed}
 
@@ -1834,7 +1850,8 @@ def memory_forget(req: ForgetRequest):
 
 
 @app.post("/api/memory/clear")
-def memory_clear():
+def memory_clear(confirm: bool = False):
+    _require_confirmed(confirm)
     MANAGER.memory.clear()
     return {"ok": True}
 
@@ -1886,7 +1903,8 @@ async def voice_transcribe(file: UploadFile = File(...)):
 
 
 @app.delete("/api/routines/{name}")
-def routines_delete(name: str):
+def routines_delete(name: str, confirm: bool = False):
+    _require_confirmed(confirm)
     if not MANAGER.routines.delete(name):
         raise HTTPException(404, "routine not found")
     return {"ok": True}

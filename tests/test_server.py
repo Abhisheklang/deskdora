@@ -39,7 +39,7 @@ def test_routines_api(tmp_path, monkeypatch):
     assert res.status_code == 200
     res = client.get("/api/routines")
     assert any(r["name"] == "tidy" for r in res.json())
-    res = client.delete("/api/routines/tidy")
+    res = client.delete("/api/routines/tidy?confirm=true")
     assert res.status_code == 200
 
 
@@ -97,10 +97,10 @@ def test_run_delete(tmp_path, monkeypatch):
     run_dir.mkdir()
     (run_dir / "log.jsonl").write_text("{}\n")
     monkeypatch.setattr(server, "RUNS_DIR", str(tmp_path))
-    res = client.delete("/api/runs/20990101-000000-fake-run")
+    res = client.delete("/api/runs/20990101-000000-fake-run?confirm=true")
     assert res.status_code == 200
     assert not run_dir.exists()
-    res = client.delete("/api/runs/20990101-000000-fake-run")
+    res = client.delete("/api/runs/20990101-000000-fake-run?confirm=true")
     assert res.status_code == 404
     res = client.delete("/api/runs/..%2F..%2Fetc")
     assert res.status_code in (404, 405)
@@ -178,7 +178,7 @@ def test_routine_trigger_validation():
         "trigger": {"type": "folder_change", "path": "/tmp"}})
     assert res.status_code == 200
     assert res.json()["trigger"]["type"] == "folder_change"
-    client.delete("/api/routines/folder-watcher")
+    client.delete("/api/routines/folder-watcher?confirm=true")
 
 
 def test_companion_pin_guard():
