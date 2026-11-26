@@ -1,7 +1,17 @@
 """Wave 3 regression tests for vibe S3 and S4."""
+import pytest
 from fastapi.testclient import TestClient
 
 from deskdora import server
+
+
+@pytest.fixture(autouse=True)
+def _reset_kill():
+    # /api/kill trips the manager's kill switch (and its STOP
+    # file); never leak that state into other tests.
+    yield
+    server.MANAGER.kill.reset()
+
 
 client = TestClient(server.app)
 remote = TestClient(server.app, client=("192.168.1.50", 50000))

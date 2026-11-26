@@ -1470,13 +1470,13 @@ def approve_plan(req: ApprovePlanRequest):
 
 @app.post("/api/runs/{run_id}/undo")
 def run_undo(run_id: str, confirm: bool = False):
-    _require_confirmed(confirm)
     """Undo a run's journaled file changes (moves only).  Conflicts
     are reported, never silently overwritten."""
     cfg = load_config()
     if not cfg.get("feature_undo", True):
         raise HTTPException(403, "Undo is switched off in "
                                  "Settings > Features")
+    _require_confirmed(confirm)
     path = _safe_run_dir(run_id)
     if not os.path.isdir(path):
         raise HTTPException(404, "run not found")
