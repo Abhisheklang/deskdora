@@ -62,8 +62,12 @@ def _check_target(target, where):
     unknown = set(target) - TARGET_KEYS
     if unknown:
         raise PlanError(f"{where}: unknown target keys {sorted(unknown)}")
-    if "nth" in target and not isinstance(target["nth"], int):
+    if "nth" in target and (not isinstance(target["nth"], int)
+                            or isinstance(target["nth"], bool)):
         raise PlanError(f"{where}: target.nth must be an int")
+
+
+MAX_TYPE_TEXT = 10000
 
 
 def validate_plan(plan, element_count=None):
@@ -94,7 +98,8 @@ def validate_plan(plan, element_count=None):
         elif action in ("click", "double_click"):
             if "element" in step:
                 idx = step["element"]
-                if not isinstance(idx, int) or idx < 0:
+                if not isinstance(idx, int) or isinstance(idx, bool) \
+                        or idx < 0:
                     raise PlanError(f"{where}: element must be a non-negative int")
                 if element_count is not None and idx >= element_count:
                     raise PlanError(f"{where}: element {idx} out of range")
@@ -105,11 +110,15 @@ def validate_plan(plan, element_count=None):
         elif action == "click_at":
             for axis in ("x", "y"):
                 v = step.get(axis)
-                if not isinstance(v, int) or not (0 <= v <= 10000):
+                if not isinstance(v, int) or isinstance(v, bool) \
+                        or not (0 <= v <= 10000):
                     raise PlanError(f"{where}: click_at needs int {axis} in 0..10000")
         elif action == "type":
             if not isinstance(step.get("text"), str):
                 raise PlanError(f"{where}: type needs text (string)")
+            if len(step["text"]) > MAX_TYPE_TEXT:
+                raise PlanError(
+                    f"{where}: type text too long (>{MAX_TYPE_TEXT} chars)")
             if "target" in step:
                 _check_target(step["target"], where)
         elif action == "key":
@@ -122,7 +131,8 @@ def validate_plan(plan, element_count=None):
                 _check_target(step["target"], where)
         elif action == "wait":
             secs = step.get("seconds", 1)
-            if not isinstance(secs, (int, float)) or not (0 <= secs <= 30):
+            if not isinstance(secs, (int, float)) \
+                    or isinstance(secs, bool) or not (0 <= secs <= 30):
                 raise PlanError(f"{where}: wait seconds must be 0..30")
         elif action == "extract":
             pattern = step.get("pattern")
