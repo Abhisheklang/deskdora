@@ -1164,20 +1164,24 @@ async def _companion_guard(request, call_next):
     # no Origin (the desktop shell, curl, local processes, the
     # companion app) are unaffected: the loopback trust choice for
     # local processes stands, but a browser page is not a local
-    # process.
+    # process.  An opaque origin (Origin: null, sent by sandboxed
+    # iframes and file:// pages) is cross-origin by definition -
+    # it can never be this server's own page - so it is refused
+    # like any other foreign origin (DD-A6).
     if request.method in ("POST", "DELETE", "PUT", "PATCH") \
             and request.url.path.startswith("/api/"):
         origin = request.headers.get("origin")
         fetch_site = request.headers.get("sec-fetch-site")
-        if fetch_site == "cross-site" or (origin and origin != "null"):
+        refused = fetch_site == "cross-site" or origin == "null"
+        if not refused and origin:
             from urllib.parse import urlparse
-            origin_host = urlparse(origin).netloc if origin else ""
-            if fetch_site == "cross-site" or \
-                    origin_host != request.headers.get("host", ""):
-                return JSONResponse(
-                    {"detail": "cross-origin state-changing requests "
-                               "are refused"},
-                    status_code=403)
+            refused = urlparse(origin).netloc != \
+                request.headers.get("host", "")
+        if refused:
+            return JSONResponse(
+                {"detail": "cross-origin state-changing requests "
+                           "are refused"},
+                status_code=403)
     if request.method == "GET" \
             and request.url.path.startswith("/api/") \
             and request.url.path != "/api/status":
