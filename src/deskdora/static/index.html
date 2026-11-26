@@ -3027,7 +3027,10 @@ async function loadConfig() {
   const aut = cfg.autonomy || {};
   AUT_CATS.forEach(c => { $("#cfgAut-" + c).value = aut[c] || "confirm"; });
   $("#cfgWatch").value = (cfg.watch_folders || []).join("\n");
-  $("#cfgPin").value = cfg.companion_pin || "";
+  $("#cfgPin").value = "";
+  $("#cfgPin").placeholder = cfg.has_pin
+    ? "PIN is set - leave blank to keep it"
+    : "PIN for phone control over the local network";
   $("#cfgEdge").value = cfg.edge_light || "single";
   applyTheme(cfg.theme);
   // Features panel (same keys as their home sections)

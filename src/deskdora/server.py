@@ -208,8 +208,13 @@ API_KEYS = ApiKeyStore(os.path.join(DATA_DIR, "api-key.json"))
 def public_config(cfg):
     """Config as the API may show it: provider API keys are masked to
     a last-4 + has_key flag.  The full keys never leave the config
-    file — not in API responses, logs, or run records."""
+    file — not in API responses, logs, or run records.  The companion
+    PIN is masked the same way (has_pin flag only): the API cannot
+    tell the local Settings page from a stranger on the LAN, so the
+    PIN value itself never leaves in a response."""
     out = json.loads(json.dumps(cfg))
+    pin = out.pop("companion_pin", "") or ""
+    out["has_pin"] = bool(pin)
     for stored in (out.get("providers") or {}).values():
         key = stored.pop("api_key", "") or ""
         stored["has_key"] = bool(key)
@@ -1789,9 +1794,16 @@ def config_post(cfg: dict):
             except ValueError as exc:
                 raise HTTPException(400, f"hotkey: {exc}")
     merged = load_config()
+    current_pin = merged.get("companion_pin", "")
     for key in DEFAULT_CONFIG:
         if key in cfg:
             merged[key] = cfg[key]
+    if "companion_pin" in cfg \
+            and not str(cfg.get("companion_pin") or "").strip():
+        # The PIN field is write-only (public_config never returns
+        # it), so a blank field on save means "keep the current
+        # PIN", exactly like the provider API key fields.
+        merged["companion_pin"] = current_pin
     if "user_name" in cfg:
         # Stored trimmed and length-capped; blank is a legitimate
         # value (the wizard's name step is optional).
