@@ -96,46 +96,72 @@ class Scheduler:
         fired this pass.  Deterministic in `now` for tests."""
         now = now or datetime.now()
         fired = []
-        for routine in self.store.list():
-            name = routine["name"]
-            schedule = routine.get("schedule")
-            if schedule:
-                minute_key = now.strftime("%Y-%m-%d %H:%M")
-                if self._last_fired.get(name) != minute_key:
-                    try:
-                        due = cron_matches(schedule, now)
-                    except ValueError:
-                        logging.getLogger(__name__).warning(
-                            "routine %r has an invalid schedule %r; "
-                            "skipping it", name, schedule)
-                        due = False
-                    if due:
-                        self._last_fired[name] = minute_key
-                        if self._fire(routine, f"cron {schedule}"):
-                            fired.append(name)
-            trigger = routine.get("trigger") or {}
-            if trigger.get("type") == "folder_change" \
-                    and trigger.get("path"):
-                sig = folder_signature(trigger["path"])
-                if sig is None:
-                    continue
-                previous = self._signatures.get(name)
-                self._signatures[name] = sig
-                if previous is None or previous == sig:
-                    # Baseline sighting, or no change: (re-)arm.
-                    self._trigger_armed[name] = True
-                    continue
-                # The folder changed.  Fire only when armed: after a
-                # firing, the next change is absorbed as the new
-                # baseline — it is usually the fired run's own work
-                # (e.g. the organise it performed), and absorbing it
-                # keeps a self-watching routine from refiring on
-                # itself forever.
-                if self._trigger_armed.get(name, True):
-                    self._trigger_armed[name] = False
-                    if self._fire(routine,
-                                  f"folder changed: {trigger['path']}"):
+        try:
+            routines = self.store.list()
+        except Exception:
+            # Even a store-level failure must not abort the pass
+            # silently: log it and fire nothing this tick (DD-A1).
+            logging.getLogger(__name__).exception(
+                "scheduler could not list routines; skipping tick")
+            return fired
+        for routine in routines:
+            try:
+                fired.extend(self._tick_one(routine, now))
+            except Exception:
+                # One bad routine can never abort the pass: the
+                # routines after it still get their chance, on
+                # this tick and every tick (DD-A1).
+                logging.getLogger(__name__).exception(
+                    "routine %r failed in scheduler tick; skipping "
+                    "it", routine.get("name")
+                    if isinstance(routine, dict) else routine)
+        return fired
+
+    def _tick_one(self, routine, now):
+        """Process one routine for this pass.  Returns the list of
+        names fired (zero or one entries)."""
+        fired = []
+        name = routine["name"]
+        schedule = routine.get("schedule")
+        if schedule:
+            minute_key = now.strftime("%Y-%m-%d %H:%M")
+            if self._last_fired.get(name) != minute_key:
+                try:
+                    due = cron_matches(schedule, now)
+                except ValueError:
+                    logging.getLogger(__name__).warning(
+                        "routine %r has an invalid schedule %r; "
+                        "skipping it", name, schedule)
+                    due = False
+                if due:
+                    self._last_fired[name] = minute_key
+                    if self._fire(routine, f"cron {schedule}"):
                         fired.append(name)
+        trigger = routine.get("trigger") or {}
+        if not isinstance(trigger, dict):
+            trigger = {}
+        if trigger.get("type") == "folder_change" \
+                and trigger.get("path"):
+            sig = folder_signature(trigger["path"])
+            if sig is None:
+                return fired
+            previous = self._signatures.get(name)
+            self._signatures[name] = sig
+            if previous is None or previous == sig:
+                # Baseline sighting, or no change: (re-)arm.
+                self._trigger_armed[name] = True
+                return fired
+            # The folder changed.  Fire only when armed: after a
+            # firing, the next change is absorbed as the new
+            # baseline — it is usually the fired run's own work
+            # (e.g. the organise it performed), and absorbing it
+            # keeps a self-watching routine from refiring on
+            # itself forever.
+            if self._trigger_armed.get(name, True):
+                self._trigger_armed[name] = False
+                if self._fire(routine,
+                              f"folder changed: {trigger['path']}"):
+                    fired.append(name)
         return fired
 
     # -- service loop ---------------------------------------------------------

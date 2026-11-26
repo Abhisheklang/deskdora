@@ -75,9 +75,27 @@ class RoutineStore:
     def list(self):
         out = []
         for fname in sorted(os.listdir(self.root)):
-            if fname.endswith(".json"):
-                with open(os.path.join(self.root, fname)) as fh:
-                    out.append(json.load(fh))
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(self.root, fname)
+            try:
+                with open(path) as fh:
+                    data = json.load(fh)
+            except Exception:
+                data = None
+            if not isinstance(data, dict):
+                # Quarantine a corrupt or non-object routine file
+                # instead of letting it abort every caller of
+                # list() - above all the scheduler, which would
+                # otherwise never fire any routine again (DD-A1;
+                # the same per-file quarantine the proposal and
+                # template stores already have).
+                try:
+                    os.replace(path, path + ".corrupt")
+                except OSError:
+                    pass
+                continue
+            out.append(data)
         return out
 
     def delete(self, name):
@@ -135,6 +153,11 @@ def validate_cron(expression):
     Called when a schedule is saved, so a bad expression is refused
     at the door instead of failing silently in the scheduler loop
     forever (vibe CR1)."""
+    if not isinstance(expression, str):
+        # A typed (non-string) schedule - from a hand-edited
+        # routine file or a backup - must fail as a ValueError
+        # too, not as an AttributeError on .split() (DD-A1).
+        raise ValueError("cron expression must be a string")
     fields = (expression or "").split()
     if len(fields) != 5:
         raise ValueError("cron expression needs five fields")
@@ -162,6 +185,8 @@ def validate_cron(expression):
 
 def cron_matches(expression, when=None):
     when = when or datetime.now()
+    if not isinstance(expression, str):
+        raise ValueError("cron expression must be a string")
     fields = expression.split()
     if len(fields) != 5:
         raise ValueError("cron expression needs five fields")
@@ -182,8 +207,16 @@ def cron_matches(expression, when=None):
 
 
 def due_routines(store, when=None):
-    return [r for r in store.list()
-            if r.get("schedule") and cron_matches(r["schedule"], when)]
+    due = []
+    for routine in store.list():
+        if not routine.get("schedule"):
+            continue
+        try:
+            if cron_matches(routine["schedule"], when):
+                due.append(routine)
+        except ValueError:
+            continue  # a bad schedule never fires, and never aborts
+    return due
 
 
 # --------------------------------------------------------------------------
