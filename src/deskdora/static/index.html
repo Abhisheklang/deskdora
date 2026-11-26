@@ -3146,8 +3146,9 @@ $("#bkPreviewBtn").addEventListener("click", async () => {
     + "replaces your settings (" + p.config_sections + " sections), "
     + "provider configuration ("
     + (p.providers.join(", ") || "none") + "), " + p.routines
-    + " routines and " + p.templates + " templates. API keys are "
-    + "not in the file — you'll re-enter them.";
+    + " routines and " + p.templates + " templates. API keys and "
+    + "the companion PIN are not in the file, so importing clears "
+    + "the ones saved here — you'll set them again.";
   $("#bkPreviewRow").hidden = false;
   $("#bkImportBtn").hidden = false;
   msg.textContent = "PREVIEWED — CONFIRM WHEN READY";

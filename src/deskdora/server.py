@@ -2104,49 +2104,120 @@ def _read_backup_file(path):
         raise HTTPException(400, str(exc))
 
 
+def _capture_apply_state(routines, templates):
+    """The exact pre-apply state, for rollback (DD-A2): the raw
+    config file bytes, the raw routine file bytes, and the
+    personal templates.  Captured before anything is mutated."""
+    config_bytes = None
+    if os.path.isfile(CONFIG_PATH):
+        with open(CONFIG_PATH, "rb") as fh:
+            config_bytes = fh.read()
+    routine_files = {}
+    if os.path.isdir(routines.root):
+        for fname in sorted(os.listdir(routines.root)):
+            if fname.endswith(".json"):
+                with open(os.path.join(routines.root, fname),
+                          "rb") as fh:
+                    routine_files[fname] = fh.read()
+    return config_bytes, routine_files, templates.list()
+
+
+def _rollback_apply(state, routines, templates):
+    """Restore the state captured by _capture_apply_state, so a
+    failed apply leaves the install exactly as it was (DD-A2)."""
+    config_bytes, routine_files, prev_templates = state
+    if config_bytes is not None:
+        config_dir = os.path.dirname(CONFIG_PATH) or "."
+        fd, tmp_path = tempfile.mkstemp(dir=config_dir,
+                                        prefix="config-",
+                                        suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(config_bytes)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, CONFIG_PATH)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        _config_cache["key"] = None
+        _config_cache["data"] = None
+    if os.path.isdir(routines.root):
+        for fname in os.listdir(routines.root):
+            if fname.endswith(".json") \
+                    and fname not in routine_files:
+                try:
+                    os.unlink(os.path.join(routines.root, fname))
+                except OSError:
+                    pass
+    for fname, blob in routine_files.items():
+        with open(os.path.join(routines.root, fname), "wb") as fh:
+            fh.write(blob)
+    templates.replace_all(prev_templates)
+
+
 def _apply_backup(doc):
     """Snapshot current state, then apply the backup.  Returns
-    the pre-import snapshot's path."""
+    the pre-import snapshot's path.
+
+    The apply is atomic (DD-A2): parse_backup has already
+    validated the whole document, and if anything still fails
+    mid-apply the pre-apply state is restored from the captured
+    bytes, so a bad backup changes nothing."""
     routines, templates = _backup_stores()
+    state = _capture_apply_state(routines, templates)
     backup_dir = os.path.join(DATA_DIR, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     pre_path = os.path.join(backup_dir, f"pre-import-{stamp}.json")
     with open(pre_path, "w") as fh:
         json.dump(_current_backup_doc(), fh, indent=2)
-    # Config: the backup's config over the defaults, through the
-    # same validators the settings endpoint applies.
-    new_config = json.loads(json.dumps(DEFAULT_CONFIG))
-    new_config.update(doc["config"])
-    if "theme" in new_config and new_config["theme"] not in THEMES:
-        raise HTTPException(400, "theme must be 'light' or 'dark'")
-    if isinstance(new_config.get("sounds"), dict):
-        new_config["sounds"] = sounds.sounds_config(new_config)
-    if "hotkey" in new_config:
+    try:
+        # Config: the backup's config over the defaults, through
+        # the same validators the settings endpoint applies.
+        new_config = json.loads(json.dumps(DEFAULT_CONFIG))
+        new_config.update(doc["config"])
+        if "theme" in new_config and new_config["theme"] not in THEMES:
+            raise HTTPException(400, "theme must be 'light' or 'dark'")
+        if isinstance(new_config.get("sounds"), dict):
+            new_config["sounds"] = sounds.sounds_config(new_config)
+        if "hotkey" in new_config:
+            try:
+                parse_combo((new_config["hotkey"] or {}).get("combo")
+                            or "")
+            except (ValueError, AttributeError) as exc:
+                raise HTTPException(400, f"hotkey: {exc}")
+        if "autonomy" in new_config:
+            try:
+                new_config["autonomy"] = validate_policy(
+                    new_config["autonomy"])
+            except PolicyError as exc:
+                raise HTTPException(400, str(exc))
+        save_config(new_config)
+        # Routines: replace the set with the backup's definitions.
+        for existing in routines.list():
+            routines.delete(existing["name"])
+        for routine in doc["routines"]:
+            routines.save(routine["name"], routine["goal"],
+                          planner_mode=routine.get("planner_mode")
+                          or "",
+                          schedule=routine.get("schedule"),
+                          trigger=routine.get("trigger"),
+                          goal_template=routine.get("goal_template"),
+                          params=routine.get("params") or [])
+        templates.replace_all(doc["templates"])
+    except Exception:
         try:
-            parse_combo((new_config["hotkey"] or {}).get("combo")
-                        or "")
-        except (ValueError, AttributeError) as exc:
-            raise HTTPException(400, f"hotkey: {exc}")
-    if "autonomy" in new_config:
-        try:
-            new_config["autonomy"] = validate_policy(
-                new_config["autonomy"])
-        except PolicyError as exc:
-            raise HTTPException(400, str(exc))
-    save_config(new_config)
-    # Routines: replace the set with the backup's definitions.
-    for existing in routines.list():
-        routines.delete(existing["name"])
-    for routine in doc["routines"]:
-        routines.save(routine["name"], routine["goal"],
-                      planner_mode=routine.get("planner_mode")
-                      or "",
-                      schedule=routine.get("schedule"),
-                      trigger=routine.get("trigger"),
-                      goal_template=routine.get("goal_template"),
-                      params=routine.get("params") or [])
-    templates.replace_all(doc["templates"])
+            _rollback_apply(state, routines, templates)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "backup apply failed AND its rollback failed; the "
+                "pre-import snapshot at %s holds the prior setup",
+                pre_path)
+        raise
     return pre_path
 
 

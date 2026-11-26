@@ -27,6 +27,8 @@ from __future__ import annotations
 import copy
 import time
 
+from .routines import validate_cron
+
 FORMAT = "deskdora-backup"
 VERSION = 1
 
@@ -79,6 +81,60 @@ def build_backup(config, routines, templates, now=None):
     }
 
 
+def _validate_routine(routine):
+    """Type-check one backup routine's fields (DD-A2).
+
+    parse_backup is the gate: everything an import will later
+    hand to RoutineStore.save must be validated HERE, before
+    anything is applied, so a malformed routine (the audit's
+    ``"schedule": 123`` is the minimised case) is refused with a
+    plain reason instead of crashing the apply halfway through,
+    after the existing routines were already deleted."""
+    name = routine.get("name")
+    for field in ("name", "goal"):
+        if not isinstance(routine.get(field), str) \
+                or not routine[field].strip():
+            raise BackupError(
+                "The backup contains a routine without a usable "
+                f"{field}.")
+    for field in ("planner_mode", "goal_template"):
+        value = routine.get(field)
+        if value is not None and not isinstance(value, str):
+            raise BackupError(
+                f"The backup's routine {name!r} has a damaged "
+                f"{field} - it should be text.")
+    schedule = routine.get("schedule")
+    if schedule is not None:
+        if not isinstance(schedule, str):
+            raise BackupError(
+                f"The backup's routine {name!r} has a damaged "
+                "schedule - it should be a cron expression in "
+                "text form.")
+        if schedule:
+            try:
+                validate_cron(schedule)
+            except ValueError as exc:
+                raise BackupError(
+                    f"The backup's routine {name!r} has an "
+                    f"invalid schedule: {exc}")
+    trigger = routine.get("trigger")
+    if trigger is not None and not isinstance(trigger, dict):
+        raise BackupError(
+            f"The backup's routine {name!r} has a damaged "
+            "trigger - it should be an object.")
+    params = routine.get("params")
+    if params is not None:
+        if not isinstance(params, list) or any(
+                not isinstance(p, dict)
+                or not isinstance(p.get("name"), str)
+                or "default" not in p
+                for p in params):
+            raise BackupError(
+                f"The backup's routine {name!r} has damaged "
+                "parameters - each one needs a name and a "
+                "default value.")
+
+
 def parse_backup(data):
     """Validate a would-be backup document; return it scrubbed
     and normalised.  Raises BackupError with the plain reason."""
@@ -110,9 +166,12 @@ def parse_backup(data):
                 or not routine.get("goal"):
             raise BackupError("The backup contains a routine "
                               "without a name or a goal.")
+        _validate_routine(routine)
     for template in templates:
         if not isinstance(template, dict) \
+                or not isinstance(template.get("name"), str) \
                 or not template.get("name") \
+                or not isinstance(template.get("goal"), str) \
                 or not template.get("goal"):
             raise BackupError("The backup contains a template "
                               "without a name or a goal.")
@@ -145,4 +204,14 @@ def preview_backup(doc):
         "routines": len(doc["routines"]),
         "templates": len(doc["templates"]),
         "secrets_included": False,
+        # Stated plainly in the preview (DD-A2): a backup never
+        # carries secrets, and importing replaces the whole
+        # config, so the live companion PIN and every stored
+        # provider API key are cleared by an import.
+        "clears_secrets": True,
+        "note": "Importing replaces your current setup with "
+                "this backup. Backups never include secrets, so "
+                "importing clears your companion PIN and every "
+                "saved provider API key - you will need to set "
+                "them again afterwards.",
     }
