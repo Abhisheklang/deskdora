@@ -33,15 +33,28 @@ def _local():
 # The companion PIN must never appear in an API response.
 
 def test_c1_config_and_status_hide_pin_for_remote_and_loopback(pin_set):
-    for client in (_remote(), _local()):
-        for path in ("/api/config", "/api/status"):
-            res = client.get(path)
-            assert res.status_code == 200
-            assert PIN not in res.text, path
-            body = res.json()
-            cfg = body["config"] if path == "/api/status" else body
-            assert "companion_pin" not in cfg
-            assert cfg["has_pin"] is True
+    # Loopback: both endpoints answer, scrubbed.
+    for path in ("/api/config", "/api/status"):
+        res = _local().get(path)
+        assert res.status_code == 200
+        assert PIN not in res.text, path
+        body = res.json()
+        cfg = body["config"] if path == "/api/status" else body
+        assert "companion_pin" not in cfg
+        assert cfg["has_pin"] is True
+    # Remote: status answers scrubbed; config is behind companion
+    # auth since the C4 fix (401 without credentials) and scrubbed
+    # when authenticated.  Either way the PIN never appears.
+    res = _remote().get("/api/status")
+    assert res.status_code == 200
+    assert PIN not in res.text
+    assert res.json()["config"]["has_pin"] is True
+    res = _remote().get("/api/config")
+    assert PIN not in res.text
+    res = _remote().get("/api/config", headers={"x-companion-pin": PIN})
+    assert res.status_code == 200
+    assert PIN not in res.text
+    assert "companion_pin" not in res.json()
 
 
 def test_c1_pin_still_settable_and_blank_keeps_current(pin_set):
@@ -153,3 +166,55 @@ def test_c3_launch_executes_argv_without_shell(monkeypatch):
     # shlex parsing: the quoted path stays one argument, no shell.
     assert calls["argv"] == ["thunar", "/tmp/some dir"]
     assert calls["kw"].get("shell") is False
+
+
+# ---------------------------------------------------------------- C4
+# Non-loopback GETs beyond the minimal status payload require
+# companion authentication.
+
+PROTECTED_GETS = ("/api/runs", "/api/memory", "/api/backup/export",
+                  "/api/access", "/api/diagnostics", "/api/config")
+
+
+def test_c4_remote_gets_require_auth(pin_set):
+    remote = _remote()
+    for path in PROTECTED_GETS:
+        assert remote.get(path).status_code == 401, path
+        assert remote.get(
+            path, headers={"x-companion-pin": "000000"}
+        ).status_code == 401, path
+
+
+def test_c4_remote_gets_work_with_pin_header(pin_set):
+    remote = _remote()
+    # /api/diagnostics is excluded here: calling it live builds a
+    # real AT-SPI driver, which aborts in this headless VM (no
+    # existing test calls that endpoint live either).  Its 401
+    # behaviour is covered above, where the guard fires first.
+    for path in PROTECTED_GETS:
+        if path == "/api/diagnostics":
+            continue
+        res = remote.get(path, headers={"x-companion-pin": PIN})
+        assert res.status_code == 200, path
+
+
+def test_c4_remote_run_detail_and_report_require_auth(pin_set):
+    remote = _remote()
+    assert remote.get("/api/runs/some-run").status_code == 401
+    assert remote.get("/api/runs/some-run/report").status_code == 401
+    assert remote.get(
+        "/api/runs/some-run/screenshots/step0.png").status_code == 401
+
+
+def test_c4_loopback_gets_stay_open(pin_set):
+    local = _local()
+    for path in PROTECTED_GETS:
+        if path == "/api/diagnostics":
+            continue  # see the note in the with-PIN test above
+        assert local.get(path).status_code == 200, path
+
+
+def test_c4_remote_status_stays_open_and_minimal(pin_set):
+    res = _remote().get("/api/status")
+    assert res.status_code == 200
+    assert PIN not in res.text

@@ -1068,14 +1068,30 @@ async def _companion_guard(request, call_next):
         return JSONResponse(
             {"detail": "companion is switched off in Settings"},
             status_code=403)
-    # Remote-control safety rule: reads (GET) are open, but any
-    # mutating call that does NOT come from this machine itself must
-    # authenticate — with the companion PIN (the phone companion) or
-    # with DeskDora's API key (programmatic clients, v3.1).  Loopback
-    # — the owner at their own desktop — is never challenged.  With
-    # neither credential configured, non-loopback mutation is refused
-    # outright: serving the app on a LAN must not silently hand
-    # strangers the confirm/kill/run buttons.
+    # Remote-control safety rule: any call that does NOT come from
+    # this machine itself must authenticate - with the companion PIN
+    # (the phone companion) or with DeskDora's API key (programmatic
+    # clients, v3.1).  Loopback - the owner at their own desktop - is
+    # never challenged.  With neither credential configured,
+    # non-loopback access is refused outright: serving the app on a
+    # LAN must not silently hand strangers the confirm/kill/run
+    # buttons, the run history, desktop screenshots, the memory
+    # snapshot or the settings backup.
+    #
+    # Reads: only a minimal status payload (GET /api/status, with
+    # the config scrubbed by public_config) stays open to
+    # non-loopback clients.  Every other GET under /api/ requires
+    # the same authentication as the screen stream (API key, PIN
+    # header, or a valid companion session cookie) - BugHunter C4.
+    if request.method == "GET" \
+            and request.url.path.startswith("/api/") \
+            and request.url.path != "/api/status":
+        client = request.client.host if request.client else ""
+        if client not in _LOCAL_HOSTS and not _screen_auth_ok(request):
+            return JSONResponse(
+                {"detail": "companion authentication required for "
+                           "non-local reads"},
+                status_code=401)
     if request.method in ("POST", "DELETE") \
             and request.url.path.startswith("/api/"):
         client = request.client.host if request.client else ""
