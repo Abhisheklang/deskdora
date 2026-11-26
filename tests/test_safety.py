@@ -39,7 +39,10 @@ def test_gate_approves_and_skips_safe_steps():
 
 def test_gate_approve_all_records_history():
     gate = ConfirmationGate(approve_all)
-    assert gate.check({"action": "delete_files"}) is True
+    # "delete_files" is not an executable action (vibe V2); use a
+    # real destructive step to prove the policy is consulted.
+    assert gate.check({"action": "click",
+                       "target": {"name_contains": "Delete"}}) is True
     assert gate.history[0]["approved"] is True
 
 

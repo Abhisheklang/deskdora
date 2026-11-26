@@ -14,18 +14,33 @@ import threading
 import time
 
 # Element names / key actions that mark a step as destructive.
+# This list is the single source of truth for name-based danger:
+# autonomy.categorise_step builds on classify_step and adds the
+# category mapping, it does not maintain a second hint list for
+# click names.  The money hints here deliberately cover the full
+# autonomy MONEY_HINTS click surface ("buy", "pay", "checkout",
+# "donate", "subscribe now", "transfer money", ...), not only the
+# narrower "... now" forms: a click on "Buy" or "Pay" is a money
+# action and must confirm (vibe S1/V3).
 DESTRUCTIVE_NAME_HINTS = (
     "delete", "remove", "trash", "empty trash", "erase", "discard",
     "send", "submit", "install", "purchase", "buy now", "pay now",
+    "buy", "pay", "checkout", "check out", "place order", "payment",
+    "donate", "subscribe now", "send money", "transfer money",
     "confirm order", "uninstall", "format", "reset",
 )
 CONFIRM_ROLES = {"push button", "menu item", "check menu item"}
 
 
 def classify_step(step):
-    """Return 'destructive' or 'safe' for a plan step."""
+    """Return 'destructive' or 'safe' for a plan step.
+
+    'destructive' means the step must reach a human confirmation
+    before it runs.  Launch steps are destructive by this measure:
+    launching a program runs a command on the user's machine, so it
+    is always significant (BugHunter C3, vibe S1)."""
     action = step.get("action")
-    if action == "delete_files":
+    if action == "launch":
         return "destructive"
     if action == "key" and step.get("key", "").lower() in ("delete", "shift+delete"):
         # A bare Delete keypress in a file manager deletes the selection.
@@ -125,9 +140,19 @@ class ConfirmationGate:
         self.policy = policy
         self.history = []
 
-    def check(self, step, description=""):
-        verdict = classify_step(step)
-        if verdict != "destructive":
+    def check(self, step, description="", requires_confirmation=None):
+        """Ask the human policy if this step needs confirmation.
+
+        `requires_confirmation` is the autonomy layer's verdict when
+        the caller has one: True means autonomy.evaluate() already
+        ordered this step confirmed, and the gate MUST honour that
+        and consult the policy - it never re-classifies the step and
+        overrules the stricter first decision (vibe S1).  When the
+        caller has no autonomy verdict (None), the gate falls back
+        to the single shared classifier, classify_step."""
+        if requires_confirmation is None:
+            requires_confirmation = classify_step(step) == "destructive"
+        if not requires_confirmation:
             return True
         approved = bool(self.policy(step, description))
         self.history.append({

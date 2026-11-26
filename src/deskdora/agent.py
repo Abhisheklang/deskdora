@@ -15,7 +15,6 @@ from .drivers import get_driver
 from .drivers.base import DriverError
 from .planners import PlanError, validate_plan
 from .autonomy import evaluate as autonomy_evaluate
-from .safety import classify_step
 
 
 class StepFailure(Exception):
@@ -819,7 +818,11 @@ class Agent:
                     break
                 if decision == "confirm":
                     desc = f"{action} {step.get('target') or step.get('key') or ''}"
-                    approved = self.gate.check(step, desc)
+                    # The gate defers to the autonomy verdict: a
+                    # step evaluate() ordered confirmed always
+                    # reaches the human policy (vibe S1).
+                    approved = self.gate.check(
+                        step, desc, requires_confirmation=True)
                     self._emit("confirmation", step=step, approved=approved)
                     if not approved:
                         status = "blocked"

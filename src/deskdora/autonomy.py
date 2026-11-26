@@ -108,6 +108,19 @@ def categorise_step(step, context="", element_app=""):
 
     if any(hint in text for hint in MONEY_HINTS):
         return "money", True
+    if action == "launch":
+        # Launching a program is always significant: it runs a
+        # command on the user's machine, so the default all-confirm
+        # policy must ask first (BugHunter C3).  Handled before the
+        # destructive check so the category still reflects what is
+        # being launched; significance comes from the one shared
+        # classifier in safety.classify_step (vibe S1/V3).
+        command = (step.get("command") or "").lower()
+        if any(b in command for b in BROWSER_APPS):
+            return "web", True
+        if any(f in command for f in FILE_APPS):
+            return "files", True
+        return "apps", True
     probe = step
     if context and "context" not in step:
         probe = {**step, "context": context}
@@ -118,16 +131,6 @@ def categorise_step(step, context="", element_app=""):
         if any(hint in text for hint in APP_HINTS):
             return "apps", True
         return "files", True
-    if action == "launch":
-        # Launching a program is always significant: it runs a
-        # command on the user's machine, so the default all-confirm
-        # policy must ask first (BugHunter C3).
-        command = (step.get("command") or "").lower()
-        if any(b in command for b in BROWSER_APPS):
-            return "web", True
-        if any(f in command for f in FILE_APPS):
-            return "files", True
-        return "apps", True
     if any(b in app for b in BROWSER_APPS):
         return "web", False
     if any(f in app for f in FILE_APPS):
