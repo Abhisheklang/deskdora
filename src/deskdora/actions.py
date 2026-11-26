@@ -7,6 +7,7 @@ re-observe after every single action and verify what actually happened.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -81,8 +82,14 @@ def activate_window(title):
     if not title:
         return False
     try:
+        # The title is data, not a pattern (CR6): escape it so a
+        # title with regex characters matches itself literally
+        # instead of matching nothing, the wrong window, or being
+        # an invalid pattern altogether.  re.escape also escapes
+        # the characters POSIX ERE (xdotool) treats specially.
+        pattern = f"^{re.escape(title)}$"
         res = subprocess.run(
-            ["xdotool", "search", "--name", f"^{title}$", "windowactivate"],
+            ["xdotool", "search", "--name", pattern, "windowactivate"],
             capture_output=True, text=True, timeout=10)
         if res.returncode == 0:
             time.sleep(0.35)
