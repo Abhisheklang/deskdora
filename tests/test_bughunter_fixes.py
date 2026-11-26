@@ -271,3 +271,87 @@ def test_c5_wrong_guesses_get_throttled(pin_set, throttle_reset):
     assert _remote().post(
         "/api/companion/auth",
         headers={"x-companion-pin": PIN}).status_code == 200
+
+
+# ---------------------------------------------------------------- S1
+# run_id path traversal: a run_id must never resolve outside the
+# runs directory, in the POST from-run endpoints or run_detail.
+
+EVIL_MARKER = "EVIL_GOAL_OUTSIDE_RUNS_DIR"
+
+
+@pytest.fixture()
+def planted_runs(tmp_path, monkeypatch):
+    """Plant one legitimate run inside a scratch runs directory and
+    one log.jsonl carrying a marker outside it, and point the
+    server (and the template / routine stores) at the scratch
+    tree."""
+    import json as _json
+
+    from deskdora.routines import RoutineStore
+    from deskdora.templates import TemplateStore
+
+    def write_log(directory, goal):
+        directory.mkdir(parents=True, exist_ok=True)
+        with open(directory / "log.jsonl", "w") as fh:
+            fh.write(_json.dumps(
+                {"ts": 1, "kind": "run_start", "goal": goal,
+                 "planner_mode": "builtin", "source": "ui"}) + "\n")
+            fh.write(_json.dumps(
+                {"ts": 2, "kind": "run_end",
+                 "status": "success"}) + "\n")
+
+    runs_dir = tmp_path / "data" / "runs"
+    write_log(runs_dir / "realrun", "legit goal")
+    evil_dir = tmp_path / "dd_evil"
+    write_log(evil_dir, EVIL_MARKER)
+    monkeypatch.setattr(server, "RUNS_DIR", str(runs_dir))
+    monkeypatch.setattr(server.MANAGER, "templates",
+                        TemplateStore(str(tmp_path / "templates.json")))
+    monkeypatch.setattr(server.MANAGER, "routines",
+                        RoutineStore(str(tmp_path / "routines")))
+    return evil_dir
+
+
+FROM_RUN_PATHS = ("/api/templates/from-run",
+                  "/api/routines/from-run",
+                  "/api/routines/from-run-parameterized")
+
+
+def test_s1_from_run_endpoints_reject_traversal(planted_runs):
+    local = _local()
+    traversal_ids = ("../../dd_evil", "../", "..\\..\\dd_evil",
+                     str(planted_runs))
+    for path in FROM_RUN_PATHS:
+        for run_id in traversal_ids:
+            res = local.post(path, json={"name": "evil", "run_id": run_id})
+            assert res.status_code in (400, 404), (path, run_id)
+            assert EVIL_MARKER not in res.text, (path, run_id)
+
+
+def test_s1_run_detail_rejects_traversal_directly(planted_runs):
+    from fastapi import HTTPException
+    for run_id in ("../../dd_evil", "../", "..\\..\\dd_evil",
+                   str(planted_runs)):
+        with pytest.raises(HTTPException) as excinfo:
+            server.run_detail(run_id)
+        assert excinfo.value.status_code == 404, run_id
+
+
+def test_s1_run_screenshot_rejects_traversal_directly(planted_runs):
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as excinfo:
+        server.run_screenshot("../../dd_evil", "shot.png")
+    assert excinfo.value.status_code == 404
+
+
+def test_s1_real_run_still_works(planted_runs):
+    local = _local()
+    res = local.get("/api/runs/realrun")
+    assert res.status_code == 200
+    assert "legit goal" in res.text
+    for path in FROM_RUN_PATHS:
+        res = local.post(path, json={"name": "from-real",
+                                     "run_id": "realrun"})
+        assert res.status_code == 200, path
+        assert "legit goal" in res.text, path

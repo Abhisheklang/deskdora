@@ -1309,6 +1309,24 @@ def confirm(cid: str, req: ConfirmRequest):
     return MANAGER.answer_confirmation(cid, req.approved)
 
 
+def _safe_run_dir(run_id: str) -> str:
+    """Resolve a caller-supplied run_id to a directory inside
+    RUNS_DIR. The id is reduced to its final path component
+    (treating both path separators alike) and the joined path is
+    checked to sit directly inside the runs directory. Anything
+    that would escape raises 404, matching the not-found behaviour
+    for a run that does not exist."""
+    name = os.path.basename(
+        run_id.replace("\\", "/").rstrip("/"))
+    if not name or name in (".", ".."):
+        raise HTTPException(404, "run not found")
+    path = os.path.join(RUNS_DIR, name)
+    if os.path.dirname(os.path.realpath(path)) != \
+            os.path.realpath(RUNS_DIR):
+        raise HTTPException(404, "run not found")
+    return path
+
+
 @app.get("/api/runs")
 def runs():
     out = list_runs(RUNS_DIR)
@@ -1319,11 +1337,12 @@ def runs():
 
 @app.get("/api/runs/{run_id}")
 def run_detail(run_id: str):
-    path = os.path.join(RUNS_DIR, run_id, "log.jsonl")
+    run_dir = _safe_run_dir(run_id)
+    path = os.path.join(run_dir, "log.jsonl")
     if not os.path.isfile(path):
         raise HTTPException(404, "run not found")
     events = read_log(path)
-    shots = sorted(f for f in os.listdir(os.path.join(RUNS_DIR, run_id))
+    shots = sorted(f for f in os.listdir(run_dir)
                    if f.endswith(".png"))
     start_ev = next((e for e in events if e["kind"] == "run_start"), {})
     return {"id": run_id, "events": events, "screenshots": shots,
@@ -1334,7 +1353,7 @@ def run_detail(run_id: str):
 
 @app.get("/api/runs/{run_id}/screenshots/{name}")
 def run_screenshot(run_id: str, name: str):
-    path = os.path.join(RUNS_DIR, run_id, os.path.basename(name))
+    path = os.path.join(_safe_run_dir(run_id), os.path.basename(name))
     if not os.path.isfile(path):
         raise HTTPException(404, "screenshot not found")
     return FileResponse(path, media_type="image/png")
@@ -1343,9 +1362,8 @@ def run_screenshot(run_id: str, name: str):
 @app.delete("/api/runs/{run_id}")
 def run_delete(run_id: str):
     """Delete one run's history record (its log + screenshots)."""
-    name = os.path.basename(run_id)
-    path = os.path.join(RUNS_DIR, name)
-    if not name or not os.path.isdir(path):
+    path = _safe_run_dir(run_id)
+    if not os.path.isdir(path):
         raise HTTPException(404, "run not found")
     if MANAGER.state.get("running") \
             and MANAGER.state.get("run_dir") == path:
@@ -1382,9 +1400,8 @@ def run_undo(run_id: str):
     if not cfg.get("feature_undo", True):
         raise HTTPException(403, "Undo is switched off in "
                                  "Settings > Features")
-    name = os.path.basename(run_id)
-    path = os.path.join(RUNS_DIR, name)
-    if not name or not os.path.isdir(path):
+    path = _safe_run_dir(run_id)
+    if not os.path.isdir(path):
         raise HTTPException(404, "run not found")
     return filejournal.undo_run(path)
 
@@ -1392,9 +1409,8 @@ def run_undo(run_id: str):
 @app.get("/api/runs/{run_id}/report")
 def run_report(run_id: str):
     """Self-contained HTML report for one run (offline-viewable)."""
-    name = os.path.basename(run_id)
-    path = os.path.join(RUNS_DIR, name)
-    if not name or not os.path.isdir(path):
+    path = _safe_run_dir(run_id)
+    if not os.path.isdir(path):
         raise HTTPException(404, "run not found")
     from fastapi.responses import HTMLResponse
     return HTMLResponse(render_report(path))
@@ -1514,7 +1530,7 @@ def templates_delete(template_id: str):
 def templates_from_run(req: FromRunRequest):
     """Save a history run as a personal template (its goal,
     verbatim — running it goes through the normal path)."""
-    run_dir = os.path.join(RUNS_DIR, req.run_id)
+    run_dir = _safe_run_dir(req.run_id)
     if not os.path.isdir(run_dir):
         raise HTTPException(404, "run not found")
     events = read_log(os.path.join(run_dir, "log.jsonl"))
@@ -1544,7 +1560,7 @@ def routines_from_run_parameterized(req: FromRunRequest):
     """Teach a routine from history (v3.3): like from-run, but the
     goal's path literals become parameters with the original
     values as defaults."""
-    run_dir = os.path.join(RUNS_DIR, req.run_id)
+    run_dir = _safe_run_dir(req.run_id)
     if not os.path.isdir(run_dir):
         raise HTTPException(404, "run not found")
     try:
@@ -1732,7 +1748,7 @@ def routines_create(req: RoutineRequest):
 
 @app.post("/api/routines/from-run")
 def routines_from_run(req: FromRunRequest):
-    run_dir = os.path.join(RUNS_DIR, req.run_id)
+    run_dir = _safe_run_dir(req.run_id)
     if not os.path.isdir(run_dir):
         raise HTTPException(404, "run not found")
     try:
