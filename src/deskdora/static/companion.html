@@ -190,6 +190,15 @@ button:disabled{opacity:.35;cursor:default}
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Action dispatch (vibe S2/U1): see the note in index.html -
+// values travel in data attributes, not JS string literals.
+const ACT_DISPATCH = { toggleThread, proposalAct };
+document.addEventListener("click", (ev) => {
+  const el = ev.target.closest("[data-act]");
+  if (!el) return;
+  const fn = ACT_DISPATCH[el.dataset.act];
+  if (fn) fn(el.dataset.arg, el.dataset.arg2);
+});
 let pendingId = null;
 
 function pin() { return sessionStorage.getItem("dd-pin") || ""; }
@@ -283,7 +292,7 @@ function updateScreen(share) {
     screenOn = true;
   }
   $("#screenMeta").textContent = "VIEW ONLY · " + share.viewers +
-    (share.viewers === 1 ? " WATCHING" : " WATCHING");
+    (share.viewers === 1 ? " VIEWER WATCHING" : " VIEWERS WATCHING");
 }
 $("#screenImg").addEventListener("error", () => {
   if (screenOn) {
@@ -454,13 +463,16 @@ async function poll() {
         JSON.stringify(st.pending_confirmation.step, null, 2);
     } else { pendingId = null; card.hidden = true; }
 
+    // Each section below is isolated (vibe U3): one failing
+    // fetch must not blank the others or claim the server is down.
+    try {
     const runs = await (await fetch("/api/runs")).json();
     const sig = runs.map(r => r.id + r.status).join("|");
     if (sig !== runsSig) {
       runsSig = sig;
       $("#runList").innerHTML = runs.slice(0, 8).map(r =>
         `<div class="row runrow" data-thread="${esc(r.id)}" ` +
-        `onclick="toggleThread('${esc(r.id)}')">` +
+        `data-act="toggleThread" data-arg="${esc(r.id)}">` +
         `<span class="g">${esc(r.goal)}<br>` +
         `<span class="s" style="color:var(--text3)">${esc(r.planner_display || r.planner_mode || "")}</span></span>` +
         `<span class="s">${esc((r.status || "").toUpperCase())}</span></div>`).join("")
@@ -470,6 +482,8 @@ async function poll() {
       else if (openThreadId) renderThread(openThreadId);
     }
 
+    } catch (e) { /* runs section failed this cycle */ }
+    try {
     const mcp = await (await fetch("/api/mcp")).json();
     $("#mcpState").textContent = mcp.available
       ? "SERVER AVAILABLE · RUNS VIA MCP APPEAR HERE AND CAN BE STOPPED HERE"
@@ -477,6 +491,8 @@ async function poll() {
     $("#mcpConfig").textContent =
       JSON.stringify(mcp.config, null, 2);
 
+    } catch (e) { /* mcp section failed this cycle */ }
+    try {
     const proposals = await (await fetch("/api/proposals")).json();
     const open = proposals.filter(p => p.status === "proposed");
     $("#proposalCard").hidden = !open.length;
@@ -484,9 +500,10 @@ async function poll() {
       `<div class="row"><span class="g">${esc(p.detail)}<br>` +
       `<span class="s" style="color:var(--text3)">${esc(p.path)}</span></span></div>` +
       `<div style="display:flex;gap:10px;margin:6px 0 12px">` +
-      `<button class="approve" style="padding:11px" onclick="proposalAct('${p.id}','approve')">Organise it</button>` +
-      `<button class="deny" style="margin-top:0;padding:11px" onclick="proposalAct('${p.id}','dismiss')">Dismiss</button></div>`
+      `<button class="approve" style="padding:11px" data-act="proposalAct" data-arg="${esc(p.id)}" data-arg2="approve">Organise it</button>` +
+      `<button class="deny" style="margin-top:0;padding:11px" data-act="proposalAct" data-arg="${esc(p.id)}" data-arg2="dismiss">Dismiss</button></div>`
     ).join("");
+    } catch (e) { /* proposals section failed this cycle */ }
   } catch (e) {
     $("#connNote").textContent = "CANNOT REACH DESKDORA — IS IT RUNNING?";
   }

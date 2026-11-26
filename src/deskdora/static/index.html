@@ -1422,6 +1422,19 @@ select:focus{outline:none;border-color:var(--lime-ink)}
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Action dispatch for list buttons (vibe S2/U1): values travel in
+// data attributes, never interpolated into an inline handler's
+// JavaScript string literal, where an HTML-escaped apostrophe
+// would be decoded back and break out of the string.
+const ACT_DISPATCH = { openReplay, useTemplate, deleteTemplate,
+  queueMove, queueRemove, runRoutine, deleteRoutine, forgetPlace,
+  forgetEntry, proposalAct };
+document.addEventListener("click", (ev) => {
+  const el = ev.target.closest("[data-act]");
+  if (!el) return;
+  const fn = ACT_DISPATCH[el.dataset.act];
+  if (fn) fn(el.dataset.arg, el.dataset.arg2);
+});
 const pad2 = (n) => String(n).padStart(2, "0");
 const trunc = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
 const capFirst = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -2088,7 +2101,7 @@ function renderRuns() {
     return;
   }
   el.innerHTML = runs.map(r => `
-    <button class="runrow" onclick="openReplay('${esc(r.id)}')">
+    <button class="runrow" data-act="openReplay" data-arg="${esc(r.id)}">
       <span class="rr-time">${runStamp(r.id)}</span>
       <span class="rr-goal">${esc(r.goal)}</span>
       <span class="rr-planner">${esc(r.planner_mode)}</span>
@@ -2628,8 +2641,8 @@ async function loadTemplates() {
         <div class="rr-meta">${esc(t.note || "")}</div>
       </div>
       <div class="rr-actions">
-        <button class="pill-btn lime" onclick="useTemplate('${esc(t.id)}')">USE</button>
-        ${personal ? `<button class="pill-btn ghosty" onclick="deleteTemplate('${esc(t.id)}')">DELETE</button>` : ""}
+        <button class="pill-btn lime" data-act="useTemplate" data-arg="${esc(t.id)}">USE</button>
+        ${personal ? `<button class="pill-btn ghosty" data-act="deleteTemplate" data-arg="${esc(t.id)}">DELETE</button>` : ""}
       </div>
     </div>`;
   S.templatesCache = [...(data.builtin || []), ...(data.personal || [])];
@@ -2745,9 +2758,9 @@ function renderQueue(q) {
       <div class="rr-actions">
         ${queueStatusPill(it)}
         ${it.status === "queued" ? `
-          <button class="mini-btn" onclick="queueMove('${it.id}','up')" aria-label="Move up">&uarr;</button>
-          <button class="mini-btn" onclick="queueMove('${it.id}','down')" aria-label="Move down">&darr;</button>
-          <button class="mini-btn" onclick="queueRemove('${it.id}')" aria-label="Remove">&times;</button>` : ""}
+          <button class="mini-btn" data-act="queueMove" data-arg="${esc(it.id)}" data-arg2="up" aria-label="Move up">&uarr;</button>
+          <button class="mini-btn" data-act="queueMove" data-arg="${esc(it.id)}" data-arg2="down" aria-label="Move down">&darr;</button>
+          <button class="mini-btn" data-act="queueRemove" data-arg="${esc(it.id)}" aria-label="Remove">&times;</button>` : ""}
       </div>
     </div>`).join("");
 }
@@ -2830,8 +2843,8 @@ async function loadRoutines() {
           <input type="text" class="rparam" data-routine="${esc(r.name)}" data-param="${esc(p.name)}" value="${esc(p.default)}" style="width:100%;margin-top:4px"></div>`).join("")}
       </div>
       <div class="rr-actions">
-        <button class="pill-btn lime" onclick="runRoutine('${esc(r.name)}')">RUN NOW</button>
-        <button class="pill-btn ghosty" onclick="deleteRoutine('${esc(r.name)}')">DELETE</button>
+        <button class="pill-btn lime" data-act="runRoutine" data-arg="${esc(r.name)}">RUN NOW</button>
+        <button class="pill-btn ghosty" data-act="deleteRoutine" data-arg="${esc(r.name)}">DELETE</button>
       </div>
     </div>`).join("")
     : "<div class='tl-empty' style='border-top:1px solid var(--line)'>No routines yet — create one below, or save a finished run from the Action log.</div>";
@@ -2903,7 +2916,7 @@ async function loadMemory() {
         <div class="rr-meta">${esc((e.source || "user").toUpperCase())}</div>
       </div>
       <div class="rr-actions">
-        <button class="pill-btn ghosty" onclick="forgetPlace('${esc(alias)}')">FORGET</button>
+        <button class="pill-btn ghosty" data-act="forgetPlace" data-arg="${esc(alias)}">FORGET</button>
       </div>
     </div>`).join("")
     : "<div class='tl-empty' style='border-top:1px solid var(--line)'>No places yet — teach one below, or organise a folder and it will be learned.</div>";
@@ -2917,7 +2930,7 @@ async function loadMemory() {
       <div><div class="rr-goal mono" style="font-size:12.5px">${esc(cmd)}</div>
       <div class="rr-meta">LAUNCHED ${e.count}&times;</div></div>
       <div class="rr-actions"><button class="pill-btn ghosty"
-        onclick="forgetEntry('apps', '${esc(cmd)}')">FORGET</button></div></div>`;
+        data-act="forgetEntry" data-arg="apps" data-arg2="${esc(cmd)}">FORGET</button></div></div>`;
   });
   goals.forEach(([goal, count], i) => {
     rows += `<div class="rrow"><span class="rr-idx">G—${pad2(i + 1)}</span>
@@ -3522,8 +3535,8 @@ async function loadProposals() {
       </div>`;
     $("#proposalList").innerHTML =
       open.map(p => row(p,
-        `<button class="pill-btn lime" onclick="proposalAct('${p.id}','approve')">ORGANISE IT</button>
-         <button class="pill-btn ghosty" onclick="proposalAct('${p.id}','dismiss')">DISMISS</button>`)).join("")
+        `<button class="pill-btn lime" data-act="proposalAct" data-arg="${esc(p.id)}" data-arg2="approve">ORGANISE IT</button>
+         <button class="pill-btn ghosty" data-act="proposalAct" data-arg="${esc(p.id)}" data-arg2="dismiss">DISMISS</button>`)).join("")
       + settled.map(p => row(p, "")).join("");
   } catch (e) { /* older server; proposals appear when available */ }
 }
