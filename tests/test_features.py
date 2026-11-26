@@ -17,7 +17,7 @@ FEATURE_KEYS = ("feature_overlay", "feature_companion", "feature_mcp",
 @pytest.fixture()
 def cfg(monkeypatch):
     conf = dict(server.DEFAULT_CONFIG)
-    conf.update({"companion_pin": "2468", "screen_share": True})
+    conf.update({"companion_pin": "246810", "screen_share": True})
     monkeypatch.setattr(server, "load_config", lambda: conf)
     monkeypatch.setattr(server.MANAGER, "frame_provider",
                         lambda: (b"\xff\xd8\xff\xe0fakejpeg",
@@ -49,10 +49,10 @@ def test_companion_off_refuses_page_and_endpoints(cfg):
     cfg["feature_companion"] = False
     assert client.get("/companion.html").status_code == 403
     assert client.post("/api/companion/auth",
-                       headers={"x-companion-pin": "2468"}
+                       headers={"x-companion-pin": "246810"}
                        ).status_code == 403
     assert client.get("/api/screen.mjpg",
-                      headers={"x-companion-pin": "2468"}
+                      headers={"x-companion-pin": "246810"}
                       ).status_code == 403
 
 

@@ -267,7 +267,7 @@ def test_restore_without_snapshot_is_plain_refusal(client):
 def test_scrub_removes_keys_at_any_depth():
     cfg = {"providers": {"openai": {"api_key": "x", "model": "m"}},
            "custom_providers": [{"api_key": "y"}],
-           "companion_pin": "1234", "theme": "dark"}
+           "companion_pin": "123456", "theme": "dark"}
     out = backup.scrub_config(cfg)
     assert "api_key" not in json.dumps(out)
     assert "companion_pin" not in out

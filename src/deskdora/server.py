@@ -8,6 +8,7 @@ safety layer, wired end to end.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import re
@@ -1047,6 +1048,57 @@ async def _no_store(request, call_next):
 
 _LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
+# Companion PIN brute-force throttle (BugHunter C5): in-memory, per
+# client IP.  After 10 failed PIN guesses within 5 minutes the IP
+# is refused (429) for a 5 minute cooldown.  Only actual guesses
+# (a PIN header was presented and did not match) count; requests
+# with no credential at all do not.  A successful PIN auth clears
+# the IP's failure history.
+_PIN_MAX_FAILURES = 10
+_PIN_WINDOW_SECONDS = 300.0
+_PIN_COOLDOWN_SECONDS = 300.0
+_pin_failures = {}
+_pin_locked_until = {}
+_pin_throttle_lock = threading.Lock()
+
+
+def _pin_throttled(client):
+    if not client:
+        return False
+    with _pin_throttle_lock:
+        return _pin_locked_until.get(client, 0.0) > time.time()
+
+
+def _pin_record_failure(client):
+    if not client:
+        return
+    now = time.time()
+    with _pin_throttle_lock:
+        fails = [t for t in _pin_failures.get(client, [])
+                 if now - t < _PIN_WINDOW_SECONDS]
+        fails.append(now)
+        if len(fails) >= _PIN_MAX_FAILURES:
+            _pin_locked_until[client] = now + _PIN_COOLDOWN_SECONDS
+            _pin_failures.pop(client, None)
+        else:
+            _pin_failures[client] = fails
+
+
+def _pin_clear(client):
+    if not client:
+        return
+    with _pin_throttle_lock:
+        _pin_failures.pop(client, None)
+        _pin_locked_until.pop(client, None)
+
+
+def _pin_matches(request, pin):
+    """Constant-time PIN check for the x-companion-pin header."""
+    presented = request.headers.get("x-companion-pin")
+    if not pin or presented is None:
+        return False
+    return hmac.compare_digest(presented, pin)
+
 
 def _api_key_ok(request):
     """DeskDora API-key authentication.  Refused entirely when API
@@ -1088,6 +1140,13 @@ async def _companion_guard(request, call_next):
             and request.url.path != "/api/status":
         client = request.client.host if request.client else ""
         if client not in _LOCAL_HOSTS and not _screen_auth_ok(request):
+            if request.headers.get("x-companion-pin") is not None:
+                _pin_record_failure(client)
+            if _pin_throttled(client):
+                return JSONResponse(
+                    {"detail": "too many failed companion PIN "
+                               "attempts - try again later"},
+                    status_code=429)
             return JSONResponse(
                 {"detail": "companion authentication required for "
                            "non-local reads"},
@@ -1098,12 +1157,20 @@ async def _companion_guard(request, call_next):
         if client not in _LOCAL_HOSTS:
             if _api_key_ok(request):
                 return await call_next(request)
+            if _pin_throttled(client):
+                return JSONResponse(
+                    {"detail": "too many failed companion PIN "
+                               "attempts - try again later"},
+                    status_code=429)
             pin = load_config().get("companion_pin", "")
-            if not pin or request.headers.get("x-companion-pin") != pin:
+            if not _pin_matches(request, pin):
+                if request.headers.get("x-companion-pin") is not None:
+                    _pin_record_failure(client)
                 return JSONResponse(
                     {"detail": "companion PIN or API key required for "
                                "non-local control"},
                     status_code=401)
+            _pin_clear(client)
     return await call_next(request)
 
 
@@ -1577,7 +1644,8 @@ def _screen_auth_ok(request):
     if _api_key_ok(request):
         return True
     pin = load_config().get("companion_pin", "")
-    if pin and request.headers.get("x-companion-pin") == pin:
+    if _pin_matches(request, pin):
+        _pin_clear(request.client.host if request.client else "")
         return True
     token = request.cookies.get("dd_companion_session")
     return bool(token
@@ -1589,9 +1657,16 @@ def companion_auth(request: Request):
     """Exchange the companion PIN for a session cookie, so the
     companion page can load the screen stream (an <img> cannot send
     the PIN header)."""
+    client = request.client.host if request.client else ""
+    if _pin_throttled(client):
+        raise HTTPException(429, "too many failed companion PIN "
+                                 "attempts - try again later")
     pin = load_config().get("companion_pin", "")
-    if not pin or request.headers.get("x-companion-pin") != pin:
+    if not _pin_matches(request, pin):
+        if request.headers.get("x-companion-pin") is not None:
+            _pin_record_failure(client)
         raise HTTPException(401, "companion PIN required")
+    _pin_clear(client)
     token = secrets.token_urlsafe(24)
     MANAGER.companion_sessions[token] = time.time() + 12 * 3600
     MANAGER.emit_tone("companion_connected", load_config())
@@ -1792,6 +1867,16 @@ def config_get():
 def config_post(cfg: dict):
     if "theme" in cfg and cfg["theme"] not in THEMES:
         raise HTTPException(400, "theme must be 'light' or 'dark'")
+    if "companion_pin" in cfg:
+        # A blank PIN field means "keep the current PIN" (the field
+        # is write-only since C1); a PIN that is actually being set
+        # must be at least 6 characters (BugHunter C5).
+        new_pin = cfg["companion_pin"]
+        if not isinstance(new_pin, str):
+            raise HTTPException(400, "companion_pin must be text")
+        if new_pin.strip() and len(new_pin.strip()) < 6:
+            raise HTTPException(
+                400, "companion PIN must be at least 6 characters")
     if "user_name" in cfg and not isinstance(cfg["user_name"], str):
         raise HTTPException(400, "user_name must be text")
     if "setup_complete" in cfg \

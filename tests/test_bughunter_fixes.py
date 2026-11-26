@@ -218,3 +218,56 @@ def test_c4_remote_status_stays_open_and_minimal(pin_set):
     res = _remote().get("/api/status")
     assert res.status_code == 200
     assert PIN not in res.text
+
+
+# ---------------------------------------------------------------- C5
+# PIN minimum length, constant-time comparison, brute-force throttle.
+
+@pytest.fixture()
+def throttle_reset():
+    server._pin_failures.clear()
+    server._pin_locked_until.clear()
+    yield
+    server._pin_failures.clear()
+    server._pin_locked_until.clear()
+
+
+def test_c5_short_pin_rejected_by_config_post(pin_set):
+    local = _local()
+    for short in ("7", "12345", "abc"):
+        res = local.post("/api/config", json={"companion_pin": short})
+        assert res.status_code == 400, short
+    # The previously set PIN is untouched by the refused saves.
+    assert server.load_config()["companion_pin"] == PIN
+    res = local.post("/api/config", json={"companion_pin": "123456"})
+    assert res.status_code == 200
+    assert server.load_config()["companion_pin"] == "123456"
+
+
+def test_c5_correct_pin_still_works(pin_set, throttle_reset):
+    remote = _remote()
+    assert remote.post(
+        "/api/companion/auth",
+        headers={"x-companion-pin": PIN}).status_code == 200
+    assert remote.get(
+        "/api/runs", headers={"x-companion-pin": PIN}).status_code == 200
+
+
+def test_c5_wrong_guesses_get_throttled(pin_set, throttle_reset):
+    # A dedicated IP so the throttle cannot leak into other tests.
+    remote = TestClient(server.app, client=("192.168.1.99", 50000))
+    codes = [remote.post(
+        "/api/companion/auth",
+        headers={"x-companion-pin": "999999"}).status_code
+        for _ in range(12)]
+    assert codes[:10] == [401] * 10
+    assert 429 in codes[10:]
+    # During the cooldown even the correct PIN is refused by the
+    # auth endpoint.
+    assert remote.post(
+        "/api/companion/auth",
+        headers={"x-companion-pin": PIN}).status_code == 429
+    # Other IPs are unaffected.
+    assert _remote().post(
+        "/api/companion/auth",
+        headers={"x-companion-pin": PIN}).status_code == 200

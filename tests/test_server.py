@@ -187,16 +187,16 @@ def test_companion_pin_guard():
     # same ASGI-level fact the middleware checks in production.
     from fastapi.testclient import TestClient
     from deskdora import server
-    server.save_config({**server.load_config(), "companion_pin": "2468"})
+    server.save_config({**server.load_config(), "companion_pin": "246810"})
     try:
         remote = TestClient(server.app, client=("192.168.1.50", 50000))
         assert remote.post("/api/kill").status_code == 401
         assert remote.post(
             "/api/kill",
-            headers={"X-Companion-Pin": "0000"}).status_code == 401
+            headers={"X-Companion-Pin": "000000"}).status_code == 401
         assert remote.post(
             "/api/kill",
-            headers={"X-Companion-Pin": "2468"}).status_code == 200
+            headers={"X-Companion-Pin": "246810"}).status_code == 200
         # reads stay open for the companion's status view
         assert remote.get("/api/status").status_code == 200
         # loopback (the owner at the machine) is never challenged

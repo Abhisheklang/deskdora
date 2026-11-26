@@ -135,7 +135,7 @@ def test_mcp_info_shape():
 @pytest.fixture()
 def share_cfg(monkeypatch):
     cfg = dict(server.DEFAULT_CONFIG)
-    cfg.update({"companion_pin": "2468", "screen_share": False})
+    cfg.update({"companion_pin": "246810", "screen_share": False})
     monkeypatch.setattr(server, "load_config", lambda: cfg)
     monkeypatch.setattr(server.MANAGER, "frame_provider",
                         lambda: (b"\xff\xd8\xff\xe0fakejpeg",
@@ -147,20 +147,20 @@ def test_screen_stream_requires_auth(share_cfg):
     share_cfg["screen_share"] = True
     assert client.get("/api/screen.mjpg").status_code == 401
     assert client.get("/api/screen.mjpg",
-                      headers={"x-companion-pin": "0000"}
+                      headers={"x-companion-pin": "000000"}
                       ).status_code == 401
 
 
 def test_screen_stream_refused_when_off(share_cfg):
     assert client.get("/api/screen.mjpg",
-                      headers={"x-companion-pin": "2468"}
+                      headers={"x-companion-pin": "246810"}
                       ).status_code == 403
 
 
 def test_screen_stream_serves_frames_when_on(share_cfg):
     share_cfg["screen_share"] = True
     with client.stream("GET", "/api/screen.mjpg",
-                       headers={"x-companion-pin": "2468"}) as resp:
+                       headers={"x-companion-pin": "246810"}) as resp:
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith(
             "multipart/x-mixed-replace")
@@ -174,10 +174,10 @@ def test_screen_stream_serves_frames_when_on(share_cfg):
 def test_companion_auth_cookie_unlocks_stream(share_cfg):
     share_cfg["screen_share"] = True
     bad = client.post("/api/companion/auth",
-                      headers={"x-companion-pin": "0000"})
+                      headers={"x-companion-pin": "000000"})
     assert bad.status_code == 401
     ok = client.post("/api/companion/auth",
-                     headers={"x-companion-pin": "2468"})
+                     headers={"x-companion-pin": "246810"})
     assert ok.status_code == 200
     assert "dd_companion_session" in ok.headers.get("set-cookie", "")
     with client.stream("GET", "/api/screen.mjpg") as resp:
