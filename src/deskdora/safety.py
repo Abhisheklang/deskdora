@@ -31,6 +31,34 @@ DESTRUCTIVE_NAME_HINTS = (
 )
 CONFIRM_ROLES = {"push button", "menu item", "check menu item"}
 
+# Terminal emulators.  Input delivered to one of these is not
+# "typing": the text is a shell command and the next Return runs
+# it.  Steps whose execution context is a terminal therefore
+# classify destructive (see classify_step), which is what closes
+# the type-plus-Return gap the per-step classifier used to miss.
+TERMINAL_APPS = (
+    "gnome-terminal", "gnome-console", "kgx", "ptyxis", "konsole",
+    "xterm", "kitty", "alacritty", "terminator", "tilix",
+    "xfce4-terminal", "mate-terminal", "lxterminal", "wezterm",
+    "foot", "urxvt", "rxvt", "terminal",
+)
+
+# Keystrokes that open a command-execution surface by themselves:
+# the default terminal shortcut and the GNOME run-command dialog.
+# What gets typed after them is a command, so the opening
+# keystroke confirms like a launch does.
+COMMAND_SURFACE_KEYS = {"ctrl+alt+t", "alt+f2"}
+
+
+def is_terminal_app(name):
+    """True when an application name (an AT-SPI app name, a launch
+    hint, a target's app_contains) belongs to a terminal emulator.
+    Substring match, mirroring the autonomy layer's app lists."""
+    if not name:
+        return False
+    lowered = str(name).lower()
+    return any(app in lowered for app in TERMINAL_APPS)
+
 
 def classify_step(step):
     """Return 'destructive' or 'safe' for a plan step.
@@ -46,13 +74,25 @@ def classify_step(step):
     action = step.get("action")
     if action == "launch":
         return "destructive"
+    if action in ("type", "key", "build_sheet") \
+            and step.get("context") == "terminal":
+        # The step's input lands in a terminal (the agent supplies
+        # the context from where focus actually is): typed text is
+        # a shell command, Return executes it, and build_sheet
+        # types and confirms cell by cell.  All of it confirms.
+        return "destructive"
     key_value = step.get("key")
-    if action == "key" and isinstance(key_value, str) \
-            and key_value.lower() in ("delete", "shift+delete"):
-        # A bare Delete keypress in a file manager deletes the selection.
-        if step.get("context") == "files":
+    if action == "key" and isinstance(key_value, str):
+        combo = "+".join(p.strip()
+                         for p in key_value.lower().split("+"))
+        if combo in COMMAND_SURFACE_KEYS:
             return "destructive"
-        return "safe"
+        if key_value.lower() in ("delete", "shift+delete"):
+            # A bare Delete keypress in a file manager deletes
+            # the selection.
+            if step.get("context") == "files":
+                return "destructive"
+            return "safe"
     if action == "click_at":
         # A coordinate click carries no element name at all, so
         # there is nothing to prove it is not a Delete/Send/Pay

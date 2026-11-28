@@ -125,9 +125,19 @@ def categorise_step(step, context="", element_app=""):
         if any(f in command for f in FILE_APPS):
             return "files", True
         return "apps", True
+    step_context = context or step.get("context") or ""
+    if step_context == "terminal" \
+            and action in ("type", "key", "build_sheet"):
+        # Input into a terminal is command execution (the C3
+        # sub-gap): significant in the apps category, so the
+        # default policy confirms it and a "never" apps setting
+        # refuses it.  Categorised here, not left to the generic
+        # destructive fallback below, so it can never be routed
+        # into a laxer category by accident.
+        return "apps", True
     probe = step
-    if context and "context" not in step:
-        probe = {**step, "context": context}
+    if step_context and "context" not in step:
+        probe = {**step, "context": step_context}
     destructive = classify_step(probe) == "destructive"
     if destructive:
         if any(hint in text for hint in MESSAGE_HINTS):

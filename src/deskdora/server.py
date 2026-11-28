@@ -1309,8 +1309,40 @@ def _ollama_available(model):
 
 
 @app.get("/api/status")
-def status():
+def status(request: Request):
     cfg = load_config()
+    client = request.client.host if request.client else ""
+    if client not in _LOCAL_HOSTS and not _screen_auth_ok(request):
+        # Unauthenticated remote callers get the minimal payload
+        # the companion login screen needs - and nothing else.
+        # The full payload carries the run's goal, its result
+        # (including answers: text extracted from the screen and
+        # the clipboard), the pending plan and the pending
+        # confirmation; the guard's exemption for this endpoint
+        # was written when the payload was only flags, and it
+        # grew.  A presented-but-wrong PIN counts toward the
+        # brute-force throttle exactly as on the guarded reads,
+        # so this endpoint is not a PIN oracle either.
+        if request.headers.get("x-companion-pin") is not None:
+            _pin_record_failure(client)
+        return {
+            "state": {"running": bool(MANAGER.state["running"]),
+                      "goal": "", "planner_mode": "",
+                      "result": None, "connection_error": None,
+                      "pending_plan": None, "planner_error": None,
+                      "completion": None, "tone_events": []},
+            "last_event": None,
+            "config": {
+                "has_pin": bool(cfg.get("companion_pin")),
+                "feature_companion": bool(
+                    cfg.get("feature_companion", True))},
+            "ollama_available": False,
+            "pending_confirmation": None,
+            "kill_tripped": MANAGER.kill.is_tripped(),
+            "progress": {"running": bool(MANAGER.state["running"])},
+            "screen_share": MANAGER.screen_info(),
+            "authenticated": False,
+        }
     ollama = None  # probe goes through the cache below
     pending = None
     if MANAGER.pending:

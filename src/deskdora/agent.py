@@ -15,7 +15,9 @@ import time
 from .drivers import get_driver
 from .drivers.base import DriverError
 from .planners import PlanError, extract_pattern_problem, validate_plan
+from .autonomy import FILE_APPS
 from .autonomy import evaluate as autonomy_evaluate
+from .safety import is_terminal_app
 
 
 class StepFailure(Exception):
@@ -703,6 +705,45 @@ class Agent:
         return (f"entered {len(rows)}x{width} table and saved as "
                 f"{save_as} (verified)")
 
+    def _step_context(self, plan, index, step):
+        """The execution context the gate needs for this step:
+        "terminal" when the step's input would land in a terminal,
+        "files" when it would land in a file manager, else "".
+
+        The classifiers are per-step and cannot see where input
+        lands; the agent can.  Signals, freshest first: the step's
+        own target app, the app a pending launch is raising, the
+        app this plan most recently launched, and the app focus is
+        pinned to.  Supplying this is what makes the terminal rule
+        (typing there is command execution) and the file-manager
+        Delete rule reachable in real runs: no caller supplied a
+        context before, so both rules were dead code on the live
+        path (the C3 sub-gap)."""
+        candidates = []
+        target = step.get("target")
+        if isinstance(target, dict) and target.get("app_contains"):
+            candidates.append(str(target["app_contains"]))
+        if self._launch_hint:
+            candidates.append(self._launch_hint)
+        for prev in reversed(plan[:index]):
+            if prev.get("action") == "launch":
+                hint = _launch_app_hint(prev.get("command") or "")
+                if hint:
+                    candidates.append(hint)
+                break
+        if self.focus_app:
+            candidates.append(self.focus_app)
+        for name in candidates:
+            if is_terminal_app(name):
+                return "terminal"
+            lowered = str(name).lower()
+            if any(f in lowered for f in FILE_APPS):
+                return "files"
+        # An explicitly assigned context (the attribute the
+        # pre-existing callers and tests use) stands when no
+        # signal identified one.
+        return getattr(self, "context", "") or ""
+
     # -- main loop -----------------------------------------------------------
     # -- planning ------------------------------------------------------
     def build_plan(self, goal):
@@ -727,11 +768,44 @@ class Agent:
             plan, element_count=len(obs.elements)
             if hasattr(self.planner, "model") else None)
 
-    # -- file-change journal (v3.3) ------------------------------------
-    def _record_file_ops(self, file_op, index):
+    @staticmethod
+    def _file_op_snapshot(file_op):
+        """Which of a file_op's source paths exist right now.
+        Taken before the step runs, so _record_file_ops can tell
+        a move the step actually caused from metadata alone."""
+        before = {}
         for entry in file_op.get("files", []):
-            record = {"op": file_op.get("op", "move"),
-                      "src": entry.get("src"), "dst": entry.get("dst"),
+            src = entry.get("src")
+            if isinstance(src, str) and src:
+                before[src] = os.path.exists(src)
+        return before
+
+    # -- file-change journal (v3.3) ------------------------------------
+    def _record_file_ops(self, file_op, index, before=None):
+        for entry in file_op.get("files", []):
+            src = entry.get("src")
+            dst = entry.get("dst")
+            # The journal is a trust record: Undo replays it on
+            # the real filesystem without asking again.  A move is
+            # journaled only when this step demonstrably caused
+            # it: the source existed in the pre-step snapshot, it
+            # is gone now, and the destination is present.  A
+            # paste that silently failed - and metadata a planner
+            # attached to a step that moved nothing - both fail
+            # that check: they are logged as unverified and never
+            # reach the journal, so Undo can never be aimed by a
+            # fabricated record.
+            if file_op.get("op") != "move" \
+                    or not isinstance(src, str) or not src \
+                    or not isinstance(dst, str) or not dst \
+                    or not before or not before.get(src) \
+                    or os.path.exists(src) \
+                    or not os.path.exists(dst):
+                self._emit("file_op_unverified",
+                           op=file_op.get("op"), src=src, dst=dst,
+                           step=index)
+                continue
+            record = {"op": "move", "src": src, "dst": dst,
                       "step": index, "sha256": None}
             try:
                 dst = record["dst"]
@@ -855,7 +929,7 @@ class Agent:
                 # behaviour: destructive steps confirm, safe steps run.
                 decision, category, significant = autonomy_evaluate(
                     self.autonomy, step,
-                    context=getattr(self, "context", ""))
+                    context=self._step_context(plan, i, step))
                 if decision == "deny":
                     self._emit("autonomy", step=step, category=category,
                                decision="deny")
@@ -880,6 +954,9 @@ class Agent:
                                decision="auto-approved")
                 self._emit("step_start", index=i, step=step)
                 try:
+                    file_op_before = self._file_op_snapshot(
+                        step["file_op"]) if step.get("file_op") \
+                        else None
                     detail = self._exec_and_verify(step)
                     self.executed += 1
                     time.sleep(self.settle)
@@ -887,7 +964,8 @@ class Agent:
                     self._emit("step_result", index=i, ok=True,
                                detail=detail, screenshot=shot)
                     if step.get("file_op"):
-                        self._record_file_ops(step["file_op"], i)
+                        self._record_file_ops(step["file_op"], i,
+                                              before=file_op_before)
                 except StepFailure as exc:
                     # Failure self-recovery: exactly ONE alternative
                     # attempt (re-observe + a different approach),
@@ -911,7 +989,9 @@ class Agent:
                                        f"{rdetail}",
                                 screenshot=shot, recovered=True)
                             if step.get("file_op"):
-                                self._record_file_ops(step["file_op"], i)
+                                self._record_file_ops(
+                                    step["file_op"], i,
+                                    before=file_op_before)
                             i += 1
                             continue
                         exc = StepFailure(
